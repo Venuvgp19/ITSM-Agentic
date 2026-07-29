@@ -69,8 +69,22 @@ export class AgentGovernanceController {
 
   @Public()
   @Get('stats')
-  @ApiOperation({ summary: 'Retrieve agent governance, safety compliance, and approval metrics' })
+  @ApiOperation({ summary: 'Get summary statistics for governance dashboard KPIs' })
   getStats() {
     return this.governanceService.getGovernanceStats();
+  }
+
+  @Public()
+  @Get('config')
+  @ApiOperation({ summary: 'Get active model and environment configuration' })
+  getConfig() {
+    return this.governanceService.getModelConfig();
+  }
+
+  @Public()
+  @Post('config')
+  @ApiOperation({ summary: 'Update model and environment configuration' })
+  updateConfig(@Body() patch: any) {
+    return this.governanceService.updateModelConfig(patch);
   }
 }

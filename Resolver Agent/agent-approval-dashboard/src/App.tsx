@@ -17,9 +17,10 @@ import {
 import { PendingApprovalsView, AgentApproval } from './components/PendingApprovalsView';
 import { HistoricalActivityView, AgentHistoryEntry } from './components/HistoricalActivityView';
 import { GovernanceAnalyticsView } from './components/GovernanceAnalyticsView';
+import { ModelConfigView } from './components/ModelConfigView';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'approvals' | 'history' | 'analytics'>('approvals');
+  const [activeTab, setActiveTab] = useState<'approvals' | 'history' | 'analytics' | 'config'>('approvals');
   const [approvals, setApprovals] = useState<AgentApproval[]>([]);
   const [history, setHistory] = useState<AgentHistoryEntry[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -169,6 +170,18 @@ export function App() {
             <Activity className="w-4.5 h-4.5" />
             Governance Analytics & Guardrail Matrix
           </button>
+          
+          <button
+            onClick={() => setActiveTab('config')}
+            className={`flex items-center gap-2.5 px-6 py-3.5 text-xs font-extrabold border-b-2 transition-all uppercase tracking-wider ${
+              activeTab === 'config'
+                ? 'border-purple-500 text-purple-400 bg-purple-500/10 rounded-t-xl shadow-sm'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <Sliders className="w-4.5 h-4.5" />
+            Model Configuration
+          </button>
         </div>
 
         {/* Tab 1: Pending Approvals */}
@@ -215,6 +228,9 @@ export function App() {
 
         {/* Tab 3: Governance Analytics & Policy Matrix */}
         {activeTab === 'analytics' && <GovernanceAnalyticsView stats={stats} />}
+
+        {/* Tab 4: Model Configuration */}
+        {activeTab === 'config' && <ModelConfigView />}
       </main>
 
       {/* Footer Bar */}

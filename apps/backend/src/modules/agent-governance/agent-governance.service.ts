@@ -363,4 +363,49 @@ export class AgentGovernanceService {
       console.error(`Failed to sync resolution to incident ${incidentId}:`, e);
     }
   }
+
+  // --- MODEL & ENVIRONMENT CONFIGURATION ---
+  private modelConfig: any = {
+    environment: 'genai_lab',
+    baseUrl: 'https://genailab.tcs.in/v1',
+    apiKey: 'sk-RRoxANx2dKdNE3N5j0mbxQ',
+    routerModel: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
+    resolverModel: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
+    synthesizerModel: 'azure_ai/genailab-maas-DeepSeek-R1',
+    governanceModel: 'genailab-maas-gpt-4o',
+    fallbackModels: [
+      'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
+      'azure_ai/genailab-maas-DeepSeek-R1',
+      'genailab-maas-gpt-4o',
+      'gemini-2.5-pro',
+      'azure/genailab-maas-gpt-4o-mini'
+    ]
+  };
+
+  getModelConfig() {
+    const configPath = path.resolve(process.cwd(), 'apps/backend/data/database.json');
+    if (fs.existsSync(configPath)) {
+      try {
+        const db = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (db.agentModelConfig) {
+          this.modelConfig = { ...this.modelConfig, ...db.agentModelConfig };
+        }
+      } catch (err) {}
+    }
+    return this.modelConfig;
+  }
+
+  updateModelConfig(patch: Partial<any>) {
+    this.modelConfig = { ...this.modelConfig, ...patch };
+    const configPath = path.resolve(process.cwd(), 'apps/backend/data/database.json');
+    try {
+      let db: any = {};
+      if (fs.existsSync(configPath)) {
+        db = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      }
+      db.agentModelConfig = this.modelConfig;
+      fs.writeFileSync(configPath, JSON.stringify(db, null, 2), 'utf-8');
+    } catch (err) {}
+    return this.modelConfig;
+  }
 }
