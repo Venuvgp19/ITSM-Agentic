@@ -1,143 +1,104 @@
-# 🚀 Modern Enterprise IT Service Management (ITSM) Platform
-> **Next-Gen Autonomous ITSM Platform featuring Agentic AI Ticket Router (NVIDIA Nemotron 3 550B), Continuous Knowledge Synthesizer (Meta Llama 3.3 70B), CMDB Topology Graph, Visual Workflow Canvas, and Standalone MCP Server Integration.**
+# 🚀 Enterprise ITSM Platform & Autonomous Multi-Agent Resolver System
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https.mit-license.org)
+[![Node.js Version](https://img.shields.io/badge/Node.js-v22.x-green.svg)](https://nodejs.org)
+[![Python Version](https://img.shields.io/badge/Python-v3.10+-blue.svg)](https://python.org)
+[![Architecture](https://img.shields.io/badge/Architecture-Autonomous--Multi--Agent-purple.svg)](#-autonomous-4-agent-pipeline)
+
+An end-to-end, enterprise-grade **IT Service Management (ITSM) Platform** equipped with an **Autonomous 4-Agent AI Engine** capable of automated ticket routing, non-interactive SSH remote remediation, live host health verification, master SOP synthesis, and strict Human-in-the-Loop (HITL) governance.
 
 ---
 
-## 🏗️ System Architecture & Token Calculation Engine
+## 📐 Autonomous 4-Agent Pipeline
 
-![System Architecture Diagram](docs/screenshots/architecture_diagram.png)
-
-### 📊 Token Calculation Breakdown Per Incident
-
-| AI LLM Engine | Primary Module | Input Token Estimate / Unit | Output Token Estimate / Unit | Total Tokens / Unit | Total for 1,000 Incidents |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **NVIDIA Nemotron 3 550B** | **Agentic AI Ticket Router** | **~850 tokens** *(System prompt, ITIL guidelines, CI, Priority, Activity notes)* | **~350 tokens** *(Chain-of-thought, Target group, Work note)* | **~1,200 tokens / incident** | **~1,200,000 Tokens (1.2M)** |
-| **Meta Llama 3.3 70B** | **Continuous Knowledge Base Synthesizer** | **~4,500 tokens** *(10-ticket diagnostic batch prompt)* | **~1,500 tokens** *(Structured SOP & KEDB article)* | **~6,000 tokens / 10-ticket batch** *(~600 tokens / incident)* | **~600,000 Tokens (600K)** |
-
----
-
-## 💰 Cost Breakdown & ROI Analysis Per Incident
-
-$$\mathbf{\text{Total Cost for 1 Incident}} = \$0.00190 \text{ (AI Router)} + \$0.00018 \text{ (KB Synthesizer)} = \mathbf{\$0.00208 \text{ per incident}}$$
-
-### Detailed Module Cost Summary
-
-| Scale | Total Incidents Processed | Total AI LLM API Cost |
-| :--- | :--- | :--- |
-| **1 Single Incident** | `1 Ticket` | **`$0.002`** *(less than 1/4 of a cent)* |
-| **100 Incidents** | `100 Tickets` | **`$0.21`** *(21 cents)* |
-| **1,000 Incidents** | `1,000 Tickets` | **`$2.08`** *(Full 1,000 incident database)* |
-
-### 📈 Human Helpdesk vs. Autonomous AI ROI Comparison
-
-| Metric | Traditional Human Triage | Autonomous AI Router & Synthesizer |
-| :--- | :--- | :--- |
-| **Average Cost per Incident** | **$15.00 – $25.00** *(Helpdesk Tier-1 labor)* | **$0.002** *(API LLM Token Cost)* |
-| **Triage & Dispatch Time** | 15 – 45 minutes | **< 3 seconds** |
-| **Cost Reduction / Savings** | Baseline | **99.99% Cost Savings** 🚀 |
-
----
-
-## 📸 Real Application Screenshots & Terminal Logs
-
-### 1. 📊 Live Dashboard & Ops Command Center
-![Command Dashboard Overview](docs/screenshots/dashboard_overview.png)
-
-### 2. ⚡ Agentic AI Ticket Router (Live Terminal Logs)
-![Agentic AI Ticket Router Logs](docs/screenshots/ai_router_terminal.png)
-
-```text
-[10:37:19 am] ⚡ Scan #311: Found 51 unassigned tickets. Successfully routed 1 tickets!
-  ➔ Ticket INC0000950 auto-assigned to "Network Ops" (Alex Rivera (Network Team Lead)) with 95% confidence.
-[10:37:34 am] ⚡ Scan #312: Found 50 unassigned tickets. Successfully routed 1 tickets!
-  ➔ Ticket INC0000952 auto-assigned to "DBA Team" (DBA Team Lead) with 90% confidence.
-[10:37:49 am] ⚡ Scan #313: Found 49 unassigned tickets. Successfully routed 1 tickets!
-  ➔ Ticket INC0000952 auto-assigned to "DBA Team" (DBA Team Lead) with 90% confidence.
+```mermaid
+flowchart TD
+    A[🎫 Incoming Alert / Ticket] --> B[🚦 AGENT 1: Router Agent]
+    B -->|Parse & Classify P1-P4| C[📥 Domain Queue Dispatch]
+    C --> D[🛠️ AGENT 2: Resolver Agent]
+    D -->|OS Fingerprint & Match SOP| E{Risk Level Check}
+    E -->|Low/Medium Risk| F[💻 Non-Interactive SSH Execution]
+    E -->|High Risk| G[🛡️ AGENT 4: Governance HITL Queue]
+    G -->|Human Approval| F
+    F --> H[🏥 Host Health Verification]
+    H --> I[🧠 AGENT 3: Knowledge Synthesizer Agent]
+    I -->|Synthesize Master SOP KB0000050-57| J[📚 Master Knowledge Base]
+    H -->|Resolved| K[✅ Ticket State: RESOLVED]
 ```
 
-### 3. 🎫 Incident Management Console & AI Routing Queue
-![Incident Management Console](docs/screenshots/incident_list.png)
+### 🤖 Core Agent Roles & Capabilities
 
-### 4. 🔍 Incident Detail, AI Diagnostic Work Notes & Activity Stream
-![Incident Detail & Diagnostics](docs/screenshots/incident_detail.png)
-
-### 5. 📚 Continuous Knowledge Base & KEDB Synthesizer
-![Knowledge Base Catalog](docs/screenshots/knowledge_base.png)
+| Agent Role | Model Engine | Primary Responsibilities |
+| :--- | :--- | :--- |
+| **1. 🚦 Router Agent** | `Llama-3.3-70B-Instruct` | Parses symptoms, classifies categories/subcategories, assigns priority (P1–P4 matrix), and dispatches tickets to domain queues. |
+| **2. 🛠️ Resolver Agent** | `Llama-3.3-70B-Instruct` + SSH Engine | Remote OS fingerprinting (`uname -s`), runbook matching, executing 100% non-interactive shell commands on target hosts, and host health verification. |
+| **3. 🧠 Knowledge Synthesizer** | `DeepSeek-R1` / `GPT-4o` | Deep reasoning, root-cause analysis, pattern & trend detection, and consolidating tickets into generic Master Domain SOPs (KB0000050–KB0000057). |
+| **4. 🛡️ Agent Governance** | `GPT-4o` + Safety Engine | Evaluates command risk levels (HIGH vs. LOW/MEDIUM), manages Human-in-the-Loop approval workflows, and logs full audit traces in `agent_history.json`. |
 
 ---
 
-## ✨ Core Platform Architecture & Key Features
+## 📚 Master Generic Domain SOPs
 
-### 1. 🤖 Continuous Agentic AI Ticket Router (NVIDIA Nemotron 3 550B LLM)
-- **Automatic Multi-Factor Triage**: Scans unassigned IT tickets every 10 seconds, analyzing diagnostic work notes, affected CIs, error traces, and caller metadata.
-- **Strict ITIL Category Routing**: Automatically dispatches tickets to targeted engineering teams (*Unix, Network Ops, App Support, Desktop Support, DevOps Ops, SecOps, DBA Team*).
-- **Rule Engine Fallback**: High availability fallback ensures 96%+ confidence routing even under high API traffic or rate-limiting.
+The platform enforces **Master Knowledge Deduplication & Consolidation**, preventing duplicate standalone KB articles and grouping recurring requests into consolidated master SOP domain articles:
 
-### 2. 📚 Continuous Knowledge Base & KEDB Synthesizer (Meta Llama 3.3 70B LLM)
-- **Continuous Background AI Worker**: Scans 1,000 incident diagnostic notes in 10-ticket batches.
-- **Known Error Database (KEDB)**: Synthesizes Standard Operating Procedures (SOPs), root cause analyses, and permanent workarounds.
-- **Persistent Progress Tracker**: Background worker runs seamlessly without interrupting user navigation.
-
-### 3. 🎫 100% Persistent Incident Database
-- **Disk File Persistence (`apps/backend/data/incidents.json`)**: Preserves all 1,000+ incident states, AI work notes, resolution codes, and assignment history.
-- **No Count Resets**: System reloads maintain 100% database integrity across backend restarts, page refreshes, and API calls.
-
-### 4. 🌐 Model Context Protocol (MCP) Server Integration
-- **Stdio Transport**: Native MCP tool support for remote agentic workflows (`incidents_create`, `incidents_list`, `incidents_get_by_id`, `incidents_update`).
-- **Automatic Auth Flow**: Built-in auth handler converts public tool invocations to tenant-scoped JWT sessions.
-
-### 5. 🖥️ Service Catalog, CMDB & Studio Builders
-- **CMDB & Infrastructure Topology**: Interactive CI management for PostgreSQL clusters, BGP routers, Kubernetes ingress controllers, and MFA webhooks.
-- **Visual Workflow Canvas**: Node-based DAG execution engine supporting multi-level approvals, REST webhooks, and timers.
-- **Dynamic Form Designer**: Drag-and-drop schema creation with conditional visibility and field policy enforcement.
+1. **`KB0000050`**: Master SOP for Generic User Account Deletion & Offboarding
+2. **`KB0000051`**: Master SOP for Database Connection Pool Exhaustion & Vacuum Optimization
+3. **`KB0000052`**: Master SOP for Unix Disk Space Recovery, Journalctl Vacuum & Syslog Truncation
+4. **`KB0000053`**: Master SOP for Kubernetes Ingress Controller Pod Autoscaling & Traffic Throttling
+5. **`KB0000054`**: Master SOP for BGP Routing Cache Flush & Network Gateway Latency Recovery
+6. **`KB0000055`**: Master SOP for Unix Kernel Contention, Process Kill & Virtual Memory Flush
+7. **`KB0000056`**: Master SOP for Application SSO Authentication & Webhook Timeout SOP
+8. **`KB0000057`**: Master SOP for Generic Docker & Container Runtime Provisioning & Installation
 
 ---
 
 ## 🛠️ Technology Stack
 
-| Layer | Technology |
-| :--- | :--- |
-| **Frontend** | Next.js 14+ (App Router), React 18, Tailwind CSS, Lucide Icons, TypeScript |
-| **Backend** | NestJS, TypeScript, RxJS, Passport JWT, Swagger OpenAPI 3.0 |
-| **AI LLM Engine** | NVIDIA Nemotron 3 550B (AI Router), Meta Llama 3.3 70B Instruct (KB Synthesizer) |
-| **Database Layer** | Persistent File Storage (`incidents.json`), PostgreSQL schema with Prisma ORM |
-| **Integrations** | Stdio MCP Protocol (`packages/mcp-server`), Docker, Kubernetes |
+- **Frontend**: Next.js 14, React 18, TailwindCSS, Lucide Icons, Glassmorphism UX (`http://localhost:3000`).
+- **Backend API**: NestJS, TypeScript, SingleDatabase Master Service, Prisma, REST API (`http://localhost:4000/api/v1`).
+- **Autonomous Agents**: Python 3.10+, Paramiko SSH Engine, GenAI Lab MaaS (`https://genailab.tcs.in/v1`).
+- **Governance Portal**: Standalone Vite + React Governance Dashboard (`http://localhost:5173`).
 
 ---
 
-## 🚀 Quickstart & Installation Guide
+## ⚡ Quickstart Guide
 
-### 1. Clone & Install Monorepo Dependencies
+### 1. Start NestJS Backend Server (Port 4000)
 ```bash
-git clone https://github.com/Venuvgp19/enterprise-itsm-platform.git
-cd enterprise-itsm-platform
-npm install
+cd apps/backend
+npm run start:dev
 ```
 
-### 2. Start Services Locally
-
+### 2. Start Next.js ITSM Frontend Portal (Port 3000)
 ```bash
-# Terminal 1: Launch NestJS Backend API Server (Port 4000)
-npm run dev:backend
+cd apps/frontend
+npm run dev
+```
 
-# Terminal 2: Launch Next.js Frontend App (Port 3000)
-npm run dev:frontend
+### 3. Start Standalone Agent Governance Dashboard (Port 5173)
+```bash
+cd "Resolver Agent/agent-approval-dashboard"
+npx vite --port 5173
+```
+
+### 4. Launch Continuous Autonomous Agent Daemon
+```bash
+cd "Resolver Agent"
+python continuous_itsm_agent_daemon.py
 ```
 
 ---
 
-## 📖 API Documentation
+## 🌐 Port Mapping Summary
 
-- **Next.js Frontend App**: [http://localhost:3000](http://localhost:3000)
-- **Command Dashboard**: [http://localhost:3000/dashboard](http://localhost:3000/dashboard)
-- **Incident Console**: [http://localhost:3000/incidents](http://localhost:3000/incidents)
-- **AI Knowledge Synthesizer**: [http://localhost:3000/knowledge](http://localhost:3000/knowledge)
-- **NestJS Swagger OpenAPI Specs**: [http://localhost:4000/api/docs](http://localhost:4000/api/docs)
+| Service Name | Port | Description |
+| :--- | :--- | :--- |
+| **ITSM Frontend Portal** | `http://localhost:3000` | Incident, Problem, Change, and Knowledge Management Platform |
+| **ITSM Backend API** | `http://localhost:4000/api/v1` | REST API, Single Database Service, OpenAPI Docs (`/api/docs`) |
+| **Agent Governance UI** | `http://localhost:5173` | Standalone Agent Governance, Approvals & Execution Audit History |
 
 ---
 
-## 💡 Running Python MCP Tool Demo
-```bash
-python create_incident_mcp.py
-```
-*Creates real-time incidents directly on the backend database via stdio MCP protocol.*
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for details.
