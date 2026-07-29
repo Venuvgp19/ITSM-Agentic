@@ -1,5 +1,8 @@
 import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { IncidentService } from '../incidents/incident.service';
+import { PrismaService } from '../../database/prisma.service';
+import { SingleDatabaseService } from '../../database/single-db.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -23,102 +26,43 @@ export interface KnowledgeArticle {
 }
 
 @Injectable()
-export class KnowledgeService implements OnModuleInit {
+export class KnowledgeService {
   private readonly logger = new Logger(KnowledgeService.name);
   private articles: KnowledgeArticle[] = [];
-  private analyzedIncidentIds: Set<string> = new Set<string>();
+  private analyzedIncidentIds: Set<string> = new Set();
+  private isProcessing = false;
   private isWorkerRunning = false;
   private totalIncidentsCount = 1000;
+  private readonly liteLlmBaseUrl: string;
+  private readonly liteLlmApiKey: string;
+  private readonly llamaModel: string;
 
-  private readonly nvidiaBaseUrl = 'https://integrate.api.nvidia.com/v1';
-  private readonly nvidiaApiKey = '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';
-  private readonly llamaModel = 'meta/llama-3.3-70b-instruct';
+  constructor(
+    private readonly incidentService: IncidentService,
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+    private readonly singleDb: SingleDatabaseService
+  ) {
+    this.liteLlmBaseUrl = this.configService?.get<string>('LITELLM_BASE_URL') || 'https://genailab.tcs.in/v1';
+    this.liteLlmApiKey = 'sk-RRoxANx2dKdNE3N5j0mbxQ';
+    this.llamaModel = this.configService?.get<string>('LITELLM_LLAMA_MODEL') || 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct';
 
-  constructor(private readonly incidentService: IncidentService) {
-    this.articles = this.loadOrSeedKnowledgeArticles();
-    this.analyzedIncidentIds = this.loadAnalyzedIncidentIds();
+    this.articles = this.singleDb.knowledgeArticles;
+    this.analyzedIncidentIds = new Set(this.singleDb.analyzedIncidents);
     this.deduplicateArticles();
-  }
 
-  onModuleInit() {
-    this.logger.log(`🤖 Initializing Continuous Background AI Knowledge Worker (Meta Llama 3.3 70B)...`);
     // Start continuous background processing after 5 seconds
     setTimeout(() => {
       this.runContinuousBackgroundSynthesis('tenant_acme_01');
     }, 5000);
   }
 
-  private getDbFilePath(filename: string): string {
-    const possiblePaths = [
-      path.resolve(process.cwd(), `apps/backend/data/${filename}`),
-      path.resolve(process.cwd(), `data/${filename}`),
-      path.resolve(__dirname, `../../../data/${filename}`),
-      path.resolve(__dirname, `../../data/${filename}`),
-    ];
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) return p;
-    }
-    return path.resolve(process.cwd(), `apps/backend/data/${filename}`);
-  }
-
-  private loadOrSeedKnowledgeArticles(): KnowledgeArticle[] {
-    const filePath = this.getDbFilePath('knowledge_articles.json');
-    try {
-      if (fs.existsSync(filePath)) {
-        const content = fs.readFileSync(filePath, 'utf-8');
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          this.logger.log(`Loaded ${parsed.length} Knowledge Articles from file: ${filePath}`);
-          return parsed;
-        }
-      }
-    } catch (err: any) {
-      this.logger.error(`Error loading Knowledge Articles file: ${err.message}`);
-    }
-    return [];
-  }
-
-  private loadAnalyzedIncidentIds(): Set<string> {
-    const filePath = this.getDbFilePath('analyzed_incidents.json');
-    try {
-      if (fs.existsSync(filePath)) {
-        const content = fs.readFileSync(filePath, 'utf-8');
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed)) {
-          this.logger.log(`Loaded ${parsed.length} analyzed incident IDs from file: ${filePath}`);
-          return new Set<string>(parsed);
-        }
-      }
-    } catch (err: any) {
-      this.logger.error(`Error loading analyzed incident IDs: ${err.message}`);
-    }
-    return new Set<string>();
-  }
-
   private saveArticlesToFile() {
-    const filePath = this.getDbFilePath('knowledge_articles.json');
-    try {
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(filePath, JSON.stringify(this.articles, null, 2), 'utf-8');
-    } catch (err: any) {
-      this.logger.error(`Failed to write Knowledge Articles file: ${err.message}`);
-    }
+    this.singleDb.knowledgeArticles = this.articles;
   }
 
   private saveAnalyzedIncidentIdsToFile() {
-    const filePath = this.getDbFilePath('analyzed_incidents.json');
-    try {
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(filePath, JSON.stringify(Array.from(this.analyzedIncidentIds), null, 2), 'utf-8');
-    } catch (err: any) {
-      this.logger.error(`Failed to write analyzed incident IDs file: ${err.message}`);
-    }
+    this.singleDb.analyzedIncidents = Array.from(this.analyzedIncidentIds);
   }
 
   private deduplicateArticles() {
@@ -222,15 +166,39 @@ export class KnowledgeService implements OnModuleInit {
     return article;
   }
 
+  async updateArticle(id: string, dto: any): Promise<KnowledgeArticle> {
+    const cleanId = id.toUpperCase();
+    const article = this.articles.find(
+      (a) => a.id.toUpperCase() === cleanId || a.number.toUpperCase() === cleanId
+    );
+    if (!article) {
+      throw new NotFoundException(`Knowledge Article ${id} not found.`);
+    }
+
+    if (dto.title !== undefined) article.title = dto.title;
+    if (dto.category !== undefined) article.category = dto.category;
+    if (dto.summary !== undefined) article.summary = dto.summary;
+    if (dto.rootCause !== undefined) article.rootCause = dto.rootCause;
+    if (dto.configurationItem !== undefined) article.configurationItem = dto.configurationItem;
+    if (dto.author !== undefined) article.author = dto.author;
+    if (Array.isArray(dto.resolutionSteps)) article.resolutionSteps = dto.resolutionSteps;
+    if (Array.isArray(dto.symptoms)) article.symptoms = dto.symptoms;
+    if (Array.isArray(dto.keywords)) (article as any).keywords = dto.keywords;
+
+    this.saveArticlesToFile();
+    return article;
+  }
+
   private async callLlama3370b(prompt: string, problemDomain: string): Promise<any> {
-    this.logger.log(`Invoking NVIDIA Meta Llama 3.3 70B Instruct (${this.llamaModel}) for problem: "${problemDomain}"...`);
+    this.logger.log(`Invoking Meta Llama 3.3 70B Instruct (${this.llamaModel}) via LiteLLM for problem: "${problemDomain}"...`);
 
     try {
-      const response = await fetch(`${this.nvidiaBaseUrl}/chat/completions`, {
+      const response = await fetch(`${this.liteLlmBaseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.nvidiaApiKey}`,
+          'x-litellm-api-key': this.liteLlmApiKey,
+          'Authorization': `Bearer ${this.liteLlmApiKey}`,
         },
         body: JSON.stringify({
           model: this.llamaModel,
@@ -342,8 +310,8 @@ ${workNotesText}`;
               ],
               workNotesAnalyzedCount: batch.flatMap((b) => b.activities || []).length,
               sourceIncidentIds: batch.map((b) => b.id || b.number),
-              author: '🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)',
-              modelUsed: this.llamaModel,
+              author: '🤖 NVIDIA Nemotron 3 550B Knowledge Agent',
+              modelUsed: 'NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)',
               viewCount: 1,
               helpfulCount: 0,
               createdAt: new Date().toISOString(),

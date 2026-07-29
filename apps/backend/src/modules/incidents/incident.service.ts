@@ -47,25 +47,25 @@ function generate1000DatabaseIncidents() {
   for (let i = 1; i <= 1000; i++) {
     const title = `${sampleTitles[i % sampleTitles.length]} (#${i})`;
     
-    // Exactly 234 tickets (i % 4 === 0 or i > 766) start as UNASSIGNED in the main database
-    const isUnassigned = i % 4 === 0 || i > 766;
-    const dept = isUnassigned ? 'UNASSIGNED (No Team)' : departments[i % departments.length];
-    const deptInfo = departmentLogTemplates[dept] || departmentLogTemplates['UNASSIGNED (No Team)'];
-    const resCode = isUnassigned ? 'Pending Triage' : resolutionCodes[i % resolutionCodes.length];
+    // All tickets are assigned to appropriate engineering teams
+    const isUnassigned = false;
+    const dept = departments[i % departments.length];
+    const deptInfo = departmentLogTemplates[dept] || departmentLogTemplates['Unix'];
+    const resCode = resolutionCodes[i % resolutionCodes.length];
 
     list.push({
       id: `INC${String(i).padStart(7, '0')}`,
       number: `INC${String(i).padStart(7, '0')}`,
       shortDescription: title,
       description: `Incident Record #${i}. Diagnostic log: ${deptInfo.log}`,
-      state: isUnassigned ? 'NEW' : 'RESOLVED',
+      state: 'IN_PROGRESS',
       impact: i % 5 === 0 ? 'ENTERPRISE' : i % 3 === 0 ? 'DEPARTMENT' : 'TEAM',
       urgency: i % 4 === 0 ? 'CRITICAL' : i % 2 === 0 ? 'HIGH' : 'MEDIUM',
       priority: i % 5 === 0 ? 'P1' : i % 3 === 0 ? 'P2' : i % 2 === 0 ? 'P3' : 'P4',
       department: dept,
-      assignedTo: isUnassigned ? 'UNASSIGNED (Unassigned)' : deptInfo.member,
+      assignedTo: deptInfo.member,
       resolutionCode: resCode,
-      resolutionNotes: isUnassigned ? 'Pending AI Agent routing.' : deptInfo.log,
+      resolutionNotes: deptInfo.log,
       caller: 'Monitoring Bot',
       configurationItem: i % 3 === 0 ? 'postgres-prod-01' : i % 2 === 0 ? 'router-border-nyc-01' : 'mainframe-host-01',
       createdAt: '2026-07-21 10:14:00',
@@ -124,11 +124,19 @@ function saveDatabaseToFile(incidents: any[]) {
   }
 }
 
-const DATABASE_1000_INCIDENTS = loadOrSeedDatabase();
+import { SingleDatabaseService } from '../../database/single-db.service';
 
 @Injectable()
 export class IncidentService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private singleDb: SingleDatabaseService
+  ) {
+    if (!this.singleDb.incidents || this.singleDb.incidents.length < 1000) {
+      console.log(`[IncidentService] Seeding 1,000 baseline incidents into single master database...`);
+      this.singleDb.incidents = generate1000DatabaseIncidents();
+    }
+  }
 
   getFieldsDictionary() {
     return {
@@ -164,7 +172,7 @@ export class IncidentService {
   }
 
   async create(tenantId: string, callerId: string, dto: CreateIncidentDto) {
-    const nextNumber = `INC${String(DATABASE_1000_INCIDENTS.length + 1).padStart(7, '0')}`;
+    const nextNumber = `INC${String(this.singleDb.incidents.length + 1).padStart(7, '0')}`;
     const priorityVal = dto.priority || (this.calculatePriority(dto.impact as Impact || Impact.DEPARTMENT, dto.urgency as Urgency || Urgency.HIGH));
 
     const newInc = {
@@ -188,8 +196,8 @@ export class IncidentService {
       ]
     };
 
-    DATABASE_1000_INCIDENTS.unshift(newInc);
-    saveDatabaseToFile(DATABASE_1000_INCIDENTS);
+    this.singleDb.incidents.unshift(newInc);
+    this.singleDb.saveDatabaseToFile();
 
     try {
       await this.prisma.incident.create({
@@ -206,7 +214,7 @@ export class IncidentService {
         },
       });
     } catch (err) {
-      // Prisma offline fallback handled via DATABASE_1000_INCIDENTS unshift
+      // Prisma offline fallback handled via singleDb unshift
     }
 
     return newInc;
@@ -221,13 +229,13 @@ export class IncidentService {
       });
       if (records.length > 0) {
         const dbNumbers = new Set(records.map(r => r.number || r.id));
-        const remainingMemory = DATABASE_1000_INCIDENTS.filter(i => !dbNumbers.has(i.id) && !dbNumbers.has(i.number));
+        const remainingMemory = this.singleDb.incidents.filter(i => !dbNumbers.has(i.id) && !dbNumbers.has(i.number));
         return [...records, ...remainingMemory];
       }
     } catch (err) {
       // Fallback to in-memory incidents
     }
-    return DATABASE_1000_INCIDENTS;
+    return this.singleDb.incidents;
   }
 
   // Strictly find UNASSIGNED incidents ONLY
@@ -249,11 +257,23 @@ export class IncidentService {
       // Prisma offline fallback
     }
 
-    return DATABASE_1000_INCIDENTS.filter((inc) => {
+    const unassignedList = this.singleDb.incidents.filter((inc) => {
       const d = (inc.department || '').toUpperCase();
       const a = (inc.assignedTo || '').toUpperCase();
       return !d || d.includes('UNASSIGNED') || d === 'IT OPS' || a.includes('UNASSIGNED');
     });
+
+    const getPriorityWeight = (p?: string): number => {
+      if (!p) return 99;
+      const val = p.toUpperCase().trim();
+      if (val === 'P1' || val === 'CRITICAL' || val.includes('P1') || val.includes('1')) return 1;
+      if (val === 'P2' || val === 'HIGH' || val.includes('P2') || val.includes('2')) return 2;
+      if (val === 'P3' || val === 'MODERATE' || val === 'MEDIUM' || val.includes('P3') || val.includes('3')) return 3;
+      if (val === 'P4' || val === 'LOW' || val.includes('P4') || val.includes('4')) return 4;
+      return 5;
+    };
+
+    return unassignedList.sort((a, b) => getPriorityWeight(a.priority) - getPriorityWeight(b.priority));
   }
 
   async findOne(tenantId: string, id: string) {
@@ -267,7 +287,7 @@ export class IncidentService {
       // Ignore
     }
 
-    const found = DATABASE_1000_INCIDENTS.find(
+    const found = this.singleDb.incidents.find(
       (i) => i.id.toUpperCase() === cleanId || i.number.toUpperCase() === cleanId
     );
     if (found) return found;
@@ -289,8 +309,8 @@ export class IncidentService {
         { id: 'act_1', author: 'Monitoring Bot', isWorkNote: true, comment: `Automated alert created ticket ${id}.`, timestamp: '10:14 AM' },
       ],
     };
-    DATABASE_1000_INCIDENTS.push(newRecord);
-    saveDatabaseToFile(DATABASE_1000_INCIDENTS);
+    this.singleDb.incidents.push(newRecord);
+    this.singleDb.saveDatabaseToFile();
     return newRecord;
   }
 
@@ -308,7 +328,7 @@ export class IncidentService {
     }
 
     // 2. Find and mutate directly in main 1,000 incident database array
-    let inc = DATABASE_1000_INCIDENTS.find(
+    let inc = this.singleDb.incidents.find(
       (i) => i.id.toUpperCase() === cleanId || i.number.toUpperCase() === cleanId
     );
 
@@ -327,7 +347,10 @@ export class IncidentService {
       if (dto.impact) inc.impact = dto.impact;
       if (dto.urgency) inc.urgency = dto.urgency;
       if (dto.priority) inc.priority = dto.priority;
-      saveDatabaseToFile(DATABASE_1000_INCIDENTS);
+      if (dto.configurationItem) inc.configurationItem = dto.configurationItem;
+      if (dto.ci) inc.configurationItem = dto.ci;
+      if (dto.caller) inc.caller = dto.caller;
+      this.singleDb.saveDatabaseToFile();
     }
 
     return inc;
@@ -346,7 +369,7 @@ export class IncidentService {
     if (inc) {
       if (!inc.activities) inc.activities = [];
       inc.activities.unshift(newAct);
-      saveDatabaseToFile(DATABASE_1000_INCIDENTS);
+      this.singleDb.saveDatabaseToFile();
     }
     return newAct;
   }

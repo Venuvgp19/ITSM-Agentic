@@ -129,6 +129,21 @@ export class UpdateIncidentDto {
   @IsString()
   @IsOptional()
   priority?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  configurationItem?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  ci?: string;
+
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  caller?: string;
 }
 
 export class AddActivityDto {

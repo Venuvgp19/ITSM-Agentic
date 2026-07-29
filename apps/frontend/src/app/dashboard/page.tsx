@@ -41,17 +41,24 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Compute Real-Time Dynamic Metrics matching /incidents
+  // Compute Real-Time Dynamic Metrics matching /incidents perfectly
   const totalIncidents = incidents.length;
-  const unassignedCount = incidents.filter(
-    (i) => (i.department || '').includes('UNASSIGNED') || (i.assignedTo || '').includes('UNASSIGNED')
-  ).length;
-  const activeCount = incidents.filter(
-    (i) => i.state === 'NEW' || i.state === 'IN_PROGRESS' || i.state === 'ON_HOLD'
-  ).length;
-  const resolvedCount = incidents.filter(
-    (i) => i.state === 'RESOLVED' || i.state === 'CLOSED'
-  ).length;
+
+  const unassignedCount = incidents.filter((i) => {
+    const dept = (i.department || '').toUpperCase();
+    const assigned = (i.assignedTo || '').toUpperCase();
+    return dept.includes('UNASSIGNED') || assigned.includes('UNASSIGNED') || dept === '';
+  }).length;
+
+  const activeCount = incidents.filter((i) => {
+    const st = (i.state || '').toUpperCase();
+    return st === 'NEW' || st === 'IN_PROGRESS' || st === 'IN PROGRESS' || st === 'ON_HOLD' || st === 'ON HOLD';
+  }).length;
+
+  const resolvedCount = incidents.filter((i) => {
+    const st = (i.state || '').toUpperCase();
+    return st === 'RESOLVED' || st === 'CLOSED';
+  }).length;
 
   const stats = [
     { name: 'Total Database Incidents', value: totalIncidents.toLocaleString(), change: 'Disk JSON DB', changeType: 'neutral', icon: Server, color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/20' },

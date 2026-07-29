@@ -11,6 +11,9 @@ import { WorkflowModule } from './modules/workflow/workflow.module';
 import { CmdbModule } from './modules/cmdb/cmdb.module';
 import { AiRouterModule } from './modules/ai-router/ai-router.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
+import { AgentGovernanceModule } from './modules/agent-governance/agent-governance.module';
+import { ProblemModule } from './modules/problems/problem.module';
+import { ChangeModule } from './modules/changes/change.module';
 
 @Module({
   imports: [
@@ -23,6 +26,9 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
     CmdbModule,
     AiRouterModule,
     KnowledgeModule,
+    AgentGovernanceModule,
+    ProblemModule,
+    ChangeModule,
   ],
   providers: [
     {

@@ -412,7 +412,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             autoAssignConfidenceThreshold: { type: 'number', description: 'Confidence threshold percentage for auto-routing (0-100)' },
             autoWorkNoteEnabled: { type: 'boolean', description: 'Enable auto-posting work notes' },
-            modelName: { type: 'string', description: 'LLM model name (nvidia/nemotron-3-ultra-550b-a55b)' },
+            modelName: { type: 'string', description: 'LLM model name (gemini-3.1-pro-preview)' },
             reasoningBudget: { type: 'number', description: 'Reasoning token budget for thinking trace' },
           },
         },
@@ -453,6 +453,48 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: 'object',
           properties: {},
+        },
+      },
+
+      // ----------------------------------------------------
+      // 7. Knowledge Base & Nemotron Agent Tools
+      // ----------------------------------------------------
+      {
+        name: 'knowledge_get_status',
+        description: 'Get status and metrics of Nemotron Knowledge Base background synthesis worker (GET /api/v1/knowledge/status)',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'nemotron_synthesize_knowledge_base',
+        description: 'Trigger NVIDIA Nemotron 3 550B Knowledge Agent to synthesize SOP articles across all incidents in batches (POST /api/v1/knowledge/synthesize-all)',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'knowledge_list_articles',
+        description: 'List & search synthesized Knowledge Base articles (GET /api/v1/knowledge/articles)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            category: { type: 'string', description: 'Optional category filter' },
+            query: { type: 'string', description: 'Optional search query term' },
+          },
+        },
+      },
+      {
+        name: 'knowledge_get_article_by_id',
+        description: 'Get Knowledge Base article by ID (e.g. KB0000012) (GET /api/v1/knowledge/articles/:id)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            articleId: { type: 'string', description: 'Article ID or Number (e.g. KB0000012)' },
+          },
+          required: ['articleId'],
         },
       },
     ],
@@ -593,6 +635,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case 'get_routing_analytics':
         resultData = await callApi('/api/v1/ai-router/analytics', 'GET');
+        break;
+
+      // Knowledge Base & Nemotron Agent
+      case 'knowledge_get_status':
+        resultData = await callApi('/api/v1/knowledge/status', 'GET');
+        break;
+      case 'nemotron_synthesize_knowledge_base':
+        resultData = await callApi('/api/v1/knowledge/synthesize-all', 'POST');
+        break;
+      case 'knowledge_list_articles': {
+        const cat = args?.category ? `?category=${encodeURIComponent(args.category as string)}` : '';
+        const q = args?.query ? `${cat ? '&' : '?'}query=${encodeURIComponent(args.query as string)}` : '';
+        resultData = await callApi(`/api/v1/knowledge/articles${cat}${q}`, 'GET');
+        break;
+      }
+      case 'knowledge_get_article_by_id':
+        resultData = await callApi(`/api/v1/knowledge/articles/${args?.articleId}`, 'GET');
         break;
 
       default:

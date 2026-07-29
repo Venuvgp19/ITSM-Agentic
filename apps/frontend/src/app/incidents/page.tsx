@@ -129,7 +129,7 @@ export default function IncidentsPage() {
       const res = await fetch('/api/v1/incidents');
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           const apiMapped = data.map((inc: any) => ({
             id: inc.id || inc.number,
             title: inc.shortDescription || inc.title,
@@ -149,16 +149,13 @@ export default function IncidentsPage() {
             return numB - numA;
           });
           setIncidents(apiMapped);
-          return;
         }
       }
-    } catch {
-      // Fallback
+    } catch (err) {
+      console.error('Failed to load incidents from single source DB:', err);
     } finally {
       setIsLoading(false);
     }
-
-    setIncidents(generate1000InitialIncidents());
   };
 
   useEffect(() => {
@@ -166,6 +163,8 @@ export default function IncidentsPage() {
       localStorage.removeItem('custom_user_incidents');
     }
     loadIncidentsFromDatabase();
+    const interval = setInterval(loadIncidentsFromDatabase, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const computedPriority = useMemo(() => {
@@ -176,6 +175,12 @@ export default function IncidentsPage() {
     return 'P4';
   }, [formState.impact, formState.urgency]);
 
+  const isUnassignedIncident = (inc: any) => {
+    const dept = (inc.department || '').toUpperCase();
+    const assigned = (inc.assignedTo || '').toUpperCase();
+    return dept.includes('UNASSIGNED') || assigned.includes('UNASSIGNED') || !dept || !assigned;
+  };
+
   const filteredIncidents = useMemo(() => {
     return incidents.filter((inc) => {
       const matchesSearch =
@@ -183,7 +188,12 @@ export default function IncidentsPage() {
         inc.title.toLowerCase().includes(search.toLowerCase()) ||
         inc.department.toLowerCase().includes(search.toLowerCase()) ||
         inc.assignedTo.toLowerCase().includes(search.toLowerCase());
-      const matchesDept = deptFilter === 'ALL' || inc.department === deptFilter;
+      const matchesDept =
+        deptFilter === 'ALL'
+          ? true
+          : deptFilter.includes('UNASSIGNED')
+          ? isUnassignedIncident(inc)
+          : inc.department === deptFilter;
       const matchesPriority = priorityFilter === 'ALL' || inc.priority === priorityFilter;
       return matchesSearch && matchesDept && matchesPriority;
     });
@@ -296,7 +306,7 @@ export default function IncidentsPage() {
             <AlertTriangle className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-3xl font-black text-amber-400">
-            {incidents.filter(i => (i.department || '').includes('UNASSIGNED')).length}
+            {incidents.filter(isUnassignedIncident).length}
           </div>
           <p className="text-[11px] text-slate-500">Pending team triage</p>
         </div>
@@ -307,7 +317,7 @@ export default function IncidentsPage() {
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-3xl font-black text-emerald-400">
-            {incidents.filter(i => !(i.department || '').includes('UNASSIGNED')).length}
+            {incidents.filter(i => !isUnassignedIncident(i)).length}
           </div>
           <p className="text-[11px] text-slate-500">Assigned to engineering teams</p>
         </div>

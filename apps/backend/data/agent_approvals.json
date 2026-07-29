@@ -1,0 +1,131 @@
+[
+  {
+    "id": "APPR-9045",
+    "incidentId": "INC0000099",
+    "incidentTitle": "🚨 P1 CRITICAL: Unix Mainframe Kernel Degradation & High CPU Spikes on Worker 1",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "gemini-3.1-pro-preview",
+    "targetCi": "Worker 1 (192.168.56.10)",
+    "department": "Unix",
+    "riskLevel": "CRITICAL",
+    "confidenceScore": 98.4,
+    "status": "REJECTED",
+    "requestedAt": "2026-07-29T11:50:00Z",
+    "summary": "P1 Outage: High kernel thread contention and memory pressure on Worker 1 (192.168.56.10). Agent proposing emergency SSH SOP execution.",
+    "proposedCommands": [
+      "ps aux --sort=-%cpu | head -n 10",
+      "kill -9 $(pgrep -f runaway_process)",
+      "sync; echo 3 > /proc/sys/vm/drop_caches",
+      "systemctl restart nginx"
+    ],
+    "kbArticleReference": "KB0000001",
+    "kbTitle": "Unix Kernel Core Panic & Emergency Memory SOP",
+    "safetyChecks": [
+      {
+        "check": "SSH Connectivity to Worker 1 (192.168.56.10) verified",
+        "passed": true
+      },
+      {
+        "check": "Root SSH credentials authenticated",
+        "passed": true
+      },
+      {
+        "check": "Kernel dump safety checkpoint created",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Unix host Worker 1 is experiencing 99% CPU utilization due to orphaned kernel task. Terminating runaway process and clearing dropped VM caches restores service responsiveness under 3 seconds.",
+    "routerOutput": {
+      "ticketId": "INC0000099",
+      "category": "Infrastructure > Unix Kernel & OS",
+      "impactUrgency": "High / High",
+      "assignedPriority": "P1 (Critical)",
+      "dispatchRoute": "Unix Tier 3 Auto-Remediation Queue",
+      "userAcknowledgment": "P1 Incident INC0000099 acknowledged. SLA target response is 15 minutes. Dispatching Unix Auto-Resolver Agent."
+    },
+    "resolverOutput": {
+      "diagnosis": "Orphaned background thread runaway_process consuming 99% CPU and locking virtual memory pages on Worker 1.",
+      "matchedRunbook": "KB0000001: Unix Kernel Core Panic & Emergency Memory SOP",
+      "remediationStepsApplied": [
+        "Inspect top CPU processes on host 192.168.56.10",
+        "Issue kill -9 to runaway process PID",
+        "Drop dirty kernel VM caches to free RAM",
+        "Restart Nginx reverse proxy service"
+      ],
+      "resolutionStatus": "PENDING_HUMAN_APPROVAL",
+      "userNotice": "Remediation plan formulated. Waiting for Human-in-the-Loop operator sign-off before executing SSH payload."
+    },
+    "synthesizerOutput": {
+      "draftKbId": "KB-90045",
+      "kbTitle": "SOP: High Kernel Thread Contention & Emergency Process Kill on Worker 1",
+      "synthesizedSolution": "Execute SIGKILL against orphaned process PIDs, issue drop_caches=3 sysctl flush, and recycle ingress web server daemon.",
+      "trendInsight": "Pattern detected: 3rd memory pressure spike on Worker 1 this week. Recommend opening Problem Ticket PRB-0042 to audit memory leak in upstream microservice."
+    },
+    "rejectionReason": "Includes Harmful commands"
+  },
+  {
+    "id": "APPR-9043",
+    "incidentId": "INC0000015",
+    "incidentTitle": "PostgreSQL Primary Node Connection Pool Exhaustion",
+    "agentId": "agent-dba-optimizer-02",
+    "agentName": "🐘 Database Self-Healing Agent",
+    "model": "gemini-3.1-pro-preview",
+    "targetCi": "DB-Cluster-East-01 (10.0.4.15)",
+    "department": "DBA Team",
+    "riskLevel": "CRITICAL",
+    "confidenceScore": 92,
+    "status": "APPROVED",
+    "requestedAt": "2026-07-29T11:28:10Z",
+    "summary": "Connection pool reached max_connections limit (500/500). Proposing terminating idle connections older than 10 mins and reloading PgBouncer config.",
+    "proposedCommands": [
+      "psql -U postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle' AND state_change < NOW() - INTERVAL '10 min';\"",
+      "pg_isready -h localhost -p 5432",
+      "systemctl reload pgbouncer"
+    ],
+    "kbArticleReference": "KB0000012",
+    "kbTitle": "PostgreSQL Connection Pool & Vacuum SOP",
+    "safetyChecks": [
+      {
+        "check": "Verified only idle sessions targeted",
+        "passed": true
+      },
+      {
+        "check": "Primary database read/write quorum active",
+        "passed": true
+      },
+      {
+        "check": "No active write transaction holding locks",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Terminating 142 stuck idle sessions frees 28.4% database memory and lowers active connection count to 358, allowing pending app connections to resolve.",
+    "routerOutput": {
+      "ticketId": "INC0000015",
+      "category": "Database > PostgreSQL Pool",
+      "impactUrgency": "High / High",
+      "assignedPriority": "P1 (Critical)",
+      "dispatchRoute": "DBA Self-Healing Queue",
+      "userAcknowledgment": "Ticket INC0000015 logged for DB Cluster East. DBA Self-Healing Agent dispatched."
+    },
+    "resolverOutput": {
+      "diagnosis": "Database connection pool saturated (500/500 connections) due to unclosed app connections.",
+      "matchedRunbook": "KB0000012: PostgreSQL Connection Pool & Vacuum SOP",
+      "remediationStepsApplied": [
+        "Terminate backend sessions idle > 10 min",
+        "Verify Postgres daemon readiness",
+        "Reload PgBouncer connection pooler"
+      ],
+      "resolutionStatus": "PENDING_HUMAN_APPROVAL",
+      "userNotice": "Proposed database pool cleanup paused for DBA lead sign-off."
+    },
+    "synthesizerOutput": {
+      "draftKbId": "KB-90015",
+      "kbTitle": "SOP: Postgres Connection Pool Recovery & PgBouncer Reload",
+      "synthesizedSolution": "Issue pg_terminate_backend for idle sessions and issue systemctl reload pgbouncer.",
+      "trendInsight": "Recurring issue during peak batch jobs. Recommend increasing max_connections from 500 to 800 and adjusting app idle timeouts."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-07-29T18:47:18.500Z"
+  }
+]

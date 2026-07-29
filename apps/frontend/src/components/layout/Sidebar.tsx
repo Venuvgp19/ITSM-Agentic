@@ -6,6 +6,8 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   AlertTriangle,
+  Flame,
+  GitCommit,
   Server,
   ShoppingBag,
   FileText,
@@ -17,6 +19,8 @@ import {
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Incidents', href: '/incidents', icon: AlertTriangle },
+  { name: 'Problem Records', href: '/problems', icon: Flame },
+  { name: 'Change Orders', href: '/changes', icon: GitCommit },
   { name: 'CMDB & Assets', href: '/cmdb', icon: Server },
   { name: 'Service Catalog', href: '/catalog', icon: ShoppingBag },
   { name: 'Knowledge Base', href: '/knowledge', icon: FileText },

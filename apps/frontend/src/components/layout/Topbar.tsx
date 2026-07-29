@@ -1,23 +1,31 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
-import { Search, Bell, Command, Shield, LogOut, User } from 'lucide-react';
+import { Search, Bell, Command, Shield, LogOut } from 'lucide-react';
 
 export function Topbar() {
   const router = useRouter();
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, isAuthenticated, logout, init } = useAuthStore();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    init();
+    setMounted(true);
+  }, [init]);
 
   const handleLogout = () => {
     logout();
     router.push('/login');
   };
 
-  const displayName = user ? `${user.firstName} ${user.lastName}` : 'System Admin';
-  const displayEmail = user?.email || 'admin@acme.com';
-  const initials = user ? `${user.firstName[0]}${user.lastName[0] || ''}`.toUpperCase() : 'AD';
+  const displayName = mounted && user ? `${user.firstName} ${user.lastName}` : 'System Admin';
+  const displayEmail = mounted && user?.email ? user.email : 'admin@acme.com';
+  const initials = mounted && user ? `${user.firstName[0]}${user.lastName[0] || ''}`.toUpperCase() : 'AD';
+  const tenantName = mounted && user?.tenantName ? user.tenantName : 'Acme Global Tech';
+  const isAuth = mounted ? isAuthenticated : false;
 
   return (
     <header className="h-16 bg-slate-900/60 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-6 sticky top-0 z-30">
@@ -40,7 +48,7 @@ export function Topbar() {
         {/* Tenant Indicator */}
         <div className="hidden sm:flex items-center gap-2 bg-slate-800/80 border border-slate-700/60 px-3 py-1 rounded-full text-xs text-slate-300 font-medium">
           <Shield className="w-3.5 h-3.5 text-brand-400" />
-          <span>{user?.tenantName || 'Acme Global Tech'}</span>
+          <span suppressHydrationWarning>{tenantName}</span>
         </div>
 
         {/* Notifications */}
@@ -51,15 +59,15 @@ export function Topbar() {
 
         {/* User Profile & Logout */}
         <div className="flex items-center gap-3 pl-3 border-l border-slate-800">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-brand-600 flex items-center justify-center font-bold text-xs text-white shadow-md">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-brand-600 flex items-center justify-center font-bold text-xs text-white shadow-md" suppressHydrationWarning>
             {initials}
           </div>
           <div className="hidden md:block text-left">
-            <div className="text-xs font-semibold text-slate-200">{displayName}</div>
-            <div className="text-[10px] text-slate-400">{displayEmail}</div>
+            <div className="text-xs font-semibold text-slate-200" suppressHydrationWarning>{displayName}</div>
+            <div className="text-[10px] text-slate-400" suppressHydrationWarning>{displayEmail}</div>
           </div>
 
-          {isAuthenticated ? (
+          {isAuth ? (
             <button
               onClick={handleLogout}
               className="p-1.5 text-slate-400 hover:text-rose-400 transition ml-1"

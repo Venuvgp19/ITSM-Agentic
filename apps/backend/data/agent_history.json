@@ -1,0 +1,178 @@
+[
+  {
+    "id": "HIST-8970",
+    "incidentId": "INC0001027",
+    "incidentTitle": "Create User ID Harish on 192.168.56.10",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "gemini-3.1-pro-preview",
+    "targetCi": "Worker 1 (192.168.56.10)",
+    "department": "Unix",
+    "riskLevel": "MEDIUM",
+    "status": "AUTO_EXECUTED",
+    "actionType": "User Provisioning & SOP Execution",
+    "executedAt": "2026-07-29T12:54:00Z",
+    "durationMs": 850,
+    "humanApprover": "Autonomous Policy (Low/Medium Risk)",
+    "commandExecuted": "useradd -m Harish && echo 'Harish:InitialPass123!' | chpasswd && id Harish",
+    "executionOutput": "=== Command: useradd -m Harish ===\nSTDOUT: User Harish created with home directory /home/Harish.\n=== Command: echo 'Harish:InitialPass123!' | chpasswd ===\nSTDOUT: Password successfully updated non-interactively.\n=== Command: id Harish ===\nSTDOUT: uid=1004(Harish) gid=1004(Harish) groups=1004(Harish)",
+    "resolutionOutcome": "User account Harish created and home directory initialized on 192.168.56.10. Ticket INC0001027 state updated to RESOLVED.",
+    "kbGenerated": "KB0000050",
+    "routerOutput": {
+      "ticketId": "INC0001027",
+      "category": "User Management > Account Provisioning",
+      "impactUrgency": "Medium / Low",
+      "assignedPriority": "P3 (Moderate)",
+      "dispatchRoute": "Unix Auto-Resolver Queue",
+      "userAcknowledgment": "User creation request INC0001027 for Harish assigned to Unix Auto-Resolver."
+    },
+    "resolverOutput": {
+      "diagnosis": "Administrative request for user account creation for Harish on host Worker 1.",
+      "matchedRunbook": "KB0000050: Master SOP for Generic User Account Deletion & Offboarding / Provisioning",
+      "remediationStepsApplied": [
+        "useradd -m Harish",
+        "echo 'Harish:InitialPass123!' | chpasswd",
+        "id Harish"
+      ],
+      "resolutionStatus": "RESOLVED",
+      "userResolutionNotice": "User account Harish created and verified operational."
+    },
+    "synthesizerOutput": {
+      "draftKbId": "KB0000050",
+      "kbTitle": "Master SOP: Standard Operating Procedure for Generic User Account Provisioning & Deletion",
+      "synthesizedSolution": "Issued useradd -m and non-interactive chpasswd automation.",
+      "trendInsight": "Routine user provisioning request auto-resolved in 850ms."
+    }
+  },
+  {
+    "id": "HIST-8968",
+    "approvalId": "APPR-9043",
+    "incidentId": "INC0000015",
+    "incidentTitle": "PostgreSQL Primary Node Connection Pool Exhaustion",
+    "agentId": "agent-dba-optimizer-02",
+    "agentName": "🐘 Database Self-Healing Agent",
+    "model": "gemini-3.1-pro-preview",
+    "targetCi": "DB-Cluster-East-01 (10.0.4.15)",
+    "department": "DBA Team",
+    "riskLevel": "CRITICAL",
+    "status": "APPROVED",
+    "actionType": "Human-Approved Execution",
+    "executedAt": "2026-07-29T18:47:18.507Z",
+    "durationMs": 1146,
+    "humanApprover": "Sarah Jenkins (Human in the Loop)",
+    "commandExecuted": "psql -U postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle' AND state_change < NOW() - INTERVAL '10 min';\" && pg_isready -h localhost -p 5432 && systemctl reload pgbouncer",
+    "executionOutput": "=== EXECUTION SUCCESSFUL ===\nCommands:\n> psql -U postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle' AND state_change < NOW() - INTERVAL '10 min';\"\n> pg_isready -h localhost -p 5432\n> systemctl reload pgbouncer\nResult: System returned 0 (OK). Service healthy.",
+    "resolutionOutcome": "Action approved by Sarah Jenkins (Human in the Loop). Incident INC0000015 state transitioned to RESOLVED.",
+    "kbGenerated": "KB0000012"
+  },
+  {
+    "id": "HIST-8229",
+    "approvalId": "APPR-9045",
+    "incidentId": "INC0000099",
+    "incidentTitle": "🚨 P1 CRITICAL: Unix Mainframe Kernel Degradation & High CPU Spikes on Worker 1",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "gemini-3.1-pro-preview",
+    "targetCi": "Worker 1 (192.168.56.10)",
+    "department": "Unix",
+    "riskLevel": "CRITICAL",
+    "status": "REJECTED",
+    "actionType": "Human Rejection & Block",
+    "executedAt": "2026-07-29T18:46:00.315Z",
+    "durationMs": 0,
+    "humanApprover": "Sarah Jenkins (Human in the Loop)",
+    "commandExecuted": "ps aux --sort=-%cpu | head -n 10 && kill -9 $(pgrep -f runaway_process) && sync; echo 3 > /proc/sys/vm/drop_caches && systemctl restart nginx",
+    "executionOutput": "REJECTED BY HUMAN (Sarah Jenkins (Human in the Loop)): Includes Harmful commands",
+    "resolutionOutcome": "Action blocked by Human-in-the-Loop policy. Incident INC0000099 retained for tier 3 human review."
+  },
+  {
+    "id": "HIST-8801",
+    "approvalId": "APPR-9038",
+    "incidentId": "INC0000035",
+    "incidentTitle": "BGP Route Latency Spikes on Core Gateway",
+    "agentId": "agent-netops-01",
+    "agentName": "🌐 NetOps Self-Healing Agent",
+    "model": "gemini-3.1-pro-preview",
+    "targetCi": "GW-Core-NYC-01",
+    "department": "Network Ops",
+    "riskLevel": "HIGH",
+    "status": "APPROVED",
+    "actionType": "SSH Command Execution",
+    "executedAt": "2026-07-29T11:45:12Z",
+    "durationMs": 1420,
+    "humanApprover": "Sarah Connor (Network Lead)",
+    "commandExecuted": "ip route flush cache && systemctl restart bgpd",
+    "executionOutput": "=== Command: ip route flush cache ===\nSTDOUT: Routing cache cleared.\n=== Command: systemctl restart bgpd ===\nSTDOUT: bgpd.service restarted successfully.",
+    "resolutionOutcome": "Latency reduced from 450ms to 4ms. Incident state updated to RESOLVED.",
+    "kbGenerated": "KB0000021",
+    "routerOutput": {
+      "ticketId": "INC0000035",
+      "category": "Infrastructure > Network BGP",
+      "impactUrgency": "High / Med",
+      "assignedPriority": "P2 (High)",
+      "dispatchRoute": "Network Ops Remediation Queue",
+      "userAcknowledgment": "BGP Latency ticket INC0000035 assigned to Network Ops. Agent initiated routing triage."
+    },
+    "resolverOutput": {
+      "diagnosis": "Stale BGP route cache entries causing packet re-transmissions across NYC gateway.",
+      "matchedRunbook": "KB0000021: BGP Routing Cache Flush & Daemon Restart SOP",
+      "remediationStepsApplied": [
+        "Flush Linux IP routing table cache",
+        "Restart bgpd systemd daemon"
+      ],
+      "resolutionStatus": "RESOLVED",
+      "userResolutionNotice": "BGP routing tables flushed. Network latency returned to <4ms baseline."
+    },
+    "synthesizerOutput": {
+      "draftKbId": "KB-88035",
+      "kbTitle": "SOP: BGP Route Latency Spikes & Cache Reset",
+      "synthesizedSolution": "Flush routing cache via ip route flush cache and recycle bgpd daemon.",
+      "trendInsight": "BGP route leaks detected from upstream peer. Recommend configuring BGP prefix filtering on edge router."
+    }
+  },
+  {
+    "id": "HIST-8804",
+    "approvalId": "APPR-9031",
+    "incidentId": "INC0000012",
+    "incidentTitle": "Unix Disk Space Exhaustion on Syslog Partition",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "gemini-3.1-pro-preview",
+    "targetCi": "Worker 1 (192.168.56.10)",
+    "department": "Unix",
+    "riskLevel": "MEDIUM",
+    "status": "APPROVED",
+    "actionType": "Log Truncation & SOP Execution",
+    "executedAt": "2026-07-29T11:15:00Z",
+    "durationMs": 890,
+    "humanApprover": "Sarah Jenkins (Unix Lead)",
+    "commandExecuted": "journalctl --vacuum-size=100M && truncate -s 0 /var/log/syslog",
+    "executionOutput": "=== Command: journalctl --vacuum-size=100M ===\nSTDOUT: Vacuuming deleted 4.2GB of archived journal logs.\n=== Command: truncate -s 0 /var/log/syslog ===\nSTDOUT: Truncated /var/log/syslog.",
+    "resolutionOutcome": "Disk usage dropped from 99% to 14%. Incident auto-closed with SOP KB0000001.",
+    "kbGenerated": "KB0000001",
+    "routerOutput": {
+      "ticketId": "INC0000012",
+      "category": "Infrastructure > Unix Storage",
+      "impactUrgency": "High / Med",
+      "assignedPriority": "P2 (High)",
+      "dispatchRoute": "Unix Auto-Resolver Queue",
+      "userAcknowledgment": "Disk alert INC0000012 logged for Worker 1. Unix Agent dispatched."
+    },
+    "resolverOutput": {
+      "diagnosis": "Log rotation failure caused /var/log/syslog to grow to 4.2GB, filling 99% disk space.",
+      "matchedRunbook": "KB0000001: Systemd Journal Vacuum & Syslog Truncate SOP",
+      "remediationStepsApplied": [
+        "Vacuum journalctl logs to 100M max size",
+        "Truncate unrotated /var/log/syslog"
+      ],
+      "resolutionStatus": "RESOLVED",
+      "userResolutionNotice": "Disk space restored to 14% free capacity. System operational."
+    },
+    "synthesizerOutput": {
+      "draftKbId": "KB-88012",
+      "kbTitle": "SOP: Syslog Partition Vacuum & Logrotate Setup",
+      "synthesizedSolution": "Vacuum journalctl logs and zero out unrotated syslog files.",
+      "trendInsight": "Logrotate cron job missing configuration for rsyslog. Propose PRB-0012 to update logrotate.conf."
+    }
+  }
+]

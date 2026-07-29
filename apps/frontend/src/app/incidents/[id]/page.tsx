@@ -95,6 +95,7 @@ export default function IncidentDetailPage() {
   const [incident, setIncident] = useState(() => getIncidentDetailById(idParam));
   const [state, setState] = useState(incident.state);
   const [resCode, setResCode] = useState(incident.resolutionCode);
+  const [ciVal, setCiVal] = useState(incident.ci);
 
   const [activities, setActivities] = useState([
     { id: 'act_1', author: 'Monitoring Bot', isWorkNote: true, comment: `Automated telemetry created incident ${incident.id} for target CI ${incident.ci}.`, timestamp: '10:14 AM' },
@@ -121,13 +122,14 @@ export default function IncidentDetailPage() {
             resolutionCode: inc.resolutionCode || 'Pending Triage',
             resolutionNotes: inc.resolutionNotes || '',
             caller: inc.caller || 'Monitoring Bot',
-            ci: inc.configurationItem || 'router-border-nyc-01',
+            ci: inc.configurationItem || inc.ci || 'router-border-nyc-01',
             description: inc.description || `Incident Record ${idParam}`,
             createdAt: inc.createdAt || '2026-07-21 10:14 UTC',
           };
           setIncident(mappedInc);
           setState(mappedInc.state);
           setResCode(mappedInc.resolutionCode);
+          setCiVal(mappedInc.ci);
           if (Array.isArray(inc.activities) && inc.activities.length > 0) {
             setActivities(inc.activities);
           } else {
@@ -183,9 +185,26 @@ export default function IncidentDetailPage() {
         </button>
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-400 font-mono">Incident ID: {incident.id}</span>
-          <span className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold text-xs flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4" /> State: RESOLVED
-          </span>
+          {state === 'RESOLVED' && (
+            <span className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold text-xs flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4" /> State: RESOLVED
+            </span>
+          )}
+          {state === 'CLOSED' && (
+            <span className="px-3 py-1.5 rounded-lg bg-slate-500/20 text-slate-300 border border-slate-500/30 font-bold text-xs flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4" /> State: CLOSED
+            </span>
+          )}
+          {state === 'IN_PROGRESS' && (
+            <span className="px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30 font-bold text-xs flex items-center gap-1.5">
+              <Clock className="w-4 h-4" /> State: IN_PROGRESS
+            </span>
+          )}
+          {state === 'NEW' && (
+            <span className="px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-400 border border-purple-500/30 font-bold text-xs flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4" /> State: NEW
+            </span>
+          )}
         </div>
       </div>
 
@@ -202,9 +221,11 @@ export default function IncidentDetailPage() {
               }`}>
                 {incident.priority}
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center gap-1">
-                <Tag className="w-3.5 h-3.5" /> Resolution Code: {resCode}
-              </span>
+              {(state === 'RESOLVED' || state === 'CLOSED') && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center gap-1">
+                  <Tag className="w-3.5 h-3.5" /> Resolution Code: {resCode}
+                </span>
+              )}
             </div>
             <h1 className="text-xl font-extrabold text-slate-100">{incident.title}</h1>
           </div>
@@ -213,12 +234,23 @@ export default function IncidentDetailPage() {
             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">State</label>
             <select
               value={state}
-              onChange={(e) => setState(e.target.value)}
+              onChange={async (e) => {
+                const newState = e.target.value;
+                setState(newState);
+                try {
+                  await fetch(`/api/v1/incidents/${incident.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ state: newState }),
+                  });
+                } catch {}
+              }}
               className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-200 focus:outline-none focus:border-brand-500"
             >
+              <option value="IN_PROGRESS">IN_PROGRESS</option>
+              <option value="NEW">NEW</option>
               <option value="RESOLVED">RESOLVED</option>
               <option value="CLOSED">CLOSED</option>
-              <option value="IN_PROGRESS">IN_PROGRESS</option>
             </select>
           </div>
         </div>
@@ -226,16 +258,34 @@ export default function IncidentDetailPage() {
         {/* Metadata Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
           <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Resolution Code</span>
-            <select
-              value={resCode}
-              onChange={(e) => setResCode(e.target.value)}
-              className="w-full bg-transparent font-semibold text-cyan-400 focus:outline-none"
-            >
-              {resolutionCodes.map((code) => (
-                <option key={code} value={code} className="bg-slate-900 text-slate-200">{code}</option>
-              ))}
-            </select>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">
+              {state === 'RESOLVED' || state === 'CLOSED' ? 'Resolution Code' : 'Resolution Status'}
+            </span>
+            {state === 'RESOLVED' || state === 'CLOSED' ? (
+              <select
+                value={resCode}
+                onChange={async (e) => {
+                  const newCode = e.target.value;
+                  setResCode(newCode);
+                  try {
+                    await fetch(`/api/v1/incidents/${incident.id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ resolutionCode: newCode }),
+                    });
+                  } catch {}
+                }}
+                className="w-full bg-transparent font-semibold text-cyan-400 focus:outline-none"
+              >
+                {resolutionCodes.map((code) => (
+                  <option key={code} value={code} className="bg-slate-900 text-slate-200">{code}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="font-semibold text-amber-400 font-mono text-[11px]">
+                {state === 'IN_PROGRESS' ? 'Active Diagnostics' : 'Awaiting Triage'}
+              </div>
+            )}
           </div>
 
           <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
@@ -244,36 +294,67 @@ export default function IncidentDetailPage() {
           </div>
 
           <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Resolved By (Member)</span>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">
+              {state === 'RESOLVED' || state === 'CLOSED' ? 'Resolved By (Member)' : 'Assigned Member'}
+            </span>
             <div className="font-semibold text-emerald-400">{incident.assignedTo}</div>
           </div>
 
           <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-1">
             <span className="text-[10px] font-bold text-slate-500 uppercase">Configuration Item</span>
-            <div className="font-semibold text-brand-400">{incident.ci}</div>
+            <input
+              type="text"
+              value={ciVal}
+              onChange={(e) => setCiVal(e.target.value)}
+              onBlur={async () => {
+                try {
+                  await fetch(`/api/v1/incidents/${incident.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ configurationItem: ciVal, ci: ciVal }),
+                  });
+                } catch {}
+              }}
+              className="w-full bg-transparent font-semibold text-brand-400 focus:outline-none focus:border-brand-500 rounded"
+            />
           </div>
         </div>
       </div>
 
       {/* Main Split */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Description & Official Resolution Log */}
+        {/* Left: Description & Resolution / Work Status */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="glass-panel p-5 space-y-3">
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-slate-800 pb-2">
-              Official Resolution Log
-            </h3>
-            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium space-y-2">
-              <div className="font-bold flex items-center gap-1.5 text-emerald-400">
-                <CheckCircle2 className="w-4 h-4" /> Root Cause Resolved
+          {state === 'RESOLVED' || state === 'CLOSED' ? (
+            <div className="glass-panel p-5 space-y-3">
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-slate-800 pb-2">
+                Official Resolution Log
+              </h3>
+              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium space-y-2">
+                <div className="font-bold flex items-center gap-1.5 text-emerald-400">
+                  <CheckCircle2 className="w-4 h-4" /> Root Cause Resolved
+                </div>
+                <div className="text-[11px] font-bold text-cyan-400 font-mono">
+                  Close Code: {resCode}
+                </div>
+                <p className="leading-relaxed">{incident.resolutionNotes || 'Incident root cause resolved and verified.'}</p>
+                <div className="text-[10px] text-emerald-400/80 font-mono">Resolved by: {incident.assignedTo}</div>
               </div>
-              <div className="text-[11px] font-bold text-cyan-400 font-mono">
-                Close Code: {resCode}
-              </div>
-              <p className="leading-relaxed">{incident.resolutionNotes}</p>
-              <div className="text-[10px] text-emerald-400/80 font-mono">Logged by: {incident.assignedTo}</div>
             </div>
-          </div>
+          ) : (
+            <div className="glass-panel p-5 space-y-3">
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-slate-800 pb-2">
+                Active Work & Diagnostic Status
+              </h3>
+              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-medium space-y-2">
+                <div className="font-bold flex items-center gap-1.5 text-blue-400">
+                  <Clock className="w-4 h-4" /> Work In Progress
+                </div>
+                <p className="leading-relaxed">{incident.description || 'Assigned team is performing active diagnostics and troubleshooting.'}</p>
+                <div className="text-[10px] text-blue-400/80 font-mono">Assigned Member: {incident.assignedTo}</div>
+              </div>
+            </div>
+          )}
 
           <div className="glass-panel p-5 space-y-3">
             <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-slate-800 pb-2">

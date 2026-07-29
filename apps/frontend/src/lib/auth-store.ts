@@ -16,12 +16,26 @@ interface AuthState {
   isAuthenticated: boolean;
   login: (token: string, user: AuthUser) => void;
   logout: () => void;
+  init: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  token: typeof window !== 'undefined' ? localStorage.getItem('itsm_token') : null,
-  user: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('itsm_user') || 'null') : null,
-  isAuthenticated: typeof window !== 'undefined' ? !!localStorage.getItem('itsm_token') : false,
+  token: null,
+  user: null,
+  isAuthenticated: false,
+
+  init: () => {
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('itsm_token');
+      const userStr = localStorage.getItem('itsm_user');
+      try {
+        const user = userStr ? JSON.parse(userStr) : null;
+        set({ token, user, isAuthenticated: !!token });
+      } catch {
+        set({ token, user: null, isAuthenticated: !!token });
+      }
+    }
+  },
 
   login: (token: string, user: AuthUser) => {
     if (typeof window !== 'undefined') {
