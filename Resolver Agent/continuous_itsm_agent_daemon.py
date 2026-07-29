@@ -50,13 +50,15 @@ FALLBACK_MODELS = [
 
 def invoke_llm_with_fallback(messages, response_format=None):
     """
-    Invokes LLM with automatic fallback to high-performing MaaS models if budget limit is reached.
+    Invokes LLM with automatic fallback to high-performing MaaS models or NVIDIA Nemotron 3 Ultra.
     """
     for model in FALLBACK_MODELS:
         try:
             kwargs = {"model": model, "messages": messages}
-            if response_format:
+            if response_format and "nvidia" not in model.lower():
                 kwargs["response_format"] = response_format
+            if "nvidia" in model.lower() or "nemotron" in model.lower():
+                kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 16384}
             res = llm_client.chat.completions.create(**kwargs)
             return res.choices[0].message.content, model
         except Exception as e:

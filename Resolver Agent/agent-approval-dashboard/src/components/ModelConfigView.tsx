@@ -38,14 +38,13 @@ export function ModelConfigView() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const availableModels = [
+    { value: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'NVIDIA Nemotron-3 Ultra 550B (Deep Reasoning & Multi-Agent)' },
     { value: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct', label: 'Meta Llama-3.3 70B Instruct (High Precision Routing)' },
     { value: 'azure_ai/genailab-maas-DeepSeek-R1', label: 'DeepSeek R1 (Advanced SOP Reasoning & Synthesis)' },
     { value: 'genailab-maas-gpt-4o', label: 'OpenAI GPT-4o (Governance & Multi-Modal Evaluation)' },
     { value: 'gemini-2.5-pro', label: 'Google Gemini 2.5 Pro (Enterprise Reasoning)' },
     { value: 'gemini-2.5-flash', label: 'Google Gemini 2.5 Flash (Fast Execution)' },
-    { value: 'azure/genailab-maas-gpt-4o-mini', label: 'OpenAI GPT-4o Mini (Cost-Optimized Fallback)' },
-    { value: 'gpt-4o', label: 'Direct Production OpenAI GPT-4o' },
-    { value: 'gpt-4o-mini', label: 'Direct Production OpenAI GPT-4o Mini' }
+    { value: 'azure/genailab-maas-gpt-4o-mini', label: 'OpenAI GPT-4o Mini (Cost-Optimized Fallback)' }
   ];
 
   const presets = {
@@ -67,13 +66,13 @@ export function ModelConfigView() {
     },
     production_azure: {
       environment: 'production_azure' as const,
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: 'sk-proj-prod-enterprise-key',
-      routerModel: 'gpt-4o-mini',
-      resolverModel: 'gpt-4o',
-      synthesizerModel: 'gpt-4o',
-      governanceModel: 'gpt-4o',
-      fallbackModels: ['gpt-4o', 'gpt-4o-mini']
+      baseUrl: 'https://integrate.api.nvidia.com/v1',
+      apiKey: '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',
+      routerModel: 'nvidia/nemotron-3-ultra-550b-a55b',
+      resolverModel: 'nvidia/nemotron-3-ultra-550b-a55b',
+      synthesizerModel: 'nvidia/nemotron-3-ultra-550b-a55b',
+      governanceModel: 'nvidia/nemotron-3-ultra-550b-a55b',
+      fallbackModels: ['nvidia/nemotron-3-ultra-550b-a55b', 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct']
     }
   };
 
@@ -209,13 +208,13 @@ export function ModelConfigView() {
               </span>
             )}
             <div className="font-bold text-base text-white flex items-center space-x-2">
-              <span>Environment 2: Production Direct Enterprise</span>
+              <span>Environment 2: Production NVIDIA Cloud Direct</span>
             </div>
             <p className="text-xs text-slate-400 mt-2">
-              Direct Production OpenAI or Azure OpenAI service endpoint with high-throughput GPT-4o models.
+              NVIDIA Build Cloud API endpoint powering all 4 specialized agents with Nemotron-3 Ultra 550B deep reasoning.
             </p>
             <div className="mt-3 text-xs font-mono bg-slate-950/60 p-2 rounded text-emerald-300 border border-slate-800">
-              URL: https://api.openai.com/v1
+              URL: https://integrate.api.nvidia.com/v1
             </div>
           </button>
         </div>
