@@ -210,6 +210,11 @@ export default function IncidentDetailPage() {
               <Clock className="w-4 h-4" /> State: IN_PROGRESS
             </span>
           )}
+          {state === 'ON_HOLD' && (
+            <span className="px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold text-xs flex items-center gap-1.5">
+              <Clock className="w-4 h-4 text-amber-400" /> State: ON_HOLD
+            </span>
+          )}
           {state === 'NEW' && (
             <span className="px-3 py-1.5 rounded-lg bg-purple-500/20 text-purple-400 border border-purple-500/30 font-bold text-xs flex items-center gap-1.5">
               <AlertTriangle className="w-4 h-4" /> State: NEW
@@ -240,8 +245,8 @@ export default function IncidentDetailPage() {
             <h1 className="text-xl font-extrabold text-slate-100">{incident.title}</h1>
           </div>
 
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">State</label>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-bold">State:</span>
             <select
               value={state}
               onChange={async (e) => {
@@ -258,6 +263,7 @@ export default function IncidentDetailPage() {
               className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-200 focus:outline-none focus:border-brand-500"
             >
               <option value="IN_PROGRESS">IN_PROGRESS</option>
+              <option value="ON_HOLD">ON_HOLD</option>
               <option value="NEW">NEW</option>
               <option value="RESOLVED">RESOLVED</option>
               <option value="CLOSED">CLOSED</option>

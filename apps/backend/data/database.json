@@ -804,11 +804,52 @@
   ],
   "incidents": [
     {
+      "id": "INC0001021",
+      "number": "INC0001021",
+      "shortDescription": "Create New file system /application of 2GB size",
+      "description": "Create New file system /application of 2GB size",
+      "state": "IN_PROGRESS",
+      "impact": "DEPARTMENT",
+      "urgency": "HIGH",
+      "priority": "P2",
+      "department": "Unix",
+      "assignedTo": "Richard Stallman (Unix)",
+      "resolutionCode": "Pending Triage",
+      "resolutionNotes": "This incident requests creation of a new 2GB filesystem at /application, which is a core Unix/Linux system administration task involving storage provisioning, logical volume management, and filesystem formatting. The Unix team owns filesystem lifecycle management and storage allocation on server infrastructure.",
+      "caller": "System Admin",
+      "configurationItem": "Control Plane",
+      "createdAt": "2026-07-21 23:44:00",
+      "activities": [
+        {
+          "id": "act_1785540922233",
+          "incidentId": "INC0001021",
+          "author": "🤖 Unix Auto-Resolver Agent",
+          "comment": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n⚠️ AUTOMATED REMEDIATION PAUSED — UNSPECIFIED CONFIGURATION ITEM\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n👤 Assigned Team Member: Richard Stallman (Unix)\n🎫 Ticket: [INC0001021] Create New file system /application of 2GB size\nReason: Target host/CI is unspecified. Executing commands on a default host is dangerous.\n👉 Operator Action: Please update the Configuration Item (CI) or host details in the ticket properties to authorize execution.\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+          "timestamp": "5:35:22 pm"
+        },
+        {
+          "id": "act_1785540921477",
+          "incidentId": "INC0001021",
+          "author": "🤖 Agentic AI Router",
+          "comment": "🤖 Agentic AI Router (NVIDIA Nemotron 3 550B LLM): Auto-assigned ticket to \"Unix\" (Unix Team Lead) with 95% confidence.\nReasoning: This incident requests creation of a new 2GB filesystem at /application, which is a core Unix/Linux system administration task involving storage provisioning, logical volume management, and filesystem formatting. The Unix team owns filesystem lifecycle management and storage allocation on server infrastructure.",
+          "isWorkNote": true,
+          "timestamp": "5:35:21 pm"
+        },
+        {
+          "id": "act_INC0001021_1",
+          "author": "System Admin",
+          "isWorkNote": true,
+          "comment": "Logged new incident ticket INC0001021.",
+          "timestamp": "11:44 PM"
+        }
+      ]
+    },
+    {
       "id": "INC0001020",
       "number": "INC0001020",
       "shortDescription": "[root@ControlPlane ~]# kubectl get pods Error from server (Forbidden): pods is forbidden: User \"kubernetes-admin\" cannot list resource \"pods\" in API group \"\" in the namespace \"default\" [root@ControlPlane ~]#",
       "description": "[root@ControlPlane ~]# kubectl get pods\nError from server (Forbidden): pods is forbidden: User \"kubernetes-admin\" cannot list resource \"pods\" in API group \"\" in the namespace \"default\"\n[root@ControlPlane ~]#\n",
-      "state": "ON_HOLD",
+      "state": "CLOSED",
       "impact": "DEPARTMENT",
       "urgency": "HIGH",
       "priority": "P2",
@@ -28147,6 +28188,24 @@
     }
   ],
   "agentTimeline": [
+    {
+      "id": "INC0001021",
+      "incidentNumber": "INC0001021",
+      "incidentTitle": "Create New file system /application of 2GB size",
+      "targetCi": "Unspecified CI",
+      "status": "RUNNING",
+      "startTime": "2026-07-31T23:35:22.149Z",
+      "steps": [
+        {
+          "id": "step-1785541061211-721",
+          "name": "🖥️ Target CI Validation",
+          "status": "RUNNING",
+          "timestamp": "05:37:41 PM",
+          "details": "Verifying SSH accessibility for target host Control Plane (192.168.100.101)..."
+        }
+      ],
+      "endTime": "2026-07-31T23:35:22.149Z"
+    },
     {
       "id": "INC0001020",
       "incidentNumber": "INC0001020",
