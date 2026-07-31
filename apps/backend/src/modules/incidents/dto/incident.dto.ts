@@ -154,4 +154,9 @@ export class AddActivityDto {
 
   @ApiProperty({ example: true })
   isWorkNote: boolean;
+
+  @ApiProperty({ example: '🤖 Unix Auto-Resolver Agent', required: false })
+  @IsString()
+  @IsOptional()
+  author?: string;
 }

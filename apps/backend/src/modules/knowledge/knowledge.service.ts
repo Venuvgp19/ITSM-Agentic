@@ -189,32 +189,76 @@ export class KnowledgeService {
     return article;
   }
 
+  private getDynamicConfig() {
+    let baseUrl = this.liteLlmBaseUrl;
+    let apiKey = this.liteLlmApiKey;
+    let model = this.llamaModel;
+
+    const dbConfig = this.singleDb.agentModelConfig;
+    if (dbConfig) {
+      baseUrl = dbConfig.baseUrl || baseUrl;
+      apiKey = dbConfig.apiKey || apiKey;
+      model = dbConfig.synthesizerModel || dbConfig.routerModel || model;
+    }
+
+    return { baseUrl, apiKey, model };
+  }
+
+  private ensureSshFirstStep(steps: string[], ci: string = '192.168.100.101'): string[] {
+    if (!Array.isArray(steps) || steps.length === 0) {
+      return [`ssh root@${ci}`];
+    }
+    const targetHost = ci.match(/\d+\.\d+\.\d+\.\d+/)?.[0] || '192.168.100.101';
+    return steps.map((step) => {
+      const cleanStep = step.replace(/^\d+\.\s*/, '').trim();
+      if (cleanStep.toLowerCase().startsWith('ssh ')) {
+        return cleanStep;
+      }
+      return `ssh root@${targetHost} "${cleanStep.replace(/"/g, '\\"')}"`;
+    });
+  }
+
   private async callLlama3370b(prompt: string, problemDomain: string): Promise<any> {
-    this.logger.log(`Invoking Meta Llama 3.3 70B Instruct (${this.llamaModel}) via LiteLLM for problem: "${problemDomain}"...`);
+    const config = this.getDynamicConfig();
+    this.logger.log(`Invoking LLM (${config.model}) via ${config.baseUrl} for problem: "${problemDomain}"...`);
 
     try {
-      const response = await fetch(`${this.liteLlmBaseUrl}/chat/completions`, {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      };
+      if (!config.baseUrl.includes('nvidia.com')) {
+        headers['x-litellm-api-key'] = config.apiKey;
+      }
+
+      const response = await fetch(`${config.baseUrl}/chat/completions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-litellm-api-key': this.liteLlmApiKey,
-          'Authorization': `Bearer ${this.liteLlmApiKey}`,
-        },
+        headers,
         body: JSON.stringify({
-          model: this.llamaModel,
+          model: config.model,
           messages: [
             {
               role: 'system',
-              content: `You are an expert ITIL Knowledge Management AI Agent. 
-Synthesize a Standard Operating Procedure (SOP) Knowledge Base Article to solve the UNIQUE IT problem: "${problemDomain}".
+              content: `You are an expert Senior Systems & DevOps Engineer and ITIL Knowledge Management Specialist.
+Synthesize a highly technical, specific, and actionable Standard Operating Procedure (SOP) Knowledge Base Article to solve the technical issue: "${problemDomain}".
+
+CRITICAL INSTRUCTIONS:
+- DO NOT use generic boilerplate phrases like "diagnosing and resolving", "system resource contention", "configuration drift", "inspect configuration item status", "apply remediation protocol", or "validate baseline".
+- The SOP must be specifically tailored to the technology mentioned (e.g., if Docker, focus on docker commands/sockets; if SSH, focus on sshd daemon/keys/config; if Kubernetes, focus on pods/kubelet/kubectl).
+- MANDATORY SSH STEP: Step 1 of resolutionSteps MUST ALWAYS start with the explicit SSH connection command: 'ssh root@<target host>' (e.g. '1. ssh root@192.168.100.101' or '1. Establish SSH connection: ssh root@<target host>'). All subsequent steps are executed over this SSH session.
+- Write a highly descriptive, technical Title.
+- Provide a concrete, 2-3 sentence Executive Summary explaining the exact technical failure mode and how to correct it.
+- List 3-4 highly specific symptoms that an engineer would observe in logs, system state, or command outputs.
+- Explain the precise technical root cause (e.g., port exhaustion, configuration error, certificate expiration, socket permission).
+- Provide 4-5 precise, sequential, concrete resolution steps starting with 'ssh root@<target host>' on step 1.
 
 Respond in strict JSON format:
 {
-  "title": "string (Unique SOP Title specifying exact problem)",
-  "summary": "string (2-3 sentence executive summary explaining exact issue and fix)",
-  "symptoms": ["string (Specific symptom 1)", "string (Specific symptom 2)"],
-  "rootCause": "string (Detailed technical root cause unique to this issue)",
-  "resolutionSteps": ["string (Step 1)", "string (Step 2)", "string (Step 3)"]
+  "title": "string",
+  "summary": "string",
+  "symptoms": ["string", "string", ...],
+  "rootCause": "string",
+  "resolutionSteps": ["ssh root@<target host>", "command1", "command2", ...]
 }`,
             },
             {
@@ -227,6 +271,7 @@ Respond in strict JSON format:
           max_tokens: 1024,
           stream: false,
         }),
+        signal: AbortSignal.timeout(60000),
       });
 
       if (!response.ok) {
@@ -236,19 +281,76 @@ Respond in strict JSON format:
       const data: any = await response.json();
       const rawText = data.choices?.[0]?.message?.content || '';
       const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-      return JSON.parse(cleaned);
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed.resolutionSteps)) {
+        parsed.resolutionSteps = this.ensureSshFirstStep(parsed.resolutionSteps, problemDomain);
+      }
+      return parsed;
     } catch {
-      return {
-        title: `Troubleshooting & SOP: ${problemDomain.replace(/\(#\d+\)/, '').trim()}`,
-        summary: `Standard Operating Procedure for diagnosing and resolving ${problemDomain} across enterprise infrastructure.`,
-        symptoms: [`Telemetry alert triggered for ${problemDomain}`, 'Intermittent latency and error spikes in diagnostic logs.'],
-        rootCause: `Root cause identified in diagnostic work notes: System resource contention or configuration drift.`,
-        resolutionSteps: [
-          `1. Inspect configuration item status for ${problemDomain}.`,
-          `2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.`,
-          `3. Validate operational metric health baseline and confirm ticket resolution.`,
-        ],
-      };
+      const cleanDomain = problemDomain.replace(/\(#\d+\)/, '').trim();
+      let title = `Troubleshooting & SOP: ${cleanDomain}`;
+      let summary = `Standard Operating Procedure to diagnose and resolve ${cleanDomain} service issues.`;
+      let symptoms = [`Service ${cleanDomain} reported degraded state`, `Connection timeouts or refused connections in logs.`];
+      let rootCause = `Improper configuration settings, corrupted state files, or service crash due to memory pressure.`;
+      let resolutionSteps = [
+        `1. Log in to the target system and verify service process status: 'ps aux | grep ${cleanDomain.split(' ')[0]}' or systemctl status.`,
+        `2. Inspect logs using journalctl or logs in /var/log/ to identify specific errors.`,
+        `3. Restart the affected service process and verify it binds successfully to its network port.`,
+        `4. Confirm the service state remains healthy and operational metrics return to baseline.`
+      ];
+
+      const lowerDomain = problemDomain.toLowerCase();
+      if (lowerDomain.includes('ssh') || lowerDomain.includes('sshd')) {
+        title = `sshd Service Restore and Configuration SOP`;
+        summary = `Procedure to restore sshd daemon functionality, repair configuration issues, and resolve connection refused errors.`;
+        symptoms = [
+          `Connection refused on port 22.`,
+          `sshd.service: Failed with result 'exit-code' in journalctl.`,
+          `Authentication failures for authorized ssh keys.`
+        ];
+        rootCause = `Misconfigured /etc/ssh/sshd_config file, incorrect directory permissions on ~/.ssh, or port binding conflicts.`;
+        resolutionSteps = [
+          `1. Check sshd service status: 'systemctl status sshd'`,
+          `2. Validate sshd configuration syntax: 'sshd -t'`,
+          `3. Ensure correct permissions: 'chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys'`,
+          `4. Restart sshd daemon to apply fixes: 'systemctl restart sshd'`,
+          `5. Verify ssh socket is listening on port 22: 'ss -tulpn | grep 22'`
+        ];
+      } else if (lowerDomain.includes('kubelet') || lowerDomain.includes('kubernetes') || lowerDomain.includes('k8s')) {
+        title = `Kubernetes Node & Kubelet Recovery SOP`;
+        summary = `Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.`;
+        symptoms = [
+          `Kubernetes worker node status transitions to 'NotReady'.`,
+          `Kubelet service fails to start or reports connection refused to API server.`,
+          `Container runtime endpoints timed out in logs.`
+        ];
+        rootCause = `Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.`;
+        resolutionSteps = [
+          `1. Inspect kubelet status: 'systemctl status kubelet'`,
+          `2. Check containerd state and restart if dead: 'systemctl restart containerd'`,
+          `3. Disable swap space if enabled: 'swapoff -a'`,
+          `4. View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'`,
+          `5. Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'`
+        ];
+      } else if (lowerDomain.includes('docker') || lowerDomain.includes('containerd')) {
+        title = `Docker Daemon & Container Engine Recovery SOP`;
+        summary = `Resolution steps for restoring the Docker container service, cleaning stale sockets, and repairing disk space exhaustion.`;
+        symptoms = [
+          `docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock.`,
+          `docker.service failed to restart or hang indefinitely.`,
+          `Disk space exhausted on Docker thin pool storage.`
+        ];
+        rootCause = `Stale /var/run/docker.pid file blocking start, socket permission denied, or system partition 100% full.`;
+        resolutionSteps = [
+          `1. Check disk utilization: 'df -h' and clean up stale volumes/images: 'docker system prune -af'`,
+          `2. Verify docker service logs: 'journalctl -u docker -n 100'`,
+          `3. Remove stale pid lock file if present: 'rm -f /var/run/docker.pid'`,
+          `4. Restart docker daemon: 'systemctl restart docker'`,
+          `5. Verify socket accessibility: 'ls -l /var/run/docker.sock'`
+        ];
+      }
+
+      return { title, summary, symptoms, rootCause, resolutionSteps };
     }
   }
 
@@ -293,29 +395,77 @@ Analyzed Batch Work Notes (${batch.length} tickets):
 ${workNotesText}`;
 
           try {
-            const parsed = await this.callLlama3370b(prompt, batchSampleTitle);
-            const article: KnowledgeArticle = {
-              id: kbNumber,
-              number: kbNumber,
-              title: parsed.title || `Troubleshooting & SOP: ${batchSampleTitle.replace(/\(#\d+\)/, '').trim()}`,
-              category: resolutionCode,
-              configurationItem: ci,
-              summary: parsed.summary || `Executive Standard Operating Procedure (SOP) for ${batchSampleTitle}.`,
-              symptoms: parsed.symptoms || [`Alerts triggered for ${batchSampleTitle}`, 'System degradation reported.'],
-              rootCause: parsed.rootCause || `Diagnostic root cause identified across ${batch.length} analyzed incidents.`,
-              resolutionSteps: parsed.resolutionSteps || [
-                `1. Inspect configuration item status on ${ci}.`,
-                `2. Apply remediation patch or service restart.`,
-                `3. Validate metric health baseline.`,
-              ],
-              workNotesAnalyzedCount: batch.flatMap((b) => b.activities || []).length,
-              sourceIncidentIds: batch.map((b) => b.id || b.number),
-              author: '🤖 NVIDIA Nemotron 3 550B Knowledge Agent',
-              modelUsed: 'NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)',
-              viewCount: 1,
-              helpfulCount: 0,
-              createdAt: new Date().toISOString(),
-            };
+            // Find if there is an approved AgentApproval request for any incident in the batch
+            let matchedApproval: any = null;
+            const approvals = this.singleDb.agentApprovals || [];
+            for (const inc of batch) {
+              const found = approvals.find(
+                (a: any) =>
+                  (a.incidentId === inc.id || a.incidentId === inc.number) &&
+                  a.status === 'APPROVED'
+              );
+              if (found) {
+                matchedApproval = found;
+                break;
+              }
+            }
+
+            let article: KnowledgeArticle;
+            if (matchedApproval) {
+              const steps = Array.isArray(matchedApproval.proposedCommands)
+                ? matchedApproval.proposedCommands.map((cmd: string, idx: number) => `${idx + 1}. ${cmd}`)
+                : [
+                    `1. Inspect configuration item status on ${ci}.`,
+                    `2. Apply remediation patch or service restart.`,
+                    `3. Validate metric health baseline.`,
+                  ];
+
+              article = {
+                id: kbNumber,
+                number: kbNumber,
+                title: matchedApproval.kbTitle || `Troubleshooting & SOP: ${batchSampleTitle.replace(/\(#\d+\)/, '').trim()}`,
+                category: resolutionCode,
+                configurationItem: ci,
+                summary: matchedApproval.summary || `Executive Standard Operating Procedure (SOP) for ${batchSampleTitle}.`,
+                symptoms: [`Alerts triggered for ${batchSampleTitle}`, 'System degradation reported.'],
+                rootCause: matchedApproval.aiReasoning || `Diagnostic root cause identified across ${batch.length} analyzed incidents.`,
+                resolutionSteps: this.ensureSshFirstStep(steps, ci),
+                workNotesAnalyzedCount: batch.flatMap((b) => b.activities || []).length,
+                sourceIncidentIds: batch.map((b) => b.id || b.number),
+                author: matchedApproval.agentName || '🤖 Unix Auto-Resolver Agent',
+                modelUsed: matchedApproval.model || 'nvidia/nemotron-3-ultra-550b-a55b',
+                viewCount: 1,
+                helpfulCount: 0,
+                createdAt: new Date().toISOString(),
+              };
+            } else {
+              const parsed = await this.callLlama3370b(prompt, batchSampleTitle);
+              article = {
+                id: kbNumber,
+                number: kbNumber,
+                title: parsed.title || `Troubleshooting & SOP: ${batchSampleTitle.replace(/\(#\d+\)/, '').trim()}`,
+                category: resolutionCode,
+                configurationItem: ci,
+                summary: parsed.summary || `Executive Standard Operating Procedure (SOP) for ${batchSampleTitle}.`,
+                symptoms: parsed.symptoms || [`Alerts triggered for ${batchSampleTitle}`, 'System degradation reported.'],
+                rootCause: parsed.rootCause || `Diagnostic root cause identified across ${batch.length} analyzed incidents.`,
+                resolutionSteps: this.ensureSshFirstStep(
+                  parsed.resolutionSteps || [
+                    `1. Inspect configuration item status on ${ci}.`,
+                    `2. Apply remediation patch or service restart.`,
+                    `3. Validate metric health baseline.`,
+                  ],
+                  ci
+                ),
+                workNotesAnalyzedCount: batch.flatMap((b) => b.activities || []).length,
+                sourceIncidentIds: batch.map((b) => b.id || b.number),
+                author: '🤖 NVIDIA Nemotron 3 550B Knowledge Agent',
+                modelUsed: 'NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)',
+                viewCount: 1,
+                helpfulCount: 0,
+                createdAt: new Date().toISOString(),
+              };
+            }
 
             this.articles.unshift(article);
             this.saveArticlesToFile();
@@ -342,5 +492,31 @@ ${workNotesText}`;
 
   async generateArticlesFromWorkNotes(tenantId: string) {
     return this.synthesizeAllIncidentsInBatches(tenantId);
+  }
+
+  createArticle(dto: any) {
+    this.articles = this.singleDb.knowledgeArticles || [];
+    const newId = `KB${String(this.articles.length + 1).padStart(7, '0')}`;
+    const newArticle = {
+      id: newId,
+      number: newId,
+      title: dto.title || 'Troubleshooting & SOP: New Issue',
+      category: dto.category || 'Unix - OS & Services',
+      configurationItem: dto.configurationItem || 'Unspecified CI',
+      summary: dto.summary || 'Dynamically synthesized SOP article.',
+      symptoms: dto.symptoms || ['Telemetry alert reported for new issue.'],
+      rootCause: dto.rootCause || 'Root cause identified in new use case diagnostic.',
+      resolutionSteps: dto.resolutionSteps || [],
+      workNotesAnalyzedCount: 1,
+      sourceIncidentIds: dto.sourceIncidentIds || [],
+      author: dto.author || '🤖 Gemini 3.1 Pro Knowledge Synthesis Agent',
+      modelUsed: dto.modelUsed || 'Gemini 3.5 Flash',
+      viewCount: 1,
+      helpfulCount: 0,
+      createdAt: new Date().toISOString()
+    };
+    this.articles.unshift(newArticle);
+    this.singleDb.knowledgeArticles = this.articles;
+    return newArticle;
   }
 }

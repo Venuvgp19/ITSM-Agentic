@@ -73,7 +73,7 @@ export class ProblemService {
 
   private generateInitial50Problems(): ProblemRecord[] {
     const list: ProblemRecord[] = [];
-    const cis = ['router-border-nyc-01', 'db-postgres-primary', 'k8s-prod-cluster-east-1', 'ad-dc-master-01', 'okta-auth-gw-01'];
+    const cis = ['router-border-nyc-01', 'db-postgres-primary', 'k8s-prod-cluster-east-1', 'ad-dc-master-01', 'okta-auth-gw-01', 'control plane'];
     const techs = ['Richard Stallman (Unix)', 'Sarah Connor (Network Ops)', 'DBA Team', 'SecOps', 'App Support'];
 
     for (let i = 1; i <= 50; i++) {

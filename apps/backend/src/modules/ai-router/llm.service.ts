@@ -1,4 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
+import { SingleDatabaseService } from '../../database/single-db.service';
 
 export interface IncidentAnalysisRequest {
   incidentId: string;
@@ -27,32 +30,60 @@ export interface IncidentAnalysisResult {
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
 
-  private readonly liteLlmBaseUrl = process.env.LITELLM_BASE_URL || 'https://genailab.tcs.in/v1';
-  private readonly liteLlmApiKey = process.env.LITELLM_API_KEY || 'sk-RRoxANx2dKdNE3N5j0mbxQ';
-  private readonly defaultModel = process.env.LLM_MODEL || 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct';
+  private readonly fallbackLiteLlmBaseUrl = process.env.LITELLM_BASE_URL || 'https://genailab.tcs.in/v1';
+  private readonly fallbackLiteLlmApiKey = process.env.LITELLM_API_KEY || 'sk-RRoxANx2dKdNE3N5j0mbxQ';
+  private readonly fallbackDefaultModel = process.env.LLM_MODEL || 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct';
+
+  constructor(private readonly singleDb: SingleDatabaseService) {}
+
+  private getDynamicConfig() {
+    let baseUrl = this.fallbackLiteLlmBaseUrl;
+    let apiKey = this.fallbackLiteLlmApiKey;
+    let defaultModel = this.fallbackDefaultModel;
+
+    const dbConfig = this.singleDb.agentModelConfig;
+    if (dbConfig) {
+      baseUrl = dbConfig.baseUrl || baseUrl;
+      apiKey = dbConfig.apiKey || apiKey;
+      defaultModel = dbConfig.routerModel || defaultModel;
+    }
+
+    return { baseUrl, apiKey, defaultModel };
+  }
 
   async analyzeIncidentWithNvidiaLLM(
     request: IncidentAnalysisRequest,
     modelName?: string
   ): Promise<IncidentAnalysisResult> {
-    const model = modelName || this.defaultModel;
+    const dynamicConfig = this.getDynamicConfig();
+    const model = modelName || dynamicConfig.defaultModel;
     const prompt = this.buildPrompt(request);
 
     const maxRetries = 3;
     let attempt = 0;
 
+    const provider = model.includes('nvidia') || model.includes('nemotron') ? 'NVIDIA' : 'LiteLLM';
+
     while (attempt < maxRetries) {
       attempt++;
-      this.logger.log(`Invoking LiteLLM Agentic Router (${model}) for incident ${request.incidentId} (Attempt ${attempt}/${maxRetries})...`);
+      this.logger.log(`Invoking ${provider} Agentic Router (${model}) for incident ${request.incidentId} (Attempt ${attempt}/${maxRetries})...`);
 
       try {
-        const response = await fetch(`${this.liteLlmBaseUrl}/chat/completions`, {
+        const isNvidia = model.includes('nvidia') || model.includes('nemotron');
+        const reqBaseUrl = isNvidia ? 'https://integrate.api.nvidia.com/v1' : dynamicConfig.baseUrl;
+        const reqApiKey = isNvidia ? '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' : dynamicConfig.apiKey;
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${reqApiKey}`,
+        };
+        if (!reqBaseUrl.includes('nvidia.com')) {
+          headers['x-litellm-api-key'] = reqApiKey;
+        }
+
+        const response = await fetch(`${reqBaseUrl}/chat/completions`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-litellm-api-key': this.liteLlmApiKey,
-            'Authorization': `Bearer ${this.liteLlmApiKey}`,
-          },
+          headers,
           body: JSON.stringify({
             model: model,
             messages: [
@@ -87,21 +118,22 @@ Output your analysis in strict JSON format with keys:
             temperature: 0.2,
             max_tokens: 1024,
           }),
+          signal: AbortSignal.timeout(60000),
         });
 
         if (response.status === 429 || response.status === 503) {
           const waitTime = attempt * 2000;
-          this.logger.warn(`LiteLLM API rate limited (HTTP ${response.status}). Waiting ${waitTime / 1000}s before retrying...`);
+          this.logger.warn(`${provider} API rate limited (HTTP ${response.status}). Waiting ${waitTime / 1000}s before retrying...`);
           await new Promise((res) => setTimeout(res, waitTime));
           continue;
         }
 
         if (!response.ok) {
           const errText = await response.text();
-          this.logger.warn(`LiteLLM API HTTP ${response.status}: ${errText}. Retrying with fallback model...`);
+          this.logger.warn(`${provider} API HTTP ${response.status}: ${errText}. Retrying with fallback model...`);
           if (attempt === 1) {
-            // Try fallback working model on LiteLLM if primary returns deployment error
-            return this.analyzeIncidentWithNvidiaLLM(request, 'azure/genailab-maas-gpt-4o-mini');
+            // Try fallback working model on NVIDIA Nemotron 3 Ultra if primary fails
+            return this.analyzeIncidentWithNvidiaLLM(request, 'nvidia/nemotron-3-ultra-550b-a55b');
           }
           await new Promise((res) => setTimeout(res, 1500));
           continue;
@@ -121,17 +153,17 @@ Output your analysis in strict JSON format with keys:
           confidenceScore: parsed.confidenceScore || 95,
           assignedTechnician: parsed.assignedTechnician || `${parsed.targetGroup} Lead`,
           reasoningText: parsed.reasoningText || `AI Router analyzed ticket and assigned to ${parsed.targetGroup}.`,
-          thinkingTrace: thinkingTrace || `[LiteLLM ${model} Reasoning Trace]: Analyzed symptom patterns for ${request.shortDescription}. Matched operational group ${parsed.targetGroup}.`,
+          thinkingTrace: thinkingTrace || `[${provider} ${model} Reasoning Trace]: Analyzed symptom patterns for ${request.shortDescription}. Matched operational group ${parsed.targetGroup}.`,
           recommendedResolutionCode: parsed.recommendedResolutionCode || 'Server - Kernel & OS Patch',
-          recommendedWorkNote: parsed.recommendedWorkNote || `Automated LiteLLM AI Router triage complete for ${request.incidentId}.`,
+          recommendedWorkNote: parsed.recommendedWorkNote || `Automated ${provider} AI Router triage complete for ${request.incidentId}.`,
         };
       } catch (err: any) {
-        this.logger.warn(`Error connecting to LiteLLM API (${err.message}). Retrying...`);
+        this.logger.warn(`Error connecting to ${provider} API (${err.message}). Retrying...`);
         await new Promise((res) => setTimeout(res, 2000));
       }
     }
 
-    throw new Error(`LiteLLM API temporarily unavailable after ${maxRetries} attempts.`);
+    throw new Error(`${provider} API temporarily unavailable after ${maxRetries} attempts.`);
   }
 
   private buildPrompt(request: IncidentAnalysisRequest): string {

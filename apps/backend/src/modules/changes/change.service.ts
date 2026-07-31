@@ -61,7 +61,7 @@ export class ChangeService {
 
   private generateInitial50Changes(): ChangeRecord[] {
     const list: ChangeRecord[] = [];
-    const cis = ['router-border-nyc-01', 'db-postgres-primary', 'k8s-prod-cluster-east-1', 'ad-dc-master-01', 'vpn-gateway-01'];
+    const cis = ['router-border-nyc-01', 'db-postgres-primary', 'k8s-prod-cluster-east-1', 'ad-dc-master-01', 'vpn-gateway-01', 'control plane'];
     const techs = ['Sarah Connor (Network Ops)', 'DBA Team', 'DevOps Ops', 'SecOps', 'Richard Stallman (Unix)'];
 
     for (let i = 1; i <= 50; i++) {

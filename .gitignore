@@ -11,3 +11,6 @@ yarn-error.log*
 coverage/
 .prisma/
 *.tsbuildinfo
+__pycache__/
+*.db
+eval_log_output.txt

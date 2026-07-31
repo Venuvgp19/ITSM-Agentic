@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -76,6 +76,24 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'APPROVED' | 'AUTO_EXECUTED' | 'REJECTED'>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [articles, setArticles] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchArticles = async () => {
+      try {
+        const res = await fetch('http://localhost:4000/api/v1/knowledge/articles');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setArticles(data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load articles in HistoricalActivityView:', err);
+      }
+    };
+    fetchArticles();
+  }, []);
 
   const filteredHistory = history.filter((item) => {
     const matchesStatus = statusFilter === 'ALL' || item.status === statusFilter;
@@ -159,13 +177,51 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                 : 'Rejected'}
             </button>
           ))}
+
+          <button
+            onClick={async () => {
+              try {
+                await fetch('http://localhost:4000/api/v1/agent/reset-locks', { method: 'POST' });
+                window.location.reload();
+              } catch (e) {
+                console.error(e);
+              }
+            }}
+            className="px-3.5 py-1.5 bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/80 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm"
+            title="Clear stuck locks & force sync historical data"
+          >
+            <Zap className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+            Force Sync History
+          </button>
         </div>
       </div>
 
       {/* Timeline Stream */}
       {filteredHistory.length === 0 ? (
-        <div className="bg-[#111827] border border-slate-800 rounded-2xl p-12 text-center text-slate-400 text-sm">
-          No historical agent activities match your search or filter criteria.
+        <div className="bg-[#111827] border border-slate-800 rounded-2xl p-12 text-center text-slate-400 text-sm space-y-4 shadow-xl">
+          <p className="font-semibold text-slate-300">No historical agent activities match your search or filter criteria.</p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => { setSearchTerm(''); setStatusFilter('ALL'); }}
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold"
+            >
+              Reset Filters
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  await fetch('http://localhost:4000/api/v1/agent/reset-locks', { method: 'POST' });
+                  window.location.reload();
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+              className="px-4 py-2 bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800 rounded-xl text-xs font-bold flex items-center gap-2"
+            >
+              <Zap className="w-4 h-4 text-rose-400 animate-pulse" />
+              Force Unlock & Sync Audit Logs
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-3.5 relative before:absolute before:left-6 before:top-4 before:bottom-4 before:w-0.5 before:bg-slate-800/80">
@@ -242,68 +298,111 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                         Complete 3-Agent Execution Pipeline Breakdown
                       </div>
 
-                      {/* 3 Agent Output Cards */}
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        {/* Router Agent */}
-                        <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-4 space-y-2">
-                          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                            <span className="font-bold text-xs text-amber-400 flex items-center gap-1.5">
-                              <Radio className="w-3.5 h-3.5 text-amber-400" />
-                              🚦 ROUTER AGENT
-                            </span>
-                            <span className="text-[10px] font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded">
-                              {item.routerOutput?.assignedPriority || 'P2 High'}
-                            </span>
-                          </div>
-                          <div className="text-xs space-y-1">
-                            <div><span className="text-slate-500">Category:</span> <span className="text-slate-200 font-medium">{item.routerOutput?.category || 'Infrastructure > Network'}</span></div>
-                            <div><span className="text-slate-500">Route:</span> <span className="text-cyan-300 font-mono text-[11px]">{item.routerOutput?.dispatchRoute || 'Network Ops Queue'}</span></div>
-                            <div className="text-[11px] text-slate-300 italic bg-slate-900/60 p-2 rounded border border-slate-800 mt-1.5">
-                              "{item.routerOutput?.userAcknowledgment || 'Ticket logged and dispatched.'}"
-                            </div>
-                          </div>
-                        </div>
+                      {/* Dynamic Agent Outputs Computation */}
+                      {(() => {
+                        const routerCategory = item.routerOutput?.category || (
+                          item.incidentTitle.toLowerCase().includes('file system') || item.incidentTitle.toLowerCase().includes('disk') || item.incidentTitle.toLowerCase().includes('space') || item.incidentTitle.toLowerCase().includes('app')
+                            ? 'Infrastructure > Storage'
+                            : item.incidentTitle.toLowerCase().includes('ssh') || item.incidentTitle.toLowerCase().includes('sshd') || item.incidentTitle.toLowerCase().includes('auth')
+                            ? 'Security > Access Control'
+                            : item.incidentTitle.toLowerCase().includes('k8s') || item.incidentTitle.toLowerCase().includes('kube') || item.incidentTitle.toLowerCase().includes('container')
+                            ? 'Platform > Orchestration'
+                            : 'Infrastructure > Systems'
+                        );
 
-                        {/* Resolver Agent */}
-                        <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-4 space-y-2">
-                          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                            <span className="font-bold text-xs text-cyan-400 flex items-center gap-1.5">
-                              <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-                              🛠️ RESOLVER AGENT
-                            </span>
-                            <span className="text-[10px] font-bold text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded">
-                              {item.resolverOutput?.resolutionStatus || 'RESOLVED'}
-                            </span>
-                          </div>
-                          <div className="text-xs space-y-1">
-                            <div><span className="text-slate-500">Diagnosis:</span> <span className="text-slate-200 leading-relaxed block">{item.resolverOutput?.diagnosis || item.resolutionOutcome}</span></div>
-                            <div><span className="text-slate-500">Runbook:</span> <span className="text-cyan-400 font-medium">{item.resolverOutput?.matchedRunbook || item.kbGenerated}</span></div>
-                            <div className="text-[11px] text-slate-300 bg-slate-900/60 p-2 rounded border border-slate-800 mt-1.5">
-                              "{item.resolverOutput?.userResolutionNotice || 'Remediation completed and verified.'}"
-                            </div>
-                          </div>
-                        </div>
+                        const routerPriority = item.routerOutput?.assignedPriority || (
+                          item.riskLevel === 'CRITICAL' ? 'P1 Critical' : item.riskLevel === 'HIGH' ? 'P2 High' : 'P3 Medium'
+                        );
 
-                        {/* Knowledge Synthesizer */}
-                        <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-4 space-y-2">
-                          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                            <span className="font-bold text-xs text-emerald-400 flex items-center gap-1.5">
-                              <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
-                              🧠 KNOWLEDGE SYNTHESIZER
-                            </span>
-                            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded">
-                              {item.synthesizerOutput?.draftKbId || item.kbGenerated || 'KB-88012'}
-                            </span>
-                          </div>
-                          <div className="text-xs space-y-1">
-                            <div><span className="text-slate-500">KB Title:</span> <span className="text-emerald-300 font-bold block">{item.synthesizerOutput?.kbTitle || 'SOP: Network Cache Reset'}</span></div>
-                            <div><span className="text-slate-500">Fix:</span> <span className="text-slate-300 block">{item.synthesizerOutput?.synthesizedSolution || 'Flushed route cache and recycled daemon.'}</span></div>
-                            <div className="text-[11px] text-emerald-400 bg-emerald-950/20 p-2 rounded border border-emerald-900/40 mt-1.5">
-                              💡 <span className="font-bold">Trend:</span> {item.synthesizerOutput?.trendInsight || 'Route cache saturation. Propose BGP prefix filter fix.'}
+                        const routerRoute = item.routerOutput?.dispatchRoute || (
+                          routerCategory.includes('Storage') ? 'Storage Ops Queue' : routerCategory.includes('Security') ? 'SecOps Queue' : 'Unix Admin Queue'
+                        );
+
+                        const routerAck = item.routerOutput?.userAcknowledgment || `Incident ${item.incidentId} logged and routed to ${routerRoute}.`;
+
+                        const resolverDiagnosis = item.resolverOutput?.diagnosis || `Identified alert pattern matching: "${item.incidentTitle}" on host ${item.targetCi}.`;
+
+                        const resolverRunbook = item.resolverOutput?.matchedRunbook || item.kbGenerated || 'SOP_SYSTEM_REMEDIATION';
+
+                        const resolverNotice = item.resolverOutput?.userResolutionNotice || item.resolutionOutcome || 'Remediation completed and verified.';
+
+                        const matchingArticle = articles.find((art) => {
+                          const idMatch = item.kbGenerated && (art.number === item.kbGenerated || art.id === item.kbGenerated);
+                          const incidentMatch = art.sourceIncidentIds && art.sourceIncidentIds.includes(item.incidentId);
+                          return idMatch || incidentMatch;
+                        });
+
+                        const synthKbId = matchingArticle ? matchingArticle.number : (item.kbGenerated || 'No Linked KB');
+                        const synthKbTitle = matchingArticle ? matchingArticle.title : `SOP: ${item.incidentTitle.charAt(0).toUpperCase() + item.incidentTitle.slice(1)}`;
+                        const synthSolution = matchingArticle ? matchingArticle.summary : `Remediation executed via runbook matching task requirements.`;
+                        const synthTrend = matchingArticle
+                          ? `Synthesized SOP from ${matchingArticle.workNotesAnalyzedCount} incidents. CI: ${matchingArticle.configurationItem}`
+                          : `Autonomous runbook execution. No dynamic SOP creation required.`;
+
+                        return (
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            {/* Router Agent */}
+                            <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-4 space-y-2">
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                                <span className="font-bold text-xs text-amber-400 flex items-center gap-1.5">
+                                  <Radio className="w-3.5 h-3.5 text-amber-400" />
+                                  🚦 ROUTER AGENT
+                                </span>
+                                <span className="text-[10px] font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded">
+                                  {routerPriority}
+                                </span>
+                              </div>
+                              <div className="text-xs space-y-1">
+                                <div><span className="text-slate-500">Category:</span> <span className="text-slate-200 font-medium">{routerCategory}</span></div>
+                                <div><span className="text-slate-500">Route:</span> <span className="text-cyan-300 font-mono text-[11px]">{routerRoute}</span></div>
+                                <div className="text-[11px] text-slate-300 italic bg-slate-900/60 p-2 rounded border border-slate-800 mt-1.5">
+                                  "{routerAck}"
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Resolver Agent */}
+                            <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-4 space-y-2">
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                                <span className="font-bold text-xs text-cyan-400 flex items-center gap-1.5">
+                                  <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+                                  🛠️ RESOLVER AGENT
+                                </span>
+                                <span className="text-[10px] font-bold text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded">
+                                  {item.resolverOutput?.resolutionStatus || 'RESOLVED'}
+                                </span>
+                              </div>
+                              <div className="text-xs space-y-1">
+                                <div><span className="text-slate-500">Diagnosis:</span> <span className="text-slate-200 leading-relaxed block">{resolverDiagnosis}</span></div>
+                                <div><span className="text-slate-500">Runbook:</span> <span className="text-cyan-400 font-medium">{resolverRunbook}</span></div>
+                                <div className="text-[11px] text-slate-300 bg-slate-900/60 p-2 rounded border border-slate-800 mt-1.5">
+                                  "{resolverNotice}"
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Knowledge Synthesizer */}
+                            <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-4 space-y-2">
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                                <span className="font-bold text-xs text-emerald-400 flex items-center gap-1.5">
+                                  <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
+                                  🧠 KNOWLEDGE SYNTHESIZER
+                                </span>
+                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded">
+                                  {synthKbId}
+                                </span>
+                              </div>
+                              <div className="text-xs space-y-1">
+                                <div><span className="text-slate-500">KB Title:</span> <span className="text-emerald-300 font-bold block line-clamp-1">{synthKbTitle}</span></div>
+                                <div><span className="text-slate-500">Fix:</span> <span className="text-slate-300 block line-clamp-2">{synthSolution}</span></div>
+                                <div className="text-[11px] text-emerald-400 bg-emerald-950/20 p-2 rounded border border-emerald-900/40 mt-1.5">
+                                  💡 <span className="font-bold">Trend:</span> {synthTrend}
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
 
                       {/* Executed CLI / SSH Payload */}
                       <div>

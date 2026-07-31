@@ -8,6 +8,7 @@ const initialCis = [
   { id: 'CI002', name: 'db-postgres-primary', ciClass: 'PostgreSQL Database', status: 'OPERATIONAL', ip: '10.240.4.88', env: 'Production', category: 'Database' },
   { id: 'CI003', name: 'router-border-nyc-01', ciClass: 'Network Router', status: 'MAINTENANCE', ip: '192.168.1.1', env: 'Production', category: 'Networking' },
   { id: 'CI004', name: 'api-gateway-envoy-v2', ciClass: 'API Gateway', status: 'OPERATIONAL', ip: '10.240.2.14', env: 'Production', category: 'Middleware' },
+  { id: 'CI005', name: 'control plane', ciClass: 'Virtual Machine', status: 'OPERATIONAL', ip: '192.168.100.101', env: 'Production', category: 'Cloud Infrastructure' },
 ];
 
 export default function CmdbPage() {

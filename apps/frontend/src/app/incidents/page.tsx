@@ -68,7 +68,7 @@ const departmentLogTemplates: Record<string, { member: string; log: string; resC
 };
 
 const callers = ['Monitoring Bot', 'Sarah Connor', 'David Miller', 'Alex Mercer', 'System Admin', 'Richard Stallman'];
-const cis = ['Unspecified CI', 'router-border-nyc-01', 'k8s-prod-cluster-east-1', 'db-postgres-primary', 'api-gateway-envoy-v2', 'vpn-gateway-01'];
+const cis = ['Unspecified CI', 'router-border-nyc-01', 'k8s-prod-cluster-east-1', 'db-postgres-primary', 'api-gateway-envoy-v2', 'vpn-gateway-01', 'control plane'];
 const technicians = ['UNASSIGNED (Unassigned)', 'Richard Stallman (Unix)', 'Sarah Connor (Network Ops)', 'Alex Mercer (App Support)', 'David Miller (Desktop Support)', 'DBA Team', 'Security Team', 'System Admin'];
 
 function generate1000InitialIncidents() {

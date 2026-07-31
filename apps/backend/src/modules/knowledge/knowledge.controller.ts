@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Param, Query, Body, UseGuards, Request } 
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { KnowledgeService } from './knowledge.service';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Knowledge Base')
 @ApiBearerAuth()
@@ -17,6 +18,7 @@ export class KnowledgeController {
     return this.knowledgeService.getStatus(tenantId);
   }
 
+  @Public()
   @Get('articles')
   @ApiOperation({ summary: 'List & Search Knowledge Base Articles' })
   @ApiQuery({ name: 'category', required: false })
@@ -49,5 +51,12 @@ export class KnowledgeController {
   async synthesizeAll(@Request() req: any) {
     const tenantId = req.user?.tenantId || 'tenant_acme_01';
     return this.knowledgeService.synthesizeAllIncidentsInBatches(tenantId);
+  }
+
+  @Public()
+  @Post('articles')
+  @ApiOperation({ summary: 'Create a new Knowledge Base Article' })
+  async createArticle(@Body() dto: any) {
+    return this.knowledgeService.createArticle(dto);
   }
 }

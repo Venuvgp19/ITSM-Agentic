@@ -7,100 +7,7 @@ generator client {
   provider = "prisma-client-js"
 }
 
-enum Priority {
-  CRITICAL
-  HIGH
-  MODERATE
-  LOW
-  PLANNING
-}
-
-enum Urgency {
-  CRITICAL
-  HIGH
-  MEDIUM
-  LOW
-}
-
-enum Impact {
-  ENTERPRISE
-  DEPARTMENT
-  TEAM
-  INDIVIDUAL
-}
-
-enum IncidentState {
-  NEW
-  IN_PROGRESS
-  ON_HOLD
-  RESOLVED
-  CLOSED
-  CANCELLED
-}
-
-enum ChangeType {
-  STANDARD
-  NORMAL
-  EMERGENCY
-}
-
-enum ChangeState {
-  DRAFT
-  ASSESS
-  AUTHORIZE
-  SCHEDULED
-  IMPLEMENTATION
-  REVIEW
-  CLOSED
-  CANCELLED
-}
-
-enum ApprovalState {
-  NOT_REQUESTED
-  REQUESTED
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
-enum TaskState {
-  OPEN
-  IN_PROGRESS
-  PENDING
-  COMPLETE
-  CLOSED_INCOMPLETE
-}
-
-enum AssetStatus {
-  IN_STOCK
-  IN_USE
-  MAINTENANCE
-  RETIRED
-  DISPOSED
-}
-
-enum CIStatus {
-  OPERATIONAL
-  NON_OPERATIONAL
-  MAINTENANCE
-  RETIRED
-}
-
-enum WorkflowStatus {
-  DRAFT
-  ACTIVE
-  INACTIVE
-  ARCHIVED
-}
-
-enum ExecutionStatus {
-  PENDING
-  RUNNING
-  PAUSED
-  COMPLETED
-  FAILED
-  CANCELLED
-}
+// Enums replaced with String for SQLite compatibility
 
 model Tenant {
   id          String   @id @default(uuid())
@@ -291,7 +198,7 @@ model ConfigurationItem {
   tenantId     String
   name         String
   ciClass      String
-  status       CIStatus   @default(OPERATIONAL)
+  status       String     @default("OPERATIONAL")
   serialNumber String?
   ipAddress    String?
   macAddress   String?
@@ -327,7 +234,7 @@ model Asset {
   category     String
   modelNumber  String?
   serialNumber String?
-  status       AssetStatus @default(IN_USE)
+  status       String      @default("IN_USE")
   purchaseDate DateTime?
   cost         Float?
   vendorName   String?
@@ -343,10 +250,10 @@ model Incident {
   number             String        @unique
   shortDescription   String
   description        String
-  state              IncidentState @default(NEW)
-  impact             Impact        @default(TEAM)
-  urgency            Urgency       @default(MEDIUM)
-  priority           Priority      @default(MODERATE)
+  state              String        @default("NEW")
+  impact             String        @default("TEAM")
+  urgency            String        @default("MEDIUM")
+  priority           String        @default("MODERATE")
   callerId           String
   assignedToId       String?
   assignmentGroupId  String?
@@ -388,7 +295,7 @@ model Problem {
   workaround       String?
   knownError       Boolean  @default(false)
   state            String   @default("NEW")
-  priority         Priority @default(MODERATE)
+  priority         String   @default("MODERATE")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -401,11 +308,11 @@ model ChangeRequest {
   number             String        @unique
   title              String
   description        String
-  changeType         ChangeType    @default(NORMAL)
-  state              ChangeState   @default(DRAFT)
-  approvalState      ApprovalState @default(NOT_REQUESTED)
+  changeType         String        @default("NORMAL")
+  state              String        @default("DRAFT")
+  approvalState      String        @default("NOT_REQUESTED")
   riskScore          Int           @default(1)
-  impact             Impact        @default(TEAM)
+  impact             String        @default("TEAM")
   requestedById      String
   assignedToId       String?
   assignmentGroupId  String?
@@ -458,8 +365,8 @@ model ServiceRequest {
   number        String        @unique
   catalogItemId String
   requestedById String
-  state         TaskState     @default(OPEN)
-  approvalState ApprovalState @default(NOT_REQUESTED)
+  state         String        @default("OPEN")
+  approvalState String        @default("NOT_REQUESTED")
   formDataJson  Json
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -494,7 +401,7 @@ model WorkflowDefinition {
   name        String
   description String?
   triggerType String         @default("EVENT")
-  status      WorkflowStatus @default(ACTIVE)
+  status      String         @default("ACTIVE")
   nodesJson   Json
   edgesJson   Json
   version     Int            @default(1)
@@ -508,7 +415,7 @@ model WorkflowDefinition {
 model WorkflowExecution {
   id           String          @id @default(uuid())
   workflowId   String
-  status       ExecutionStatus @default(PENDING)
+  status       String          @default("PENDING")
   contextJson  Json
   startedAt    DateTime        @default(now())
   completedAt  DateTime?
@@ -564,7 +471,7 @@ model Task {
   number      String    @unique
   title       String
   description String?
-  state       TaskState @default(OPEN)
+  state       String    @default("OPEN")
   assignedToId String?
   incidentId  String?
   serviceRequestId String?
@@ -581,7 +488,7 @@ model ApprovalRecord {
   id              String        @id @default(uuid())
   approverId      String
   changeRequestId String?
-  status          ApprovalState @default(REQUESTED)
+  status          String        @default("REQUESTED")
   comments        String?
   decidedAt       DateTime?
   createdAt       DateTime      @default(now())
@@ -631,4 +538,11 @@ model ApiKey {
   expiresAt DateTime?
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
+}
+
+model MasterDb {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  data      Json
+  updatedAt DateTime @updatedAt
 }

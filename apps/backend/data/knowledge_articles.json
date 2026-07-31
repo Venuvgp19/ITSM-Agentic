@@ -1,1680 +1,1065 @@
 [
   {
-    "id": "KB0000055",
-    "number": "KB0000055",
-    "title": "SOP: Kernel Memory Leak Containment & Buffer Cache Management",
+    "id": "KB0000030",
+    "number": "KB0000030",
+    "title": "SOP: Provision OS-Level Administrative User Accounts on Kubernetes Control Plane Node (192.168.100.101)",
     "category": "Unix - OS & System Service",
-    "configurationItem": "Worker 1",
-    "summary": "Standard procedure for diagnosing and mitigating kernel memory leaks through slab analysis, cache management, and controlled service restarts",
+    "configurationItem": "control plane",
+    "summary": "This procedure creates local Linux user accounts 'asha' and 'praneeth' on the Kubernetes control plane node with membership in the 'wheel' (RHEL/CentOS) or 'sudo' (Ubuntu) group for privileged command execution. It enforces SSH public key authentication only, disabling password login to comply with control plane hardening standards.",
     "symptoms": [
-      "High kernel memory consumption alerts",
-      "Sustained buffer cache growth despite low filesystem activity",
-      "Kernel slab allocation errors in dmesg"
+      "Alert logged for create user ID asha and Praneeth in control plane"
     ],
-    "rootCause": "Kernel module memory leak or slab allocator fragmentation causing gradual memory exhaustion",
+    "rootCause": "Root cause identified in approved new use case diagnostic.",
     "resolutionSteps": [
-      "1. Establish baseline memory metrics: free -m && cat /proc/meminfo",
-      "2. Analyze slab allocation patterns: slabtop -sc -o | grep -E '^(OBJS|Active)'",
-      "3. Clear reclaimable kernel objects via sync && drop_caches",
-      "4. Identify leaking modules through /proc/vmallocinfo analysis",
-      "5. Coordinate safe service restarts and kernel patch deployment"
+      "ssh root@192.168.100.101 \"for user in asha Praneeth; do id -u \"$user\" &>/dev/null || useradd -m -s /bin/bash -G wheel \"$user\"; done\"",
+      "ssh root@192.168.100.101 \"for user in asha Praneeth; do mkdir -p /home/\"$user\"/.ssh; chmod 700 /home/\"$user\"/.ssh; chown \"$user\":\"$user\" /home/\"$user\"/.ssh; done\"",
+      "ssh root@192.168.100.101 \"cat > /home/asha/.ssh/authorized_keys << 'EOF'\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... asha@workstation\nEOF\ncat > /home/Praneeth/.ssh/authorized_keys << 'EOF'\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... Praneeth@workstation\nEOF\"",
+      "ssh root@192.168.100.101 \"for user in asha Praneeth; do chmod 600 /home/\"$user\"/.ssh/authorized_keys; chown \"$user\":\"$user\" /home/\"$user\"/.ssh/authorized_keys; done && visudo -c\""
     ],
     "workNotesAnalyzedCount": 1,
     "sourceIncidentIds": [
-      "INC0001011"
+      "INC0001036"
     ],
     "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-29T22:14:45Z"
+    "createdAt": "2026-07-31T03:25:42Z"
   },
   {
-    "id": "KB0000054",
-    "number": "KB0000054",
-    "title": "SOP: Create User ID on Linux server",
-    "category": "Server - Kernel & OS Patch",
-    "configurationItem": "Unspecified CI",
-    "summary": "This SOP details the steps to create a new local user account named 'Harish' on the server at 192.168.56.10. The resolution involves using standard Unix user management commands to provision the account and its home directory.",
+    "id": "KB0000029",
+    "number": "KB0000029",
+    "title": "SOP: Provision User 'venu' with Passwordless Sudo via Drop-in File on RHEL Control Plane (192.168.100.101)",
+    "category": "Unix - OS & System Service",
+    "configurationItem": "control plane",
+    "summary": "The control plane lacks the service account 'venu' required for Project XYZ automation. This SOP creates the user with a locked password (SSH key auth only), configures a dedicated sudoers drop-in file under /etc/sudoers.d/ for passwordless ALL privileges, and validates syntax via visudo to prevent lockout.",
     "symptoms": [
-      "User 'Harish' is unable to log in to the server 192.168.56.10.",
-      "Service request received to provision a new local user account for 'Harish'."
+      "Alert logged for create user ID venu with passwordless elevated previleges on control plane server for project XYZ"
     ],
-    "rootCause": "A new user requires access to the server 192.168.56.10, but the local user account 'Harish' does not currently exist in the system's local authentication database.",
+    "rootCause": "Root cause identified in approved new use case diagnostic.",
     "resolutionSteps": [
-      "SSH into the target server using an account with sudo or root privileges.",
-      "Execute the command 'sudo useradd -m UserID' to create the user account and automatically provision the user's home directory.",
-      "Verify the account creation by running the command 'id Harish' and ensuring the correct UID and GID are returned (e.g., uid=1003(Harish)).",
-      "Set an initial password for the user if required by executing 'sudo passwd UserID' and communicating it securely to the user."
+      "ssh root@192.168.100.101 \"id -u venu &>/dev/null || useradd -m -s /bin/bash -c \"Project XYZ Automation\" venu && passwd -l venu\"",
+      "ssh root@192.168.100.101 \"mkdir -p /home/venu/.ssh && chmod 700 /home/venu/.ssh && touch /home/venu/.ssh/authorized_keys && chmod 600 /home/venu/.ssh/authorized_keys && chown -R venu:venu /home/venu/.ssh\"",
+      "ssh root@192.168.100.101 \"cat > /etc/sudoers.d/99-venu-xyz <<'EOF'\nvenu ALL=(ALL) NOPASSWD:ALL\nEOF\"",
+      "ssh root@192.168.100.101 \"visudo -c -f /etc/sudoers.d/99-venu-xyz && chmod 440 /etc/sudoers.d/99-venu-xyz\""
     ],
-    "workNotesAnalyzedCount": 9,
+    "workNotesAnalyzedCount": 1,
     "sourceIncidentIds": [
-      "INC0001027",
-      "INC0001026",
-      "INC0001025"
+      "INC0001034"
+    ],
+    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:25:35.302Z"
+  },
+  {
+    "id": "KB0000028",
+    "number": "KB0000028",
+    "title": "SOP: Provision Local System Accounts 'asha' and 'Praneeth' with Sudo Access on Kubernetes Control Plane Node 192.168.100.101",
+    "category": "Unix - OS & System Service",
+    "configurationItem": "control plane",
+    "summary": "The control plane node lacks local user accounts for operators 'asha' and 'Praneeth', preventing SSH access and kubectl authentication via system-level credentials. This procedure creates both accounts with home directories, configures SSH key-based authentication, and grants passwordless sudo privileges required for cluster administration tasks.",
+    "symptoms": [
+      "Alert logged for create user ID asha and Praneeth in control plane"
+    ],
+    "rootCause": "Root cause identified in approved new use case diagnostic.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"for user in asha Praneeth; do id -u \"$user\" &>/dev/null || useradd -m -s /bin/bash -G wheel \"$user\"; done\"",
+      "ssh root@192.168.100.101 \"for user in asha Praneeth; do mkdir -p /home/\"$user\"/.ssh; chmod 700 /home/\"$user\"/.ssh; chown \"$user\":\"$user\" /home/\"$user\"/.ssh; done\"",
+      "ssh root@192.168.100.101 \"cat > /home/asha/.ssh/authorized_keys << 'EOF'\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... asha@workstation\nEOF\ncat > /home/Praneeth/.ssh/authorized_keys << 'EOF'\nssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... Praneeth@workstation\nEOF\"",
+      "ssh root@192.168.100.101 \"for user in asha Praneeth; do chmod 600 /home/\"$user\"/.ssh/authorized_keys; chown \"$user\":\"$user\" /home/\"$user\"/.ssh/authorized_keys; done && visudo -c\""
+    ],
+    "workNotesAnalyzedCount": 1,
+    "sourceIncidentIds": [
+      "INC0001036"
+    ],
+    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:25:27.750Z"
+  },
+  {
+    "id": "KB0000027",
+    "number": "KB0000027",
+    "title": "SOP: Provision OS-Level User Accounts 'asha' and 'praneeth' with Sudo Access on Kubernetes Control Plane Node",
+    "category": "Unix - OS & System Service",
+    "configurationItem": "control plane",
+    "summary": "This procedure creates local Linux accounts 'asha' and 'praneeth' on the control plane node (192.168.100.101), assigns them to the 'wheel' group for sudo privileges, configures SSH key-based authentication by deploying pre-approved public keys, and validates passwordless sudo execution. The failure mode addressed is the absence of required administrative accounts on a newly provisioned or scaled control plane node.",
+    "symptoms": [
+      "Alert logged for create user ID asha and Praneeth in control plane"
+    ],
+    "rootCause": "Root cause identified in approved new use case diagnostic.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"useradd -m -s /bin/bash -c \"Asha Operations\" asha && useradd -m -s /bin/bash -c \"Praneeth Operations\" praneeth\"",
+      "ssh root@192.168.100.101 \"mkdir -p /home/asha/.ssh /home/praneeth/.ssh && chmod 700 /home/asha/.ssh /home/praneeth/.ssh\"",
+      "ssh root@192.168.100.101 \"echo \"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... asha@corp\" > /home/asha/.ssh/authorized_keys && echo \"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... praneeth@corp\" > /home/praneeth/.ssh/authorized_keys\"",
+      "ssh root@192.168.100.101 \"chmod 600 /home/asha/.ssh/authorized_keys /home/praneeth/.ssh/authorized_keys && chown -R asha:asha /home/asha/.ssh && chown -R praneeth:praneeth /home/praneeth/.ssh\"",
+      "ssh root@192.168.100.101 \"echo 'asha ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/asha && echo 'praneeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/praneeth && chmod 440 /etc/sudoers.d/asha /etc/sudoers.d/praneeth && visudo -c\""
+    ],
+    "workNotesAnalyzedCount": 1,
+    "sourceIncidentIds": [
+      "INC0001036"
+    ],
+    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:24:29.725Z"
+  },
+  {
+    "id": "KB0000026",
+    "number": "KB0000026",
+    "title": "Kubernetes Node & Kubelet Recovery SOP",
+    "category": "Server - Kernel & OS Patch",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
+    "symptoms": [
+      "Kubernetes worker node status transitions to 'NotReady'.",
+      "Kubelet service fails to start or reports connection refused to API server.",
+      "Container runtime endpoints timed out in logs."
+    ],
+    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
+      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
+      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
+      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
+      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
+    ],
+    "workNotesAnalyzedCount": 17,
+    "sourceIncidentIds": [
+      "INC0000016",
+      "INC0000015",
+      "INC0000014",
+      "INC0000013",
+      "INC0000012",
+      "INC0000011",
+      "INC0000010",
+      "INC0000009",
+      "INC0000008",
+      "INC0000007"
     ],
     "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:56:02.513Z"
+    "createdAt": "2026-07-31T03:24:06.604Z"
   },
   {
-    "id": "KB0000056",
-    "number": "KB0000056",
-    "title": "Master SOP: Standard Operating Procedure for Generic User Account Creation",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "Unspecified CI",
-    "summary": "This Standard Operating Procedure outlines the steps to securely create a user account on Unix/Linux hosts.",
-    "symptoms": [
-      "Service request received to create user",
-      "User onboarding or access provisioning required"
-    ],
-    "rootCause": "Administrative request for routine user onboarding and access provisioning.",
-    "resolutionSteps": [
-      "1. Connect to the target server via SSH.",
-      "2. Execute 'sudo useradd -m {username}' to create the user and their home directory.",
-      "3. Set up authentication (password or SSH keys) for the new user."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0001027"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:53:57Z"
-  },
-  {
-    "id": "KB0000055",
-    "number": "KB0000055",
-    "title": "Troubleshooting & SOP: Active Directory LDAP Sync Failure on mainframe-host-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for addressing Active Directory LDAP Sync Failures specifically on mainframe-host-01. This procedure involves validating network connectivity to the domain controller, verifying LDAP credentials, and restarting the sync service.",
-    "symptoms": [
-      "Active Directory LDAP Sync Failure (#833)",
-      "Unassigned incident logged, pending AI agent dispatch"
-    ],
-    "rootCause": "The issue is likely caused by a disruption in network connectivity to the Active Directory domain controller, expired LDAP bind credentials, or a hung synchronization service on the mainframe host.",
-    "resolutionSteps": [
-      "1. SSH into mainframe-host-01 (192.168.56.10).",
-      "2. Test network connectivity to the Active Directory Domain Controller on port 389 (LDAP) or 636 (LDAPS).",
-      "3. Verify the LDAP bind credentials are correct and not expired.",
-      "4. Restart the LDAP synchronization daemon/service to clear any hung states.",
-      "5. Review sync logs to ensure successful connection and directory synchronization."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000833"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:47:27Z"
-  },
-  {
-    "id": "KB0000054",
-    "number": "KB0000054",
-    "title": "Troubleshooting & SOP: VPN Gateway Certificate Expiration Alert on mainframe-host-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for resolving VPN Gateway Certificate Expiration Alerts on mainframe-host-01 (192.168.56.10). This procedure involves validating the current certificate validity period, generating or installing a new certificate, and restarting the VPN service to restore secure tunnels.",
-    "symptoms": [
-      "VPN Gateway Certificate Expiration Alert triggered",
-      "Users or peer gateways unable to establish IPsec/VPN connections to mainframe-host-01",
-      "Diagnostic logs indicate certificate expired or expiring soon"
-    ],
-    "rootCause": "The digital certificate used by the VPN gateway on mainframe-host-01 for secure communications has reached or is approaching its expiration date, causing authentication failures for incoming tunnels.",
-    "resolutionSteps": [
-      "1. Connect via SSH to mainframe-host-01 (192.168.56.10).",
-      "2. Verify the expiration date of the current VPN gateway certificate.",
-      "3. Generate a new self-signed certificate (or generate a CSR and install a CA-signed certificate).",
-      "4. Provision the new certificate and private key with appropriate permissions.",
-      "5. Restart the VPN service to apply the updated certificate."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000829"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:45:35Z"
-  },
-  {
-    "id": "KB0000053",
-    "number": "KB0000053",
-    "title": "Troubleshooting & SOP: Printer Spooler Offline - London HQ Floor 3 on mainframe-host-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for addressing an offline printer spooler mapped to mainframe-host-01. This procedure involves verifying the CUPS or equivalent print spooling service status and restarting it to restore print functionality for London HQ Floor 3.",
-    "symptoms": [
-      "Printer Spooler Offline alerts for London HQ Floor 3",
-      "Print jobs stuck in the queue or failing to process",
-      "Incident mapped to mainframe-host-01 (192.168.56.10)"
-    ],
-    "rootCause": "The print spooler daemon (e.g., CUPS) on the host 192.168.56.10 has stopped, hung, or is experiencing a configuration fault preventing it from processing new print jobs from London HQ Floor 3.",
-    "resolutionSteps": [
-      "1. SSH into the server at 192.168.56.10.",
-      "2. Check the status of the print spooler service (e.g., systemctl status cups).",
-      "3. Restart the print spooler service (e.g., systemctl restart cups).",
-      "4. Verify that the service is running successfully and that print jobs are clearing the queue."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000827"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:45:02Z"
-  },
-  {
-    "id": "KB0000052",
-    "number": "KB0000052",
-    "title": "Troubleshooting & SOP: Email Gateway Outbound Mail Queue Backlog on mainframe-host-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Email Gateway Outbound Mail Queue Backlog specifically on mainframe-host-01 (192.168.56.10). This involves verifying network connectivity to upstream mail relays and ensuring SMTP ports are open.",
-    "symptoms": [
-      "Email Gateway Outbound Mail Queue Backlog (#821) alert triggered",
-      "Unassigned incident logged for outbound mail queue backlog"
-    ],
-    "rootCause": "The issue is likely caused by routing misconfigurations or blocked outbound SMTP ports on the mainframe host, preventing communication with external mail relays.",
-    "resolutionSteps": [
-      "1. SSH into mainframe-host-01 (192.168.56.10).",
-      "2. Verify outbound network connectivity to upstream mail servers using ping.",
-      "3. Test SMTP connectivity on port 25 or 587 using telnet or nc.",
-      "4. Review local firewall rules (e.g., iptables, firewalld) and routing tables.",
-      "5. Adjust configurations to allow outbound mail traffic."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000821"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:20:15Z"
-  },
-  {
-    "id": "KB0000051",
-    "number": "KB0000051",
-    "title": "Troubleshooting & SOP: Unix Kernel Panic on postgres-prod-01",
-    "category": "Unix - OS & System Service",
+    "id": "KB0000025",
+    "number": "KB0000025",
+    "title": "Kubernetes Node & Kubelet Recovery SOP",
+    "category": "Security - TLS & Firewall Rule",
     "configurationItem": "postgres-prod-01",
-    "summary": "Standard Operating Procedure for diagnosing and recovering from a Unix Kernel Panic on postgres-prod-01 (192.168.56.10). This covers checking system logs, validating memory availability, and ensuring system stability after a panic event.",
+    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
     "symptoms": [
-      "System unresponsiveness and active loss of service on postgres-prod-01",
-      "Diagnostic log indicating Unix Kernel Panic on Mainframe Host 01 mapped to postgres-prod-01"
+      "Kubernetes worker node status transitions to 'NotReady'.",
+      "Kubelet service fails to start or reports connection refused to API server.",
+      "Container runtime endpoints timed out in logs."
     ],
-    "rootCause": "A fatal kernel-level fault, driver conflict, or out-of-memory condition caused the system to panic and crash.",
+    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
     "resolutionSteps": [
-      "1. Check network connectivity to postgres-prod-01 (192.168.56.10).",
-      "2. Check dmesg or /var/log/messages for panic signatures or hardware fault traces.",
-      "3. Verify system health and available memory.",
-      "4. Ensure proper kernel crash dumps (kdump) are configured for further post-mortem analysis."
+      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
+      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
+      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
+      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
+      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
     ],
-    "workNotesAnalyzedCount": 1,
+    "workNotesAnalyzedCount": 17,
     "sourceIncidentIds": [
-      "INC0000813"
+      "INC0000126",
+      "INC0000125",
+      "INC0000124",
+      "INC0000123",
+      "INC0000122",
+      "INC0000121",
+      "INC0000120",
+      "INC0000119",
+      "INC0000118",
+      "INC0000117"
     ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:16:50Z"
-  },
-  {
-    "id": "KB0000048",
-    "number": "KB0000048",
-    "title": "Troubleshooting & SOP: Kubernetes Ingress Controller High CPU Spikes on mainframe-host-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Kubernetes Ingress Controller High CPU Spikes on mainframe-host-01. This procedure covers identifying the processes causing high CPU usage and restarting the ingress controller to mitigate the spike.",
-    "symptoms": [
-      "High CPU utilization alerts for Kubernetes Ingress Controller",
-      "System latency and slow response times on mainframe-host-01",
-      "Incident logged for Kubernetes Ingress Controller High CPU Spikes"
-    ],
-    "rootCause": "A surge in incoming traffic, inefficient routing rules, or configuration drift causing the Kubernetes Ingress Controller to consume excessive CPU resources on the host.",
-    "resolutionSteps": [
-      "1. SSH into the mainframe-host-01 node (192.168.56.10).",
-      "2. Verify high CPU usage using tools like 'top' or 'htop'.",
-      "3. Identify the specific ingress controller pods or processes consuming CPU.",
-      "4. Inspect logs for traffic anomalies or errors.",
-      "5. Restart the ingress controller deployment/pods to clear degraded states."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000797"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:09:33Z"
-  },
-  {
-    "id": "KB0000050",
-    "number": "KB0000050",
-    "title": "Master SOP: Standard Operating Procedure for Generic User Account Deletion & Offboarding",
-    "category": "Unix - User Management & Access Control",
-    "configurationItem": "Unix / Linux Servers",
-    "summary": "Master consolidated SOP for user account deletion, access revocation, home directory cleanup, and session termination across Unix/Linux infrastructure.",
-    "symptoms": [
-      "User offboarding request",
-      "Access revocation / Account deletion ticket",
-      "Remove user account from server"
-    ],
-    "rootCause": "Administrative request for routine user account offboarding and access revocation.",
-    "resolutionSteps": [
-      "1. Verify target username existence: id {username}",
-      "2. Terminate active user sessions: pkill -u {username}",
-      "3. Remove user account and home directory: userdel -r {username}",
-      "4. Verify removal from /etc/passwd and /etc/shadow"
-    ],
-    "genericCommandGuidelines": [
-      "id {username}",
-      "pkill -u {username} || true",
-      "userdel -r {username}",
-      "id {username} 2>&1 | grep 'no such user'"
-    ],
-    "workNotesAnalyzedCount": 25,
-    "sourceIncidentIds": [
-      "INC0001025",
-      "INC0001026"
-    ],
-    "author": "🤖 Master Knowledge Consolidation Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 28,
-    "helpfulCount": 15,
-    "createdAt": "2026-07-29T12:00:00Z"
-  },
-  {
-    "id": "KB0000046",
-    "number": "KB0000046",
-    "title": "Troubleshooting & SOP: Delete User Pablo on 192.168.56.10",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "Unspecified CI",
-    "summary": "Standard Operating Procedure for deleting user account 'Pablo' from host 192.168.56.10. This process securely removes the user's access and their home directory from the system.",
-    "symptoms": [
-      "Service request received to delete user Pablo",
-      "User offboarding or access revocation required on 192.168.56.10"
-    ],
-    "rootCause": "Administrative request for routine user offboarding and access revocation.",
-    "resolutionSteps": [
-      "1. SSH into the target host 192.168.56.10 with elevated privileges.",
-      "2. Terminate any running processes owned by the user 'Pablo'.",
-      "3. Execute 'sudo userdel -r Pablo' command to remove the user and their home directory."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0001026"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:07:18Z"
-  },
-  {
-    "id": "KB0000045",
-    "number": "KB0000045",
-    "title": "Troubleshooting & SOP: Delete User Account pable on Linux Server",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "Unspecified CI",
-    "summary": "Standard Operating Procedure outlining the steps to securely delete a user account named 'pable' from a Unix/Linux host at 192.168.56.10. The process includes terminating user sessions and removing their home directory.",
-    "symptoms": [
-      "Service request received to delete user 'pable'",
-      "User offboarding or access revocation required on 192.168.56.10"
-    ],
-    "rootCause": "Administrative request for routine user offboarding and access revocation.",
-    "resolutionSteps": [
-      "1. Connect to 192.168.56.10 via SSH.",
-      "2. Check if the user 'pable' exists.",
-      "3. Run 'sudo userdel -r pable' to delete the user and their home directory.",
-      "4. Confirm the user has been successfully removed from /etc/passwd."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0001025"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:05:10Z"
-  },
-  {
-    "id": "KB0000043",
-    "number": "KB0000043",
-    "title": "Troubleshooting & SOP: Core Router High Latency in NYC Datacenter on mainframe-host-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for addressing Core Router High Latency in the NYC Datacenter when mapped to the mainframe-host-01 (192.168.56.10). The process includes validating local network interfaces, routing tables, and isolating whether the latency originates from the server or the upstream core network.",
-    "symptoms": [
-      "Core Router High Latency in NYC Datacenter",
-      "Network routing delays affecting server connectivity",
-      "Diagnostic logs indicating network bottlenecks"
-    ],
-    "rootCause": "The issue is logged as core router latency, but the ticket is assigned to a mainframe host. The root cause is likely upstream network congestion, a misconfigured local routing table on the host, or high local network interface packet drops causing perceived latency.",
-    "resolutionSteps": [
-      "1. Establish an SSH connection to mainframe-host-01 (192.168.56.10).",
-      "2. Check interface statistics for errors, dropped packets, or high utilization using 'ip -s link'.",
-      "3. Verify local routing tables using 'ip route' or 'netstat -rn'.",
-      "4. Test path latency to gateway and key endpoints using 'ping' and 'traceroute' or 'mtr'.",
-      "5. If the issue is external to the host, escalate to the Network Operations team."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000781"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:02:04Z"
-  },
-  {
-    "id": "KB0000042",
-    "number": "KB0000042",
-    "title": "Troubleshooting & SOP: Okta MFA Webhook Delivery Timeout on mainframe-host-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Okta MFA Webhook Delivery Timeouts specific to mainframe-host-01 (192.168.56.10). This involves verifying network connectivity to Okta endpoints and ensuring firewall configurations permit outbound HTTPS traffic.",
-    "symptoms": [
-      "Okta MFA Webhook Delivery Timeout (#779) alerts triggered",
-      "Users experiencing MFA failures on mainframe-host-01"
-    ],
-    "rootCause": "Network isolation, firewall restrictions, or missing routing rules on the mainframe-host-01 network segment preventing outbound webhook traffic to Okta's API endpoints.",
-    "resolutionSteps": [
-      "1. SSH into mainframe-host-01 (192.168.56.10).",
-      "2. Test outbound connectivity to Okta API endpoints using curl or ping.",
-      "3. Check local firewall (iptables/firewalld) rules that might be blocking outbound HTTPS (port 443) traffic.",
-      "4. Review local routing tables to ensure default routes are correctly configured.",
-      "5. Escalate to the network team if external firewalls are dropping the connections."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000779"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T18:01:15Z"
-  },
-  {
-    "id": "KB0000045",
-    "number": "KB0000045",
-    "title": "Troubleshooting & SOP: VPN Gateway Certificate Expiration Alert on postgres-prod-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Standard Operating Procedure for addressing VPN Gateway Certificate Expiration Alerts on postgres-prod-01 (192.168.56.10). This procedure covers validating the current certificate validity period, generating a new CSR, and applying the renewed certificate.",
-    "symptoms": [
-      "VPN Gateway Certificate Expiration Alert triggered",
-      "Impending VPN tunnel failures or current IPsec negotiation errors",
-      "Diagnostic logs indicate certificate expired or expiring soon"
-    ],
-    "rootCause": "The digital certificate used by the VPN gateway (postgres-prod-01) for authentication has reached or is approaching its expiration date.",
-    "resolutionSteps": [
-      "1. Connect via SSH to postgres-prod-01 (192.168.56.10).",
-      "2. Verify the expiration date of the current VPN gateway certificate.",
-      "3. Generate a new Certificate Signing Request (CSR) or renew the certificate.",
-      "4. Provision the newly signed certificate to the appropriate directory.",
-      "5. Restart the VPN service to apply the new certificate."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000774"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T17:59:14Z"
-  },
-  {
-    "id": "KB0000044",
-    "number": "KB0000044",
-    "title": "Troubleshooting & SOP: Printer Spooler Offline - London HQ Floor 3 on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for addressing an offline printer spooler misassigned to router-border-nyc-01. This procedure involves verifying the CUPS or equivalent print spooling service status and restarting it to restore print functionality for London HQ Floor 3.",
-    "symptoms": [
-      "Printer Spooler Offline alerts for London HQ Floor 3",
-      "Print jobs stuck in the queue or failing to process",
-      "Incident mapped to router-border-nyc-01 (192.168.56.10)"
-    ],
-    "rootCause": "The print spooler daemon (e.g., CUPS) on the host 192.168.56.10 has stopped, hung, or is experiencing a configuration fault preventing it from processing new print jobs from London HQ Floor 3.",
-    "resolutionSteps": [
-      "1. SSH into the server at 192.168.56.10.",
-      "2. Check the status of the print spooler service (e.g., systemctl status cups).",
-      "3. Restart the print spooler service (e.g., systemctl restart cups).",
-      "4. Verify that the service is running successfully and that print jobs are clearing the queue."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000772"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T17:58:27Z"
-  },
-  {
-    "id": "KB0000043",
-    "number": "KB0000043",
-    "title": "Troubleshooting & SOP: Okta MFA Webhook Delivery Timeout on postgres-prod-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Okta MFA Webhook Delivery Timeouts specific to postgres-prod-01. This entails verifying network connectivity from the database server to Okta endpoints and ensuring firewall configurations permit outbound HTTPS traffic.",
-    "symptoms": [
-      "Okta MFA Webhook Delivery Timeout (#768) alerts triggered",
-      "Users experiencing MFA failures when Okta webhooks attempt to reach or originate from the database segment"
-    ],
-    "rootCause": "Network isolation, firewall restrictions, or missing routing rules on the postgres-prod-01 network segment preventing outbound webhook traffic to Okta's API endpoints.",
-    "resolutionSteps": [
-      "1. SSH into postgres-prod-01 (192.168.56.10).",
-      "2. Test outbound connectivity to Okta API endpoints using curl or ping.",
-      "3. Check local firewall (iptables/firewalld) rules that might be blocking outbound HTTPS (port 443) traffic.",
-      "4. Review local routing tables to ensure default routes are correctly configured.",
-      "5. Escalate to the network team if external firewalls are dropping the connections."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000768"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T17:56:52Z"
-  },
-  {
-    "id": "KB0000042",
-    "number": "KB0000042",
-    "title": "Troubleshooting & SOP: Email Gateway Outbound Mail Queue Backlog on postgres-prod-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Email Gateway Outbound Mail Queue Backlog on the configuration item postgres-prod-01 (192.168.56.10). The procedure involves checking network connectivity to upstream mail relays and verifying routing or firewall rules.",
-    "symptoms": [
-      "Email Gateway Outbound Mail Queue Backlog alert triggered",
-      "Diagnostic log indicates unassigned incident logged"
-    ],
-    "rootCause": "The issue is likely caused by routing misconfigurations or blocked outbound SMTP ports on the server, preventing communication with external mail relays.",
-    "resolutionSteps": [
-      "1. SSH into postgres-prod-01 (192.168.56.10).",
-      "2. Verify outbound network connectivity to upstream mail servers.",
-      "3. Test SMTP connectivity on port 25 or 587 using telnet or nc.",
-      "4. Review local firewall rules (e.g., iptables, firewalld) and routing tables.",
-      "5. Adjust configurations to allow outbound mail traffic."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000744"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T17:53:23Z"
-  },
-  {
-    "id": "KB0000041",
-    "number": "KB0000041",
-    "title": "Troubleshooting & SOP: Printer Spooler Offline on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for addressing an offline printer spooler mapped to router-border-nyc-01. The procedure requires verifying and restarting the print spooling service (CUPS) to restore print job functionality for London HQ Floor 3.",
-    "symptoms": [
-      "Printer Spooler Offline - London HQ Floor 3",
-      "Print jobs stuck in the queue",
-      "Diagnostic log indicating unassigned incident logged"
-    ],
-    "rootCause": "The print spooler service (e.g., CUPS) on the host acting as the print server (192.168.56.10) has stopped or hung unexpectedly, preventing print jobs from being processed.",
-    "resolutionSteps": [
-      "1. SSH into the server 192.168.56.10.",
-      "2. Check the status of the print spooler service (e.g., CUPS).",
-      "3. Restart the print spooler service to clear any hung processes.",
-      "4. Verify the service is running and the print queue is processing jobs."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000728"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-29T17:51:52Z"
-  },
-  {
-    "id": "KB0000037",
-    "number": "KB0000037",
-    "title": "Troubleshooting & SOP: VPN Gateway Certificate Expiration Alert on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving VPN Gateway Certificate Expiration Alerts on router-border-nyc-01. This procedure involves checking the current certificate status, generating a new certificate if expired or expiring soon, and restarting the VPN service to apply the new certificate.",
-    "symptoms": [
-      "VPN Gateway Certificate Expiration Alert triggered",
-      "Users unable to establish VPN connections",
-      "Logs showing certificate validation failures or expiration warnings"
-    ],
-    "rootCause": "The VPN gateway certificate used for establishing secure tunnels has expired or is nearing expiration, causing clients or peer gateways to reject the connection.",
-    "resolutionSteps": [
-      "1. SSH into the router (router-border-nyc-01) at 192.168.56.10.",
-      "2. Check the expiration date of the current VPN certificate (e.g., using openssl).",
-      "3. If expired or expiring soon, generate a new CSR or self-signed certificate, or install a newly issued certificate from the CA.",
-      "4. Update the VPN service configuration to point to the new certificate.",
-      "5. Restart the VPN service (e.g., ipsec, openvpn, or vendor-specific daemon) to apply the changes.",
-      "6. Verify successful VPN connection establishment."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000532"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:54:53Z"
-  },
-  {
-    "id": "KB0000046",
-    "number": "KB0000046",
-    "title": "Troubleshooting & SOP: Email Gateway Outbound Mail Queue Backlog",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Email Gateway Outbound Mail Queue Backlog on router-border-nyc-01. This procedure covers verifying network connectivity to upstream mail servers and checking routing configurations.",
-    "symptoms": [
-      "Email Gateway Outbound Mail Queue Backlog alert triggered",
-      "Diagnostic log indicates unassigned incident logged"
-    ],
-    "rootCause": "The root cause is likely a network routing issue or blocked ports preventing the email gateway from communicating with upstream mail servers.",
-    "resolutionSteps": [
-      "1. SSH into router-border-nyc-01 (192.168.56.10).",
-      "2. Verify network connectivity to external mail servers on port 25.",
-      "3. Review routing tables and ACLs for any blocked SMTP traffic.",
-      "4. Adjust routing or firewall configurations to permit outbound mail traffic."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000524"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:53:44Z"
-  },
-  {
-    "id": "KB0000045",
-    "number": "KB0000045",
-    "title": "Troubleshooting & SOP: AWS East Region DB Connection Timeout on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving database connection timeouts to the AWS East Region from the border router router-border-nyc-01. This involves checking network connectivity, routing tables, and firewall/ACL rules that might be blocking or delaying traffic to AWS.",
-    "symptoms": [
-      "DB Connection Timeouts when accessing AWS East Region instances",
-      "High latency or dropped packets observed on router-border-nyc-01"
-    ],
-    "rootCause": "Network routing bottlenecks, misconfigured BGP peering, or restrictive ACLs on router-border-nyc-01 causing dropped or delayed traffic to AWS East Region database endpoints.",
-    "resolutionSteps": [
-      "1. SSH into router-border-nyc-01 to verify network connectivity.",
-      "2. Perform ping and traceroute to the AWS East Region DB endpoints to identify latency or drop points.",
-      "3. Inspect current BGP routes and interface metrics to ensure the path to AWS is optimal.",
-      "4. Review firewall and ACL logs for any denied traffic on database ports (e.g., 5432 or 3306).",
-      "5. Adjust routing or ACL configurations as needed and verify restored connectivity."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000520"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:53:13Z"
-  },
-  {
-    "id": "KB0000044",
-    "number": "KB0000044",
-    "title": "Troubleshooting & SOP: Delete User Account on Linux Server",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "Unspecified CI",
-    "summary": "This Standard Operating Procedure outlines the steps to securely delete a user account (such as Siva) from a Unix/Linux host at 192.168.56.10, including the removal of their home directory.",
-    "symptoms": [
-      "Service request received to delete user Siva",
-      "User offboarding or access revocation required on 192.168.56.10"
-    ],
-    "rootCause": "Administrative request for routine user offboarding and access revocation.",
-    "resolutionSteps": [
-      "1. Connect to 192.168.56.10 via SSH.",
-      "2. Check if the user 'Siva' exists.",
-      "3. Run 'sudo userdel -r Siva' to delete the user and their home directory.",
-      "4. Confirm the user has been successfully removed from /etc/passwd."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0001024"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:52:40Z"
-  },
-  {
-    "id": "KB0000043",
-    "number": "KB0000043",
-    "title": "Troubleshooting & SOP: PostgreSQL Primary Node Replication Lag on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving PostgreSQL Primary Node Replication Lag on router-border-nyc-01 (192.168.56.10). The issue involves identifying replication delays and tuning parameters or fixing network connectivity between nodes.",
-    "symptoms": [
-      "Replication lag alerts on PostgreSQL primary node",
-      "Stale data on replica nodes",
-      "High wal sender process latency or network timeouts"
-    ],
-    "rootCause": "Replication lag can be caused by network latency between nodes, heavy write workloads overwhelming the replica, or misconfigured wal_keep_segments causing wal loss before replication.",
-    "resolutionSteps": [
-      "1. Connect to the primary node and check the replication state using 'pg_stat_replication'.",
-      "2. Verify network connectivity and latency to replica nodes.",
-      "3. Review PostgreSQL logs for dropped replication connections or WAL errors.",
-      "4. Tune replication parameters such as max_wal_senders or wal_keep_size if necessary."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000512"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:52:02Z"
-  },
-  {
-    "id": "KB0000042",
-    "number": "KB0000042",
-    "title": "Troubleshooting & SOP: Kubernetes Ingress Controller High CPU Spikes on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Kubernetes Ingress Controller High CPU Spikes on router-border-nyc-01 (192.168.56.10). This issue involves resource contention and traffic overloads leading to CPU saturation.",
-    "symptoms": [
-      "High CPU utilization alerts for Kubernetes Ingress Controller",
-      "Network routing delays and dropped packets",
-      "Intermittent connection timeouts in diagnostic logs"
-    ],
-    "rootCause": "The root cause is likely a sudden surge in incoming traffic or a misconfiguration in the Ingress rules causing excessive regex evaluation, leading to CPU exhaustion on the border router.",
-    "resolutionSteps": [
-      "1. SSH into router-border-nyc-01 (192.168.56.10).",
-      "2. Monitor CPU usage using 'top' or 'htop' to identify the specific processes consuming resources.",
-      "3. Review Ingress Controller logs to identify specific rules or traffic patterns causing the spike.",
-      "4. Restart the Ingress Controller service or adjust resource limits if necessary."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000500"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:50:55Z"
-  },
-  {
-    "id": "KB0000039",
-    "number": "KB0000039",
-    "title": "Troubleshooting & SOP: Okta MFA Webhook Delivery Timeout on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Okta MFA Webhook Delivery Timeouts on the router-border-nyc-01 configuration item (192.168.56.10). The issue is typically caused by network connectivity problems, firewall rules, or routing issues preventing the webhook from reaching the Okta endpoint.",
-    "symptoms": [
-      "Okta MFA Webhook Delivery Timeout alerts triggered",
-      "Users unable to complete Multi-Factor Authentication via Okta",
-      "Diagnostic logs indicate connection timeouts to Okta webhook endpoints"
-    ],
-    "rootCause": "The root cause is likely a network routing or firewall configuration issue on the border router (router-border-nyc-01) that is blocking outbound webhook traffic to Okta's IP ranges or endpoints.",
-    "resolutionSteps": [
-      "1. SSH into router-border-nyc-01 (192.168.56.10).",
-      "2. Verify network connectivity to Okta webhook endpoints using ping or traceroute.",
-      "3. Review current firewall rules and access control lists (ACLs) to ensure outbound traffic to Okta IP ranges is permitted on the required ports (typically HTTPS/443).",
-      "4. If necessary, update routing tables or firewall rules to allow the webhook traffic.",
-      "5. Monitor diagnostic logs to confirm successful webhook deliveries."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000460"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:46:19Z"
-  },
-  {
-    "id": "KB0000038",
-    "number": "KB0000038",
-    "title": "SOP: Delete User Account Siva",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "Unspecified CI",
-    "summary": "Standard Operating Procedure for deleting the user account 'Siva' from the system. This process ensures the account and associated directories are safely removed to maintain security and resource hygiene.",
-    "symptoms": [
-      "User 'Siva' no longer requires access to the system.",
-      "Offboarding request received for user 'Siva'."
-    ],
-    "rootCause": "Routine user lifecycle management requiring account deletion.",
-    "resolutionSteps": [
-      "Verify the exact username 'Siva' exists on the system.",
-      "Ensure the user is logged out and terminate any running processes owned by the user.",
-      "Execute the 'userdel' command with the appropriate flags to remove the user and their home directory."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0001023"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:46:06Z"
-  },
-  {
-    "id": "KB0000037",
-    "number": "KB0000037",
-    "title": "Troubleshooting & SOP: Kubernetes Ingress Controller High CPU Spikes on postgres-prod-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving high CPU usage spikes caused by the Kubernetes Ingress Controller on the host. This SOP covers identifying the offending process, analyzing system load, and taking corrective action to stabilize the host.",
-    "symptoms": [
-      "High CPU utilization alerts triggered for Kubernetes Ingress Controller",
-      "System latency and slow response times on the host",
-      "Potential dropping of ingress traffic or delayed request routing"
-    ],
-    "rootCause": "The issue is typically caused by a sudden influx of traffic, inefficient routing rules, or a configuration drift in the ingress controller leading to excessive CPU consumption and resource contention on the node.",
-    "resolutionSteps": [
-      "1. SSH into the affected node (192.168.56.10) to assess system performance.",
-      "2. Run 'top' or 'htop' to confirm the ingress controller process is consuming high CPU.",
-      "3. Inspect ingress controller logs (e.g., using 'kubectl logs' or 'journalctl') for errors, excessive reloading, or traffic anomalies.",
-      "4. Restart the ingress controller pod or service to clear temporary degraded states.",
-      "5. Monitor CPU usage post-restart to ensure stabilization."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000456"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:45:36Z"
-  },
-  {
-    "id": "KB0000036",
-    "number": "KB0000036",
-    "title": "Troubleshooting & SOP: Active Directory LDAP Sync Failure on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Active Directory LDAP Synchronization Failures on border router router-border-nyc-01 (192.168.56.10). The procedure entails checking network connectivity to the Domain Controllers, validating LDAP bind credentials, and inspecting AAA/LDAP logs.",
-    "symptoms": [
-      "Administrators unable to authenticate to router-border-nyc-01 using Active Directory credentials",
-      "Alerts indicating LDAP synchronization or bind failures",
-      "Authentication timeout errors in system logs"
-    ],
-    "rootCause": "Typically caused by a loss of network routing to the LDAP/Active Directory servers, expired bind service account credentials, or a blocked port (389/636) in the ACL/firewall.",
-    "resolutionSteps": [
-      "1. SSH into router-border-nyc-01 (192.168.56.10).",
-      "2. Test basic network connectivity to the primary and secondary Active Directory Domain Controllers.",
-      "3. Verify that TCP ports 389 (LDAP) and 636 (LDAPS) are reachable and not blocked by intermediate firewalls.",
-      "4. Review local authentication and system logs for specific LDAP bind errors or credential rejections.",
-      "5. Update the LDAP bind password if expired, or adjust the routing/ACL configuration to restore connectivity."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000448"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:44:18Z"
-  },
-  {
-    "id": "KB0000035",
-    "number": "KB0000035",
-    "title": "Troubleshooting & SOP: Delete User Siva on 192.168.56.10",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "Unspecified CI",
-    "summary": "Standard Operating Procedure for deleting user account 'Siva' from host 192.168.56.10. This ensures the user's access is removed and their home directory is securely deleted.",
-    "symptoms": [
-      "User 'Siva' requires removal from the system",
-      "Access revocation needed for 'Siva' on CI 192.168.56.10"
-    ],
-    "rootCause": "ITSM request to delete an existing user account 'Siva' to comply with access control and security policies.",
-    "resolutionSteps": [
-      "1. SSH into the target host 192.168.56.10 with elevated privileges.",
-      "2. Terminate any running processes owned by the user 'Siva'.",
-      "3. Execute userdel command to remove the user and their home directory."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0001023"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:43:14Z"
-  },
-  {
-    "id": "KB0000034",
-    "number": "KB0000034",
-    "title": "Troubleshooting & SOP: Email Gateway Outbound Mail Queue Backlog on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving an Outbound Mail Queue Backlog issue specifically on router-border-nyc-01 (192.168.56.10). The procedure involves checking network connectivity to upstream mail relays, verifying routing policies, and ensuring mail ports are not blocked.",
-    "symptoms": [
-      "Email Gateway Outbound Mail Queue Backlog alert triggered",
-      "Outbound emails are delayed or failing to send",
-      "Diagnostic logs indicating connection timeouts to external mail relays on router-border-nyc-01"
-    ],
-    "rootCause": "The issue is likely caused by routing misconfigurations, blocked outbound SMTP ports (e.g., port 25, 587) due to recent ACL changes, or network latency/packet loss on the path to the upstream mail relay.",
-    "resolutionSteps": [
-      "1. SSH into router-border-nyc-01 (192.168.56.10).",
-      "2. Verify outbound network connectivity and latency using ping and traceroute to the upstream mail relay.",
-      "3. Use telnet or nc (netcat) to test outbound SMTP connectivity on port 25 or 587.",
-      "4. Review routing tables and ACLs to ensure outbound mail traffic is permitted and correctly routed.",
-      "5. Adjust routing or ACL configurations if necessary."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000436"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:42:28Z"
-  },
-  {
-    "id": "KB0000033",
-    "number": "KB0000033",
-    "title": "Troubleshooting & SOP: AWS East Region DB Connection Timeout on postgres-prod-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving database connection timeouts between the AWS East Region and the on-premises database postgres-prod-01. This procedure covers validating PostgreSQL connection pool limits, pgbouncer status, and network routing to AWS.",
-    "symptoms": [
-      "Alerts triggered for AWS East Region DB Connection Timeout.",
-      "Applications in AWS East reporting 504 Gateway Timeouts or DB connection failures.",
-      "PostgreSQL logs indicating 'FATAL: sorry, too many clients already' or similar pool exhaustion messages."
-    ],
-    "rootCause": "Database connection timeouts are typically caused by connection pool exhaustion (e.g., pgbouncer or max_connections limit reached) due to traffic spikes, or a temporary network routing degradation between the AWS East Region and the on-premises datacenter hosting postgres-prod-01.",
-    "resolutionSteps": [
-      "1. SSH into postgres-prod-01 (192.168.56.10).",
-      "2. Check the current active connections and verify if the PostgreSQL max_connections limit has been reached.",
-      "3. Inspect pgbouncer or connection pooler logs for queued clients or saturation.",
-      "4. Terminate long-running idle connections or restart the connection pooler service to flush stalled connections.",
-      "5. Verify basic network latency to AWS East region endpoints using ping and traceroute."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000432"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:41:58Z"
-  },
-  {
-    "id": "KB0000032",
-    "number": "KB0000032",
-    "title": "Troubleshooting & SOP: Unix Kernel Panic on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and recovering from a Unix Kernel Panic on the configuration item router-border-nyc-01. This procedure involves verifying the crash via OOB logs or dmesg, establishing network presence, and ensuring stable recovery.",
-    "symptoms": [
-      "System unresponsiveness and active loss of service on router-border-nyc-01",
-      "Diagnostic log indicating Unix Kernel Panic on Mainframe Host 01 (mapped to router-border-nyc-01)"
-    ],
-    "rootCause": "A fatal kernel-level fault or out-of-memory condition caused the system to panic and crash, requiring a hard reboot or investigation of crash dumps to clear.",
-    "resolutionSteps": [
-      "1. Check connectivity to router-border-nyc-01 (192.168.56.10) to verify if the machine has recovered from the panic.",
-      "2. Check dmesg or /var/log/messages for panic signatures or hardware fault traces.",
-      "3. Verify system health and available memory.",
-      "4. Ensure proper kernel dumps are configured for further post-mortem analysis."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000428"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:41:34Z"
-  },
-  {
-    "id": "KB0000030",
-    "number": "KB0000030",
-    "title": "Troubleshooting & SOP: Printer Spooler Offline on postgres-prod-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Standard Operating Procedure for addressing an offline printer spooler on the postgres-prod-01 server. This issue requires restarting the CUPS or equivalent print spooling service to restore print functionality.",
-    "symptoms": [
-      "Users report inability to print from London HQ Floor 3",
-      "Printer Spooler Offline alerts triggered",
-      "Print jobs stuck in the queue"
-    ],
-    "rootCause": "The print spooler daemon on the host 192.168.56.10 has unexpectedly stopped or hung, preventing new print jobs from processing.",
-    "resolutionSteps": [
-      "1. SSH into the server postgres-prod-01 (192.168.56.10).",
-      "2. Check the status of the print spooler service (e.g., CUPS).",
-      "3. Restart the print spooler service.",
-      "4. Verify that the service is running and print jobs are processing."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000420"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:41:03Z"
-  },
-  {
-    "id": "KB0000027",
-    "number": "KB0000027",
-    "title": "Troubleshooting & SOP: SAP ERP Financials SSO Auth Failure on postgres-prod-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving SAP ERP Financials SSO Authentication Failures on the PostgreSQL database server (postgres-prod-01). This involves verifying network routing to the SSO identity provider and checking database authentication logs.",
-    "symptoms": [
-      "Users unable to authenticate to SAP ERP Financials via SSO",
-      "Authentication failure logs observed on postgres-prod-01"
-    ],
-    "rootCause": "SSO Authentication failures on the database server are typically caused by misconfigured SSO tokens, expired certificates, or network blockages preventing the DB server from validating credentials with the Identity Provider.",
-    "resolutionSteps": [
-      "1. SSH into postgres-prod-01 (192.168.56.10).",
-      "2. Check PostgreSQL logs for authentication errors.",
-      "3. Verify connectivity from postgres-prod-01 to the SSO Identity Provider.",
-      "4. Ensure SSL certificates and SSO configurations on the database server are up to date and valid."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000408"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:39:28Z"
+    "createdAt": "2026-07-31T03:23:27.369Z"
   },
   {
     "id": "KB0000024",
     "number": "KB0000024",
-    "title": "Troubleshooting & SOP: Core Router High Latency on postgres-prod-01",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Core Router High Latency issues incorrectly assigned to postgres-prod-01 (192.168.56.10). This involves verifying network interface statistics and routing configuration on the server to rule out local network bottlenecks, despite the ticket description indicating a core router issue.",
+    "title": "Kubernetes Node & Kubelet Recovery SOP",
+    "category": "Server - Kernel & OS Patch",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
     "symptoms": [
-      "High latency reported for network traffic",
-      "Network timeouts or delays observed in the datacenter",
-      "Diagnostic logs indicate unassigned incident logged"
+      "Kubernetes worker node status transitions to 'NotReady'.",
+      "Kubelet service fails to start or reports connection refused to API server.",
+      "Container runtime endpoints timed out in logs."
     ],
-    "rootCause": "The issue is reported as core router high latency, but the assigned CI is a PostgreSQL server. The root cause may be local network interface congestion, routing misconfiguration on the server, or external network issues affecting connectivity to the server.",
+    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
     "resolutionSteps": [
-      "1. SSH into postgres-prod-01 (192.168.56.10).",
-      "2. Check network interface statistics using 'ifconfig' or 'ip -s link' for errors or drops.",
-      "3. Verify local routing table using 'ip route' or 'netstat -rn'.",
-      "4. Perform 'ping' and 'traceroute' to identify network latency or bottlenecks.",
-      "5. Escalate to the Network team if the issue is confirmed to be external to the server."
+      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
+      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
+      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
+      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
+      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
     ],
-    "workNotesAnalyzedCount": 1,
+    "workNotesAnalyzedCount": 17,
     "sourceIncidentIds": [
-      "INC0000396"
+      "INC0000236",
+      "INC0000235",
+      "INC0000234",
+      "INC0000233",
+      "INC0000232",
+      "INC0000231",
+      "INC0000230",
+      "INC0000229",
+      "INC0000228",
+      "INC0000227"
     ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:38:16Z"
+    "createdAt": "2026-07-31T03:22:38.932Z"
+  },
+  {
+    "id": "KB0000023",
+    "number": "KB0000023",
+    "title": "Kubernetes Node & Kubelet Recovery SOP",
+    "category": "DB - Connection Pool & Vacuum",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
+    "symptoms": [
+      "Kubernetes worker node status transitions to 'NotReady'.",
+      "Kubelet service fails to start or reports connection refused to API server.",
+      "Container runtime endpoints timed out in logs."
+    ],
+    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
+      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
+      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
+      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
+      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
+    ],
+    "workNotesAnalyzedCount": 15,
+    "sourceIncidentIds": [
+      "INC0000346",
+      "INC0000345",
+      "INC0000344",
+      "INC0000343",
+      "INC0000342",
+      "INC0000341",
+      "INC0000340",
+      "INC0000339",
+      "INC0000338",
+      "INC0000337"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:22:04.342Z"
+  },
+  {
+    "id": "KB0000022",
+    "number": "KB0000022",
+    "title": "Kubernetes Node & Kubelet Recovery SOP",
+    "category": "Server - Kernel & OS Patch",
+    "configurationItem": "postgres-prod-01",
+    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
+    "symptoms": [
+      "Kubernetes worker node status transitions to 'NotReady'.",
+      "Kubelet service fails to start or reports connection refused to API server.",
+      "Container runtime endpoints timed out in logs."
+    ],
+    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
+      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
+      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
+      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
+      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
+    ],
+    "workNotesAnalyzedCount": 17,
+    "sourceIncidentIds": [
+      "INC0000456",
+      "INC0000455",
+      "INC0000454",
+      "INC0000453",
+      "INC0000452",
+      "INC0000451",
+      "INC0000450",
+      "INC0000449",
+      "INC0000448",
+      "INC0000447"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:21:34.363Z"
   },
   {
     "id": "KB0000021",
     "number": "KB0000021",
-    "title": "Troubleshooting & SOP: SAP ERP Financials SSO Auth Failure on router-border-nyc-01",
-    "category": "Unix - OS & System Service",
+    "title": "Kubernetes Node & Kubelet Recovery SOP",
+    "category": "Security - TLS & Firewall Rule",
     "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving SAP ERP Financials SSO Authentication Failures on the border router router-border-nyc-01. This involves verifying network routing to the SSO identity provider and checking access control lists or firewall rules that may be blocking authentication traffic.",
+    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
     "symptoms": [
-      "Users unable to authenticate to SAP ERP Financials via SSO",
-      "Network timeouts or blocked traffic observed on router-border-nyc-01 for authentication requests"
+      "Kubernetes worker node status transitions to 'NotReady'.",
+      "Kubelet service fails to start or reports connection refused to API server.",
+      "Container runtime endpoints timed out in logs."
     ],
-    "rootCause": "Authentication failures are caused by routing misconfigurations or ACL rules on router-border-nyc-01 preventing SSO traffic from reaching the Identity Provider.",
+    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
     "resolutionSteps": [
-      "1. SSH into router-border-nyc-01 (192.168.56.10).",
-      "2. Verify routing to the SSO Identity Provider using ping and traceroute.",
-      "3. Review recent access control list (ACL) changes or firewall logs for blocked authentication traffic.",
-      "4. Adjust routing or ACL configurations to permit SSO traffic."
+      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
+      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
+      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
+      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
+      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
     ],
-    "workNotesAnalyzedCount": 1,
+    "workNotesAnalyzedCount": 15,
     "sourceIncidentIds": [
-      "INC0000364"
+      "INC0000566",
+      "INC0000565",
+      "INC0000564",
+      "INC0000563",
+      "INC0000562",
+      "INC0000561",
+      "INC0000560",
+      "INC0000559",
+      "INC0000558",
+      "INC0000557"
     ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:34:59Z"
+    "createdAt": "2026-07-31T03:20:45.436Z"
   },
   {
     "id": "KB0000020",
     "number": "KB0000020",
-    "title": "Troubleshooting & SOP: Active Directory LDAP Sync Failure on postgres-prod-01",
+    "title": "Provision OS User Accounts asha and Praneeth on Kubernetes Control Plane Node 192.168.100.101",
     "category": "Unix - OS & System Service",
-    "configurationItem": "postgres-prod-01",
-    "summary": "This standard operating procedure is created to address an Active Directory LDAP Sync Failure occurring on CI postgres-prod-01 (192.168.56.10). The procedure covers checking connectivity to the LDAP server, verifying authentication credentials, and restarting the sync service.",
+    "configurationItem": "control plane",
+    "summary": "The control plane node at 192.168.100.101 lacks the required operating system user accounts for personnel asha and Praneeth, preventing SSH access and audit accountability. This SOP creates both users with dedicated home directories, bash shells, and hardened SSH directory scaffolding ready for public key deployment.",
     "symptoms": [
-      "Active Directory LDAP Sync Failure alert triggered.",
-      "Users unable to authenticate or sync directory changes.",
-      "Diagnostic logs indicating LDAP connection timeouts or credential rejections."
+      "Alert logged for create user ID asha and Praneeth in control plane"
     ],
-    "rootCause": "The issue is typically caused by network connectivity problems to the Domain Controller, expired service account credentials, or an unresponsive LDAP synchronization daemon on the PostgreSQL server.",
+    "rootCause": "Root cause identified in approved new use case diagnostic.",
     "resolutionSteps": [
-      "Verify network connectivity to the Active Directory Domain Controller on port 389 (LDAP) or 636 (LDAPS).",
-      "Check the LDAP service account credentials in the application configuration to ensure they are valid and not locked.",
-      "Restart the LDAP synchronization service or daemon running on the host.",
-      "Review the sync logs to confirm successful connection and data synchronization."
+      "ssh root@192.168.100.101 \"useradd -m -s /bin/bash -c \"Asha Operations\" asha && useradd -m -s /bin/bash -c \"Praneeth Operations\" praneeth\"",
+      "ssh root@192.168.100.101 \"mkdir -p /home/asha/.ssh /home/praneeth/.ssh && chmod 700 /home/asha/.ssh /home/praneeth/.ssh\"",
+      "ssh root@192.168.100.101 \"echo \"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... asha@corp\" > /home/asha/.ssh/authorized_keys && echo \"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... praneeth@corp\" > /home/praneeth/.ssh/authorized_keys\"",
+      "ssh root@192.168.100.101 \"chmod 600 /home/asha/.ssh/authorized_keys /home/praneeth/.ssh/authorized_keys && chown -R asha:asha /home/asha/.ssh && chown -R praneeth:praneeth /home/praneeth/.ssh\"",
+      "ssh root@192.168.100.101 \"echo 'asha ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/asha && echo 'praneeth ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/praneeth && chmod 440 /etc/sudoers.d/asha /etc/sudoers.d/praneeth && visudo -c\""
     ],
     "workNotesAnalyzedCount": 1,
     "sourceIncidentIds": [
-      "INC0000360"
+      "INC0001036"
     ],
     "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
+    "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:34:34Z"
+    "createdAt": "2026-07-31T03:20:20.235Z"
+  },
+  {
+    "id": "KB0000019",
+    "number": "KB0000019",
+    "title": "Kubernetes Node & Kubelet Recovery SOP",
+    "category": "Server - Kernel & OS Patch",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
+    "symptoms": [
+      "Kubernetes worker node status transitions to 'NotReady'.",
+      "Kubelet service fails to start or reports connection refused to API server.",
+      "Container runtime endpoints timed out in logs."
+    ],
+    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
+      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
+      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
+      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
+      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
+    ],
+    "workNotesAnalyzedCount": 17,
+    "sourceIncidentIds": [
+      "INC0000676",
+      "INC0000675",
+      "INC0000674",
+      "INC0000673",
+      "INC0000672",
+      "INC0000671",
+      "INC0000670",
+      "INC0000669",
+      "INC0000668",
+      "INC0000667"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:20:10.726Z"
   },
   {
     "id": "KB0000018",
     "number": "KB0000018",
-    "title": "Troubleshooting & SOP: Core Router High Latency in NYC Datacenter",
-    "category": "Unix - OS & System Service",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Core Router High Latency in the NYC Datacenter (router-border-nyc-01). High latency affects network connectivity and requires log analysis and potential BGP peering review.",
-    "symptoms": [
-      "High latency and intermittent network timeouts in NYC Datacenter",
-      "Network routing delays affecting AWS East Region traffic",
-      "Diagnostic logs indicate resource or connection bottlenecks on router-border-nyc-01"
-    ],
-    "rootCause": "The root cause is likely a network bottleneck or configuration issue on the border router, such as BGP peering misconfiguration, routing table inconsistencies, or physical interface degradation causing traffic delays.",
-    "resolutionSteps": [
-      "Log into router-border-nyc-01 via SSH to investigate current interface performance and error statistics.",
-      "Check BGP neighbor states and routing tables for anomalies.",
-      "Analyze network path latency (ping/traceroute) to identify potential internal or external peering issues.",
-      "Engage Network Operations team to update routing configurations or adjust QoS settings to prioritize traffic."
-    ],
-    "workNotesAnalyzedCount": 1,
-    "sourceIncidentIds": [
-      "INC0000308"
-    ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:29:40Z"
-  },
-  {
-    "id": "KB0000017",
-    "number": "KB0000017",
-    "title": "Troubleshooting & SOP: Create Pablo ID on 192.168.56.10 with elevated previleges and set password as Password123",
+    "title": "Kubernetes Node & Kubelet Recovery SOP",
     "category": "Server - Kernel & OS Patch",
-    "configurationItem": "Unspecified CI",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Create Pablo ID on 192.168.56.10 with elevated previleges and set password as Password123 across enterprise infrastructure.",
+    "configurationItem": "postgres-prod-01",
+    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
     "symptoms": [
-      "Telemetry alert triggered for Create Pablo ID on 192.168.56.10 with elevated previleges and set password as Password123",
-      "Intermittent latency and error spikes in diagnostic logs."
+      "Kubernetes worker node status transitions to 'NotReady'.",
+      "Kubelet service fails to start or reports connection refused to API server.",
+      "Container runtime endpoints timed out in logs."
     ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
+    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
     "resolutionSteps": [
-      "1. Inspect configuration item status for Create Pablo ID on 192.168.56.10 with elevated previleges and set password as Password123.",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
+      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
+      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
+      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
+      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
+      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
     ],
-    "workNotesAnalyzedCount": 6,
+    "workNotesAnalyzedCount": 34,
     "sourceIncidentIds": [
-      "INC0001022",
-      "INC0001021"
+      "INC0000786",
+      "INC0000785",
+      "INC0000784",
+      "INC0000783",
+      "INC0000782",
+      "INC0000781",
+      "INC0000780",
+      "INC0000779",
+      "INC0000778",
+      "INC0000777"
     ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "gemini-3.1-pro-preview",
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:28:15.151Z"
+    "createdAt": "2026-07-31T03:19:17.651Z"
   },
   {
     "id": "KB0000016",
     "number": "KB0000016",
-    "title": "Troubleshooting & SOP: NGINX Upstream Buffer Overflow & Rate Limit Exhaustion on 192.168.56.10",
+    "title": "Kubernetes Node & Kubelet Recovery SOP",
     "category": "Pending Triage",
-    "configurationItem": "Worker 1",
-    "summary": "Standard Operating Procedure for diagnosing and resolving NGINX Upstream Buffer Overflow & Rate Limit Exhaustion on 192.168.56.10 across enterprise infrastructure.",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
     "symptoms": [
-      "Telemetry alert triggered for NGINX Upstream Buffer Overflow & Rate Limit Exhaustion on 192.168.56.10",
-      "Intermittent latency and error spikes in diagnostic logs."
+      "Kubernetes worker node status transitions to 'NotReady'.",
+      "Kubelet service fails to start or reports connection refused to API server.",
+      "Container runtime endpoints timed out in logs."
     ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
+    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
     "resolutionSteps": [
-      "1. Inspect configuration item status for NGINX Upstream Buffer Overflow & Rate Limit Exhaustion on 192.168.56.10.",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
+      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
+      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
+      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
+      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
+      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
     ],
-    "workNotesAnalyzedCount": 15,
+    "workNotesAnalyzedCount": 27,
     "sourceIncidentIds": [
-      "INC0001020",
-      "INC0001019",
-      "INC0001018",
-      "INC0001017",
-      "INC0001016",
-      "INC0001015"
+      "INC0000896",
+      "INC0000895",
+      "INC0000894",
+      "INC0000893",
+      "INC0000892",
+      "INC0000891",
+      "INC0000890",
+      "INC0000889",
+      "INC0000888",
+      "INC0000887"
     ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "gemini-3.1-pro-preview",
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-28T22:11:51.699Z"
+    "createdAt": "2026-07-31T03:18:26.173Z"
+  },
+  {
+    "id": "KB0000016",
+    "number": "KB0000016",
+    "title": "Provision User 'venu' with Passwordless Sudo via /etc/sudoers.d Drop-in File on Control Plane 192.168.100.101",
+    "category": "Unix - OS & System Service",
+    "configurationItem": "control plane",
+    "summary": "The control plane server lacks the required service account 'venu' with NOPASSWD sudo privileges for Project XYZ automation pipelines. This procedure creates the user, configures a dedicated sudoers drop-in file under /etc/sudoers.d/ to grant unrestricted passwordless root execution, and validates the configuration syntax to prevent lockout.",
+    "symptoms": [
+      "Alert logged for create user ID venu with passwordless elevated previleges on control plane server for project XYZ"
+    ],
+    "rootCause": "Root cause identified in approved new use case diagnostic.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"id -u venu &>/dev/null || useradd -m -s /bin/bash -c \"Project XYZ Automation\" venu\"",
+      "ssh root@192.168.100.101 \"echo 'venu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-venu-xyz && chmod 440 /etc/sudoers.d/90-venu-xyz\"",
+      "ssh root@192.168.100.101 \"visudo -c -f /etc/sudoers.d/90-venu-xyz\"",
+      "ssh root@192.168.100.101 \"su - venu -c 'sudo -n whoami'\""
+    ],
+    "workNotesAnalyzedCount": 1,
+    "sourceIncidentIds": [
+      "INC0001034"
+    ],
+    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:17:45.363Z"
   },
   {
     "id": "KB0000015",
     "number": "KB0000015",
-    "title": "Troubleshooting & SOP: Unix Worker 1 Kernel I/O Wait & Memory Degradation",
+    "title": "Troubleshooting & SOP: VPN Gateway Certificate Expiration Alert",
     "category": "Pending Triage",
-    "configurationItem": "Worker 1",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Unix Worker 1 Kernel I/O Wait & Memory Degradation across enterprise infrastructure.",
+    "configurationItem": "postgres-prod-01",
+    "summary": "Standard Operating Procedure to diagnose and resolve VPN Gateway Certificate Expiration Alert service issues.",
     "symptoms": [
-      "Telemetry alert triggered for Unix Worker 1 Kernel I/O Wait & Memory Degradation",
-      "Intermittent latency and error spikes in diagnostic logs."
+      "Service VPN Gateway Certificate Expiration Alert reported degraded state",
+      "Connection timeouts or refused connections in logs."
     ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
     "resolutionSteps": [
-      "1. Inspect configuration item status for Unix Worker 1 Kernel I/O Wait & Memory Degradation.",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep VPN' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
     ],
-    "workNotesAnalyzedCount": 5,
+    "workNotesAnalyzedCount": 20,
     "sourceIncidentIds": [
-      "INC0001014",
-      "INC0001013"
+      "INC0000906",
+      "INC0000905",
+      "INC0000904",
+      "INC0000903",
+      "INC0000902",
+      "INC0000901",
+      "INC0000900",
+      "INC0000899",
+      "INC0000898",
+      "INC0000897"
     ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "gemini-3.1-pro-preview",
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-28T21:56:09.811Z"
+    "createdAt": "2026-07-31T03:17:24.148Z"
   },
   {
     "id": "KB0000014",
     "number": "KB0000014",
-    "title": "SOP: Resolving Unix Machine Kernel & Service Unresponsiveness on Worker 1 (192.168.56.10)",
-    "category": "Server - Kernel & OS Patch",
-    "configurationItem": "Worker 1",
-    "summary": "This SOP outlines the steps to diagnose and recover an unresponsive Unix machine (Worker 1) experiencing kernel or service degradation. The resolution involves verifying network connectivity, checking system logs for kernel panics, and validating system health metrics post-recovery.",
+    "title": "Troubleshooting & SOP: AWS East Region DB Connection Timeout",
+    "category": "Pending Triage",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Standard Operating Procedure to diagnose and resolve AWS East Region DB Connection Timeout service issues.",
     "symptoms": [
-      "System services completely unresponsive on Worker 1",
-      "High system degradation or suspected kernel panic",
-      "Inability to access applications or services hosted on 192.168.56.10"
+      "Service AWS East Region DB Connection Timeout reported degraded state",
+      "Connection timeouts or refused connections in logs."
     ],
-    "rootCause": "Temporary resource exhaustion or a kernel-level lockup leading to service unresponsiveness. The system required a reboot to clear the locked states, restoring normal load averages and memory availability.",
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
     "resolutionSteps": [
-      "Establish an SSH connection to Worker 1 (192.168.56.10) using root credentials. If SSH is unresponsive, perform a hypervisor-level reboot.",
-      "Execute 'ping -c 4 192.168.56.10' from a remote jump host to verify basic network connectivity.",
-      "Run 'dmesg -T | tail -n 50' to check the kernel ring buffer for panics, out-of-memory (OOM) kills, or hardware errors.",
-      "Verify system health metrics by checking load average (e.g., using 'uptime' or 'top'), memory usage ('free -m'), and systemd unit status ('systemctl --failed').",
-      "Monitor the system for at least 30 minutes post-recovery to ensure stability and verify that no systemd units fail during the boot sequence."
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep AWS' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
     ],
-    "workNotesAnalyzedCount": 3,
+    "workNotesAnalyzedCount": 20,
     "sourceIncidentIds": [
-      "INC0001002"
+      "INC0000916",
+      "INC0000915",
+      "INC0000914",
+      "INC0000913",
+      "INC0000912",
+      "INC0000911",
+      "INC0000910",
+      "INC0000909",
+      "INC0000908",
+      "INC0000907"
     ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "gemini-3.1-pro-preview",
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-28T21:45:40.929Z"
+    "createdAt": "2026-07-31T03:16:22.029Z"
   },
   {
     "id": "KB0000013",
     "number": "KB0000013",
-    "title": "Troubleshooting & SOP: Unix Worker 1 High CPU & System Admin Review Required",
+    "title": "Troubleshooting & SOP: Printer Spooler Offline - London HQ Floor 3",
     "category": "Pending Triage",
-    "configurationItem": "Worker 1",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Unix Worker 1 High CPU & System Admin Review Required across enterprise infrastructure.",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Standard Operating Procedure to diagnose and resolve Printer Spooler Offline - London HQ Floor 3 service issues.",
     "symptoms": [
-      "Telemetry alert triggered for Unix Worker 1 High CPU & System Admin Review Required",
-      "Intermittent latency and error spikes in diagnostic logs."
+      "Service Printer Spooler Offline - London HQ Floor 3 reported degraded state",
+      "Connection timeouts or refused connections in logs."
     ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
     "resolutionSteps": [
-      "1. Inspect configuration item status for Unix Worker 1 High CPU & System Admin Review Required.",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep Printer' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
     ],
-    "workNotesAnalyzedCount": 31,
+    "workNotesAnalyzedCount": 20,
     "sourceIncidentIds": [
+      "INC0000926",
+      "INC0000925",
+      "INC0000924",
+      "INC0000923",
+      "INC0000922",
+      "INC0000921",
+      "INC0000920",
+      "INC0000919",
+      "INC0000918",
+      "INC0000917"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:16:19.767Z"
+  },
+  {
+    "id": "KB0000012",
+    "number": "KB0000012",
+    "title": "Troubleshooting & SOP: SAP ERP Financials SSO Auth Failure",
+    "category": "Pending Triage",
+    "configurationItem": "postgres-prod-01",
+    "summary": "Standard Operating Procedure to diagnose and resolve SAP ERP Financials SSO Auth Failure service issues.",
+    "symptoms": [
+      "Service SAP ERP Financials SSO Auth Failure reported degraded state",
+      "Connection timeouts or refused connections in logs."
+    ],
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep SAP' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
+    ],
+    "workNotesAnalyzedCount": 21,
+    "sourceIncidentIds": [
+      "INC0000936",
+      "INC0000935",
+      "INC0000934",
+      "INC0000933",
+      "INC0000932",
+      "INC0000931",
+      "INC0000930",
+      "INC0000929",
+      "INC0000928",
+      "INC0000927"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:16:00.131Z"
+  },
+  {
+    "id": "KB0000011",
+    "number": "KB0000011",
+    "title": "Troubleshooting & SOP: Core Router High Latency in NYC Datacenter",
+    "category": "Pending Triage",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Standard Operating Procedure to diagnose and resolve Core Router High Latency in NYC Datacenter service issues.",
+    "symptoms": [
+      "Service Core Router High Latency in NYC Datacenter reported degraded state",
+      "Connection timeouts or refused connections in logs."
+    ],
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep Core' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
+    ],
+    "workNotesAnalyzedCount": 20,
+    "sourceIncidentIds": [
+      "INC0000946",
+      "INC0000945",
+      "INC0000944",
+      "INC0000943",
+      "INC0000942",
+      "INC0000941",
+      "INC0000940",
+      "INC0000939",
+      "INC0000938",
+      "INC0000937"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:15:57.646Z"
+  },
+  {
+    "id": "KB0000010",
+    "number": "KB0000010",
+    "title": "Troubleshooting & SOP: Unix Kernel Panic on Mainframe Host 01",
+    "category": "Pending Triage",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Standard Operating Procedure to diagnose and resolve Unix Kernel Panic on Mainframe Host 01 service issues.",
+    "symptoms": [
+      "Service Unix Kernel Panic on Mainframe Host 01 reported degraded state",
+      "Connection timeouts or refused connections in logs."
+    ],
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep Unix' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
+    ],
+    "workNotesAnalyzedCount": 20,
+    "sourceIncidentIds": [
+      "INC0000956",
+      "INC0000955",
+      "INC0000954",
+      "INC0000953",
+      "INC0000952",
+      "INC0000951",
+      "INC0000950",
+      "INC0000949",
+      "INC0000948",
+      "INC0000947"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:15:28.399Z"
+  },
+  {
+    "id": "KB0000009",
+    "number": "KB0000009",
+    "title": "Troubleshooting & SOP: Okta MFA Webhook Delivery Timeout",
+    "category": "Pending Triage",
+    "configurationItem": "postgres-prod-01",
+    "summary": "Standard Operating Procedure to diagnose and resolve Okta MFA Webhook Delivery Timeout service issues.",
+    "symptoms": [
+      "Service Okta MFA Webhook Delivery Timeout reported degraded state",
+      "Connection timeouts or refused connections in logs."
+    ],
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep Okta' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
+    ],
+    "workNotesAnalyzedCount": 20,
+    "sourceIncidentIds": [
+      "INC0000966",
+      "INC0000965",
+      "INC0000964",
+      "INC0000963",
+      "INC0000962",
+      "INC0000961",
+      "INC0000960",
+      "INC0000959",
+      "INC0000958",
+      "INC0000957"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:15:08.874Z"
+  },
+  {
+    "id": "KB0000008",
+    "number": "KB0000008",
+    "title": "Troubleshooting & SOP: Active Directory LDAP Sync Failure",
+    "category": "Pending Triage",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Standard Operating Procedure to diagnose and resolve Active Directory LDAP Sync Failure service issues.",
+    "symptoms": [
+      "Service Active Directory LDAP Sync Failure reported degraded state",
+      "Connection timeouts or refused connections in logs."
+    ],
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep Active' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
+    ],
+    "workNotesAnalyzedCount": 20,
+    "sourceIncidentIds": [
+      "INC0000976",
+      "INC0000975",
+      "INC0000974",
+      "INC0000973",
+      "INC0000972",
+      "INC0000971",
+      "INC0000970",
+      "INC0000969",
+      "INC0000968",
+      "INC0000967"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:14:28.496Z"
+  },
+  {
+    "id": "KB0000006",
+    "number": "KB0000006",
+    "title": "Troubleshooting & SOP: Email Gateway Outbound Mail Queue Backlog",
+    "category": "Pending Triage",
+    "configurationItem": "router-border-nyc-01",
+    "summary": "Standard Operating Procedure to diagnose and resolve Email Gateway Outbound Mail Queue Backlog service issues.",
+    "symptoms": [
+      "Service Email Gateway Outbound Mail Queue Backlog reported degraded state",
+      "Connection timeouts or refused connections in logs."
+    ],
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep Email' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
+    ],
+    "workNotesAnalyzedCount": 20,
+    "sourceIncidentIds": [
+      "INC0000986",
+      "INC0000985",
+      "INC0000984",
+      "INC0000983",
+      "INC0000982",
+      "INC0000981",
+      "INC0000980",
+      "INC0000979",
+      "INC0000978",
+      "INC0000977"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:14:10.827Z"
+  },
+  {
+    "id": "KB0000006",
+    "number": "KB0000006",
+    "title": "Create User 'venu' with Passwordless Sudo via Drop-in File on Control Plane Node 192.168.100.101",
+    "category": "Unix - OS & System Service",
+    "configurationItem": "control plane",
+    "summary": "The control plane node lacks the service account 'venu' required for Project XYZ automation workflows. This procedure creates the user with a locked password, configures a dedicated sudoers drop-in file under /etc/sudoers.d/ for passwordless root escalation, and validates the sudo token acquisition without TTY requirement.",
+    "symptoms": [
+      "Alert logged for create user ID venu with passwordless elevated previleges on control plane server for project XYZ"
+    ],
+    "rootCause": "Root cause identified in approved new use case diagnostic.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"id -u venu &>/dev/null || useradd -m -s /bin/bash -c \"Project XYZ Automation\" venu\"",
+      "ssh root@192.168.100.101 \"mkdir -p /home/venu/.ssh && chmod 700 /home/venu/.ssh && chown venu:venu /home/venu/.ssh\"",
+      "ssh root@192.168.100.101 \"echo 'venu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-venu-xyz && chmod 440 /etc/sudoers.d/99-venu-xyz\"",
+      "ssh root@192.168.100.101 \"visudo -c -f /etc/sudoers.d/99-venu-xyz && echo 'User venu provisioned with passwordless sudo.'\""
+    ],
+    "workNotesAnalyzedCount": 1,
+    "sourceIncidentIds": [
+      "INC0001034"
+    ],
+    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:14:03.392Z"
+  },
+  {
+    "id": "KB0000005",
+    "number": "KB0000005",
+    "title": "Troubleshooting & SOP: PostgreSQL Primary Node Replication Lag",
+    "category": "Pending Triage",
+    "configurationItem": "postgres-prod-01",
+    "summary": "Standard Operating Procedure to diagnose and resolve PostgreSQL Primary Node Replication Lag service issues.",
+    "symptoms": [
+      "Service PostgreSQL Primary Node Replication Lag reported degraded state",
+      "Connection timeouts or refused connections in logs."
+    ],
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep PostgreSQL' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
+    ],
+    "workNotesAnalyzedCount": 20,
+    "sourceIncidentIds": [
+      "INC0000996",
+      "INC0000995",
+      "INC0000994",
+      "INC0000993",
+      "INC0000992",
+      "INC0000991",
+      "INC0000990",
+      "INC0000989",
+      "INC0000988",
+      "INC0000987"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:13:50.947Z"
+  },
+  {
+    "id": "KB0000004",
+    "number": "KB0000004",
+    "title": "Troubleshooting & SOP: Unix Worker 1 High CPU & Swap Memory Alert",
+    "category": "Server - Kernel & OS Patch",
+    "configurationItem": "Worker 1",
+    "summary": "Standard Operating Procedure to diagnose and resolve Unix Worker 1 High CPU & Swap Memory Alert service issues.",
+    "symptoms": [
+      "Service Unix Worker 1 High CPU & Swap Memory Alert reported degraded state",
+      "Connection timeouts or refused connections in logs."
+    ],
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep Unix' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
+    ],
+    "workNotesAnalyzedCount": 28,
+    "sourceIncidentIds": [
+      "INC0001006",
+      "INC0001005",
+      "INC0001004",
+      "INC0001003",
+      "INC0001002",
+      "INC0001001",
+      "INC0001000",
+      "INC0000999",
+      "INC0000998",
+      "INC0000997"
+    ],
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
+    "viewCount": 1,
+    "helpfulCount": 0,
+    "createdAt": "2026-07-31T03:13:01.673Z"
+  },
+  {
+    "id": "KB0000003",
+    "number": "KB0000003",
+    "title": "Troubleshooting & SOP: Unix Worker 1 Kernel Memory Degradation & SOP Execution",
+    "category": "Server - Kernel & OS Patch",
+    "configurationItem": "Worker 1",
+    "summary": "Standard Operating Procedure to diagnose and resolve Unix Worker 1 Kernel Memory Degradation & SOP Execution service issues.",
+    "symptoms": [
+      "Service Unix Worker 1 Kernel Memory Degradation & SOP Execution reported degraded state",
+      "Connection timeouts or refused connections in logs."
+    ],
+    "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"Log in to the target system and verify service process status: 'ps aux | grep Unix' or systemctl status.\"",
+      "ssh root@192.168.100.101 \"Inspect logs using journalctl or logs in /var/log/ to identify specific errors.\"",
+      "ssh root@192.168.100.101 \"Restart the affected service process and verify it binds successfully to its network port.\"",
+      "ssh root@192.168.100.101 \"Confirm the service state remains healthy and operational metrics return to baseline.\""
+    ],
+    "workNotesAnalyzedCount": 30,
+    "sourceIncidentIds": [
+      "INC0001016",
+      "INC0001015",
+      "INC0001014",
+      "INC0001013",
       "INC0001012",
       "INC0001011",
       "INC0001010",
       "INC0001009",
       "INC0001008",
-      "INC0001007",
-      "INC0001006",
-      "INC0001005",
-      "INC0001004",
-      "INC0001003"
+      "INC0001007"
     ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "gemini-3.1-pro-preview",
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-28T21:45:29.738Z"
-  },
-  {
-    "id": "KB0000012",
-    "number": "KB0000012",
-    "title": "SOP: Troubleshooting and Recovering an Unresponsive Unix Server",
-    "category": "Pending Triage",
-    "configurationItem": "Unspecified CI",
-    "summary": "This article provides the standard operating procedure for responding to a Unix server that is reported as down and inaccessible. It covers initial network triage, out-of-band console access, and system recovery to restore operating system functionality.",
-    "symptoms": [
-      "Server does not respond to ICMP ping requests",
-      "SSH connections time out or are actively refused",
-      "Applications hosted on the Unix machine are unreachable"
-    ],
-    "rootCause": "An unresponsive Unix machine can be caused by a variety of system-level issues, including a kernel panic, hardware failure, network interface disconnection, or resource exhaustion (such as an Out-Of-Memory condition freezing the OS).",
-    "resolutionSteps": [
-      "Step 1: Verify network connectivity by performing a ping and traceroute to the server's IP address to rule out intermediate network routing issues.",
-      "Step 2: Log in to the Out-of-Band (OOB) management interface (e.g., iLO, iDRAC, or VMware vSphere Web Client) to view the virtual or physical console for on-screen errors like a kernel panic.",
-      "Step 3: Attempt to log in via the console. If the system is completely frozen, initiate a graceful restart via the OOB power controls. If graceful restart fails, perform a hard reset.",
-      "Step 4: Once the server is back online, SSH into the machine and review system logs (e.g., /var/log/messages, /var/log/syslog, or dmesg) to identify and remediate the underlying cause of the outage."
-    ],
-    "workNotesAnalyzedCount": 2,
-    "sourceIncidentIds": [
-      "INC0001001"
-    ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "gemini-3.1-pro-preview",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-22T21:46:43.456Z"
-  },
-  {
-    "id": "KB0000011",
-    "number": "KB0000011",
-    "title": "Troubleshooting & SOP: Unix Kernel Panic on Mainframe Host 01",
-    "category": "Application - Code & SSO Fix",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Unix Kernel Panic on Mainframe Host 01 (#131) across enterprise infrastructure.",
-    "symptoms": [
-      "Telemetry alert triggered for Unix Kernel Panic on Mainframe Host 01 (#131)",
-      "Intermittent latency and error spikes in diagnostic logs."
-    ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
-    "resolutionSteps": [
-      "1. Inspect configuration item status for Unix Kernel Panic on Mainframe Host 01 (#131).",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
-    ],
-    "workNotesAnalyzedCount": 16,
-    "sourceIncidentIds": [
-      "INC0000131",
-      "INC0000132",
-      "INC0000133",
-      "INC0000134",
-      "INC0000135",
-      "INC0000136",
-      "INC0000137",
-      "INC0000138",
-      "INC0000139",
-      "INC0000140"
-    ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "meta/llama-3.3-70b-instruct",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-22T16:26:05.887Z"
-  },
-  {
-    "id": "KB0000010",
-    "number": "KB0000010",
-    "title": "SOP for Resolving Core Router High Latency in NYC Datacenter (#121) - mainframe-host-01",
-    "category": "Server - Kernel & OS Patch",
-    "configurationItem": "mainframe-host-01",
-    "summary": "The Core Router High Latency issue in the NYC Datacenter (#121) is causing network connectivity problems, including high latency and potential timeouts. The root cause is related to network connectivity issues, specifically with the border router (router-border-nyc-01) and its peering with AWS East Region. To resolve the issue, Network Ops needs to investigate router logs, BGP peering, and path latency to isolate and fix the problem.",
-    "symptoms": [
-      "High latency in network traffic passing through the core router in NYC Datacenter",
-      "Potential timeouts and connection issues with AWS East Region services"
-    ],
-    "rootCause": "The root cause of the issue is likely related to network connectivity problems between the border router (router-border-nyc-01) and AWS East Region, potentially due to misconfigured BGP peering, incorrect routing tables, or high latency in the network path.",
-    "resolutionSteps": [
-      "Investigate router logs and BGP peering configurations to identify potential issues with the border router (router-border-nyc-01) and its connectivity to AWS East Region",
-      "Analyze network path latency and routing tables to determine if there are any misconfigurations or bottlenecks causing high latency",
-      "Collaborate with Network Ops team to implement fixes, such as updating BGP peering configurations, optimizing routing tables, or implementing Quality of Service (QoS) policies to prioritize critical traffic"
-    ],
-    "workNotesAnalyzedCount": 13,
-    "sourceIncidentIds": [
-      "INC0000121",
-      "INC0000122",
-      "INC0000123",
-      "INC0000124",
-      "INC0000125",
-      "INC0000126",
-      "INC0000127",
-      "INC0000128",
-      "INC0000129",
-      "INC0000130"
-    ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "meta/llama-3.3-70b-instruct",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-22T16:21:02.133Z"
-  },
-  {
-    "id": "KB0000009",
-    "number": "KB0000009",
-    "title": "Troubleshooting & SOP: AWS East Region DB Connection Timeout",
-    "category": "Application - Code & SSO Fix",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving AWS East Region DB Connection Timeout (#91) across enterprise infrastructure.",
-    "symptoms": [
-      "Telemetry alert triggered for AWS East Region DB Connection Timeout (#91)",
-      "Intermittent latency and error spikes in diagnostic logs."
-    ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
-    "resolutionSteps": [
-      "1. Inspect configuration item status for AWS East Region DB Connection Timeout (#91).",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
-    ],
-    "workNotesAnalyzedCount": 16,
-    "sourceIncidentIds": [
-      "INC0000091",
-      "INC0000092",
-      "INC0000093",
-      "INC0000094",
-      "INC0000095",
-      "INC0000096",
-      "INC0000097",
-      "INC0000098",
-      "INC0000099",
-      "INC0000100"
-    ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "meta/llama-3.3-70b-instruct",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-22T16:18:20.110Z"
-  },
-  {
-    "id": "KB0000008",
-    "number": "KB0000008",
-    "title": "Troubleshooting & SOP: VPN Gateway Certificate Expiration Alert",
-    "category": "Server - Kernel & OS Patch",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving VPN Gateway Certificate Expiration Alert (#81) across enterprise infrastructure.",
-    "symptoms": [
-      "Telemetry alert triggered for VPN Gateway Certificate Expiration Alert (#81)",
-      "Intermittent latency and error spikes in diagnostic logs."
-    ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
-    "resolutionSteps": [
-      "1. Inspect configuration item status for VPN Gateway Certificate Expiration Alert (#81).",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
-    ],
-    "workNotesAnalyzedCount": 14,
-    "sourceIncidentIds": [
-      "INC0000081",
-      "INC0000082",
-      "INC0000083",
-      "INC0000084",
-      "INC0000085",
-      "INC0000086",
-      "INC0000087",
-      "INC0000088",
-      "INC0000089",
-      "INC0000090"
-    ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "meta/llama-3.3-70b-instruct",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-22T16:15:40.935Z"
-  },
-  {
-    "id": "KB0000007",
-    "number": "KB0000007",
-    "title": "Troubleshooting & SOP: Kubernetes Ingress Controller High CPU Spikes",
-    "category": "User Error - Training Provided",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Kubernetes Ingress Controller High CPU Spikes (#71) across enterprise infrastructure.",
-    "symptoms": [
-      "Telemetry alert triggered for Kubernetes Ingress Controller High CPU Spikes (#71)",
-      "Intermittent latency and error spikes in diagnostic logs."
-    ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
-    "resolutionSteps": [
-      "1. Inspect configuration item status for Kubernetes Ingress Controller High CPU Spikes (#71).",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
-    ],
-    "workNotesAnalyzedCount": 16,
-    "sourceIncidentIds": [
-      "INC0000071",
-      "INC0000072",
-      "INC0000073",
-      "INC0000074",
-      "INC0000075",
-      "INC0000076",
-      "INC0000077",
-      "INC0000078",
-      "INC0000079",
-      "INC0000080"
-    ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "meta/llama-3.3-70b-instruct",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-22T16:10:37.322Z"
-  },
-  {
-    "id": "KB0000006",
-    "number": "KB0000006",
-    "title": "Troubleshooting & SOP: PostgreSQL Primary Node Replication Lag",
-    "category": "Network - BGP & Interface Reset",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving PostgreSQL Primary Node Replication Lag (#61) across enterprise infrastructure.",
-    "symptoms": [
-      "Telemetry alert triggered for PostgreSQL Primary Node Replication Lag (#61)",
-      "Intermittent latency and error spikes in diagnostic logs."
-    ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
-    "resolutionSteps": [
-      "1. Inspect configuration item status for PostgreSQL Primary Node Replication Lag (#61).",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
-    ],
-    "workNotesAnalyzedCount": 14,
-    "sourceIncidentIds": [
-      "INC0000061",
-      "INC0000062",
-      "INC0000063",
-      "INC0000064",
-      "INC0000065",
-      "INC0000066",
-      "INC0000067",
-      "INC0000068",
-      "INC0000069",
-      "INC0000070"
-    ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "meta/llama-3.3-70b-instruct",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-22T16:10:35.698Z"
-  },
-  {
-    "id": "KB0000004",
-    "number": "KB0000004",
-    "title": "Troubleshooting & SOP: Active Directory LDAP Sync Failure",
-    "category": "Server - Kernel & OS Patch",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Active Directory LDAP Sync Failure (#41) across enterprise infrastructure.",
-    "symptoms": [
-      "Telemetry alert triggered for Active Directory LDAP Sync Failure (#41)",
-      "Intermittent latency and error spikes in diagnostic logs."
-    ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
-    "resolutionSteps": [
-      "1. Inspect configuration item status for Active Directory LDAP Sync Failure (#41).",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
-    ],
-    "workNotesAnalyzedCount": 13,
-    "sourceIncidentIds": [
-      "INC0000041",
-      "INC0000042",
-      "INC0000043",
-      "INC0000044",
-      "INC0000045",
-      "INC0000046",
-      "INC0000047",
-      "INC0000048",
-      "INC0000049",
-      "INC0000050"
-    ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "meta/llama-3.3-70b-instruct",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-22T16:00:28.298Z"
-  },
-  {
-    "id": "KB0000003",
-    "number": "KB0000003",
-    "title": "Troubleshooting & SOP: Okta MFA Webhook Delivery Timeout",
-    "category": "User Error - Training Provided",
-    "configurationItem": "mainframe-host-01",
-    "summary": "Standard Operating Procedure for diagnosing and resolving Okta MFA Webhook Delivery Timeout (#31) across enterprise infrastructure.",
-    "symptoms": [
-      "Telemetry alert triggered for Okta MFA Webhook Delivery Timeout (#31)",
-      "Intermittent latency and error spikes in diagnostic logs."
-    ],
-    "rootCause": "Root cause identified in diagnostic work notes: System resource contention or configuration drift.",
-    "resolutionSteps": [
-      "1. Inspect configuration item status for Okta MFA Webhook Delivery Timeout (#31).",
-      "2. Apply remediation protocol: Reset service daemon, clear buffer queues, or deploy patch.",
-      "3. Validate operational metric health baseline and confirm ticket resolution."
-    ],
-    "workNotesAnalyzedCount": 16,
-    "sourceIncidentIds": [
-      "INC0000031",
-      "INC0000032",
-      "INC0000033",
-      "INC0000034",
-      "INC0000035",
-      "INC0000036",
-      "INC0000037",
-      "INC0000038",
-      "INC0000039",
-      "INC0000040"
-    ],
-    "author": "🤖 Meta Llama 3.3 70B Instruct (NVIDIA NIM)",
-    "modelUsed": "meta/llama-3.3-70b-instruct",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-22T15:55:24.663Z"
+    "createdAt": "2026-07-31T03:12:39.073Z"
   },
   {
     "id": "KB0000002",
     "number": "KB0000002",
-    "title": "Troubleshooting & SOP: Printer Spooler Offline - London HQ Floor 3 (router-border-nyc-01)",
-    "category": "DB - Connection Pool & Vacuum",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "The incident involves synthesizing a KB article for a printer spooler issue resolved via database connection pool tuning and vacuum operations (Resolution Code: DB - Connection Pool & Vacuum). Despite the CI referencing a border router, the explicit database resolution code and analysis of 64 incidents indicate the root cause resides in the database layer, requiring DBA expertise for knowledge capture.",
+    "title": "SOP: Remove Local User Account 'Pablo' and Home Directory on Linux Host 192.168.56.10",
+    "category": "Server - Kernel & OS Patch",
+    "configurationItem": "Unspecified CI",
+    "summary": "The local user account 'Pablo' exists on the target Linux server (192.168.56.10) with an associated home directory at /home/Pablo. This account must be permanently removed from the system user database (/etc/passwd, /etc/shadow, /etc/group) and its file ownership cleaned up. The correction requires terminating any active processes owned by the user followed by executing 'userdel -r' to remove the account and home directory recursively.",
     "symptoms": [
-      "Printer Spooler Offline - London HQ Floor 3 (#2) alerts triggered on router-border-nyc-01",
-      "System latency and intermittent connection timeouts reported in diagnostic logs."
+      "Entry for 'Pablo' present in /etc/passwd with a valid UID/GID and home directory path /home/Pablo.",
+      "Directory /home/Pablo exists and contains user profile data or application artifacts.",
+      "Active processes listed under UID belonging to 'Pablo' visible via 'ps -u Pablo' or 'pgrep -u Pablo'.",
+      "User 'Pablo' appears in 'getent passwd Pablo' output confirming NSS resolution."
     ],
-    "rootCause": "The incident involves synthesizing a KB article for a printer spooler issue resolved via database connection pool tuning and vacuum operations (Resolution Code: DB - Connection Pool & Vacuum). Despite the CI referencing a border router, the explicit database resolution code and analysis of 64 incidents indicate the root cause resides in the database layer, requiring DBA expertise for knowledge capture.",
+    "rootCause": "Standard identity lifecycle management request: The user account 'Pablo' is no longer required on the infrastructure asset 192.168.56.10 and must be decommissioned to maintain least-privilege access hygiene and reclaim disk resources.",
     "resolutionSteps": [
-      "1. Inspect configuration item status on router-border-nyc-01 using diagnostic CLI commands.",
-      "2. Apply recommended fix: KB synthesis task: Document printer spooler offline symptom (London HQ Floor 3) linked to DB connection pool exhaustion and vacuum maintenance. Root cause: PostgreSQL connection pool saturation during peak print jobs; resolved via pgbouncer config tuning and scheduled vacuum analyze. Attach query plans and pool metrics from incidents KB0000001-KB0000064.",
-      "3. Verify service health metric baseline and confirm ticket resolution."
+      "ssh root@192.168.56.10",
+      "ssh root@192.168.56.10 \"id Pablo && getent passwd Pablo\"",
+      "ssh root@192.168.56.10 \"pkill -9 -u Pablo; sleep 2\"",
+      "ssh root@192.168.56.10 \"userdel -r Pablo\"",
+      "ssh root@192.168.56.10 \"getent passwd Pablo; ls -ld /home/Pablo 2>/dev/null || echo 'Home directory removed'\""
     ],
-    "workNotesAnalyzedCount": 64,
+    "workNotesAnalyzedCount": 34,
     "sourceIncidentIds": [
-      "INC0000002",
-      "INC0000010",
-      "INC0000026",
-      "INC0000034",
-      "INC0000050",
-      "INC0000058",
-      "INC0000074",
-      "INC0000082",
-      "INC0000098",
-      "INC0000106"
+      "INC0001026",
+      "INC0001025",
+      "INC0001024",
+      "INC0001023",
+      "INC0001022",
+      "INC0001021",
+      "INC0001020",
+      "INC0001019",
+      "INC0001018",
+      "INC0001017"
     ],
-    "author": "🤖 Agentic AI Knowledge Synthesizer (NVIDIA Nemotron 3 550B)",
+    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-22T15:33:56.971Z"
+    "createdAt": "2026-07-31T03:12:29.832Z"
   },
   {
     "id": "KB0000001",
     "number": "KB0000001",
-    "title": "Troubleshooting & SOP: SAP ERP Financials SSO Auth Failure (mainframe-host-01)",
-    "category": "Server - Kernel & OS Patch",
-    "configurationItem": "mainframe-host-01",
-    "summary": "The CI 'mainframe-host-01' is explicitly categorized as a Server requiring Kernel & OS Patch management. Incident INC0000065 directly reports a 'Unix Kernel Panic on Mainframe Host 01', confirming the OS/kernel layer issue. Unix team owns mainframe host OS lifecycle, kernel stability, and patch deployment.",
+    "title": "Disable Automatic 'snappy' Python Virtual Environment Activation on Root SSH Login",
+    "category": "Pending Triage",
+    "configurationItem": "Unspecified CI",
+    "summary": "The root shell prompt shows '((snappy) )' immediately after SSH authentication, indicating an automatic `source <venv>/bin/activate` command embedded in a shell initialization file. This SOP locates and removes the sourcing directive from root's profile scripts or system-wide profile.d directory to restore the default non-virtualized shell environment.",
     "symptoms": [
-      "SAP ERP Financials SSO Auth Failure (#1) alerts triggered on mainframe-host-01",
-      "System latency and intermittent connection timeouts reported in diagnostic logs."
+      "Alerts triggered for create user ID asha and Praneeth in control plane",
+      "System degradation reported."
     ],
-    "rootCause": "The CI 'mainframe-host-01' is explicitly categorized as a Server requiring Kernel & OS Patch management. Incident INC0000065 directly reports a 'Unix Kernel Panic on Mainframe Host 01', confirming the OS/kernel layer issue. Unix team owns mainframe host OS lifecycle, kernel stability, and patch deployment.",
+    "rootCause": "The prompt `((snappy) ) -bash-5.2#` is the default PS1 modification injected by the `activate` script of a Python virtual environment named 'snappy'. Since this triggers immediately upon interactive login for root, the activation command must be sourced in one of the login-shell initialization files: `/root/.bash_profile`, `/root/.profile`, `/root/.bashrc` (if sourced by the former), or a script in `/etc/profile.d/`. The resolution greps these specific locations, strips the offending `source`/`activate` line using sed, and validates the fix by spawning a fresh login shell (`bash -l`) to inspect the prompt.",
     "resolutionSteps": [
-      "1. Inspect configuration item status on mainframe-host-01 using diagnostic CLI commands.",
-      "2. Apply recommended fix: KB synthesis triggered for mainframe-host-01 kernel/OS patch cycle. Review INC0000065 kernel panic root cause (likely patch gap or driver conflict). Validate current patch level against vendor baseline. Schedule maintenance window for remediation patch deployment. Cross-reference INC000049 (K8s CPU spikes) for potential host resource contention correlation.",
-      "3. Verify service health metric baseline and confirm ticket resolution."
+      "ssh root@192.168.100.101 \"grep -r \"snappy\" /root/.bashrc /root/.bash_profile /root/.profile /etc/profile.d/ 2>/dev/null | grep -v \"Binary\"\"",
+      "ssh root@192.168.100.101 \"sed -i '/snappy\\/bin\\/activate/d' /root/.bashrc /root/.bash_profile /root/.profile 2>/dev/null; for f in /etc/profile.d/*.sh; do sed -i '/snappy\\/bin\\/activate/d' \"$f\"; done\"",
+      "ssh root@192.168.100.101 \"bash -l -c 'echo $PS1' | grep -q \"snappy\" && echo \"FAIL: Venv still active in login shell\" || echo \"SUCCESS: Venv activation removed\"\"",
+      "ssh root@192.168.100.101 \"exec bash -l\""
     ],
-    "workNotesAnalyzedCount": 64,
+    "workNotesAnalyzedCount": 107,
     "sourceIncidentIds": [
-      "INC0000001",
-      "INC0000017",
-      "INC0000025",
-      "INC0000041",
-      "INC0000049",
-      "INC0000065",
-      "INC0000073",
-      "INC0000089",
-      "INC0000097",
-      "INC0000113"
+      "INC0001036",
+      "INC0001035",
+      "INC0001034",
+      "INC0001035",
+      "INC0001034",
+      "INC0001033",
+      "INC0001032",
+      "INC0001031",
+      "INC0001030",
+      "INC0001027"
     ],
-    "author": "🤖 Agentic AI Knowledge Synthesizer (NVIDIA Nemotron 3 550B)",
+    "author": "🤖 Unix Auto-Resolver Agent",
+    "modelUsed": "nvidia/nemotron-3-ultra-550b-a55b",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-22T15:31:10.928Z"
+    "createdAt": "2026-07-31T03:12:20.331Z"
   }
 ]

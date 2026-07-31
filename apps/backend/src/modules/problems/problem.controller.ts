@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ProblemService } from './problem.service';
 import { CreateProblemDto, UpdateProblemDto } from './dto/problem.dto';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Problem Management')
 @ApiBearerAuth()
@@ -11,6 +12,7 @@ import { CreateProblemDto, UpdateProblemDto } from './dto/problem.dto';
 export class ProblemController {
   constructor(private readonly problemService: ProblemService) {}
 
+  @Public()
   @Get()
   @ApiOperation({ summary: 'List & Search Problem Records' })
   @ApiQuery({ name: 'query', required: false })
@@ -32,6 +34,7 @@ export class ProblemController {
     return this.problemService.findOne(id);
   }
 
+  @Public()
   @Post()
   @ApiOperation({ summary: 'Create New Problem Record' })
   async create(@Body() dto: CreateProblemDto) {

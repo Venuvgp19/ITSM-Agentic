@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { PrismaService } from './prisma.service';
 
 export interface SingleDatabaseSchema {
   incidents: any[];
@@ -12,26 +13,78 @@ export interface SingleDatabaseSchema {
   agentHistory: any[];
   configurationItems: any[];
   workflows: any[];
+  agentModelConfig?: any;
+  agentTimeline?: any[];
 }
 
 @Injectable()
-export class SingleDatabaseService {
+export class SingleDatabaseService implements OnModuleInit {
   private readonly logger = new Logger(SingleDatabaseService.name);
-  private data: SingleDatabaseSchema;
+  private data: SingleDatabaseSchema = {
+    incidents: [],
+    knowledgeArticles: [],
+    problems: [],
+    changes: [],
+    analyzedIncidents: [],
+    agentApprovals: [],
+    agentHistory: [],
+    configurationItems: [],
+    workflows: [],
+    agentModelConfig: undefined,
+    agentTimeline: [],
+  };
 
-  constructor() {
-    this.data = this.loadOrConsolidateDatabase();
+  constructor(private prisma: PrismaService) {}
+
+  async onModuleInit() {
+    await this.syncFromPostgres();
+  }
+
+  private async syncFromPostgres() {
+    try {
+      const record = await this.prisma.masterDb.findUnique({
+        where: { key: 'master_itsm_db' },
+      });
+      if (record && record.data) {
+        this.data = record.data as any;
+        this.logger.log(`[SingleDatabaseService] Loaded Master Database from PostgreSQL with ${this.data.incidents?.length || 0} incidents.`);
+        return;
+      }
+    } catch (err: any) {
+      this.logger.warn(`[SingleDatabaseService] PostgreSQL masterDb record not found or table not migrated yet: ${err.message}. Initializing consolidated JSON backup.`);
+    }
+
+    const consolidated = this.loadOrConsolidateDatabase();
+    this.data = consolidated;
+
+    try {
+      await this.prisma.masterDb.upsert({
+        where: { key: 'master_itsm_db' },
+        create: {
+          key: 'master_itsm_db',
+          data: consolidated as any,
+        },
+        update: {
+          data: consolidated as any,
+        },
+      });
+      this.logger.log(`[SingleDatabaseService] Successfully seeded master database to PostgreSQL.`);
+    } catch (err: any) {
+      this.logger.error(`[SingleDatabaseService] Failed to seed master database to PostgreSQL: ${err.message}`);
+    }
   }
 
   public getDbFilePath(): string {
-    const possiblePaths = [
-      path.resolve(process.cwd(), 'apps/backend/data/database.json'),
-      path.resolve(process.cwd(), 'data/database.json'),
+    const candidates = [
       path.resolve(__dirname, '../../../data/database.json'),
       path.resolve(__dirname, '../../data/database.json'),
+      path.resolve(process.cwd(), 'apps/backend/data/database.json'),
+      path.resolve(process.cwd(), 'data/database.json'),
     ];
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) return p;
+    for (const cand of candidates) {
+      if (fs.existsSync(cand) && !cand.includes('apps\\backend\\apps\\backend') && !cand.includes('apps/backend/apps/backend')) {
+        return cand;
+      }
     }
     return path.resolve(process.cwd(), 'apps/backend/data/database.json');
   }
@@ -64,16 +117,40 @@ export class SingleDatabaseService {
         const parsed = JSON.parse(content);
         if (parsed && Array.isArray(parsed.incidents)) {
           this.logger.log(`[Single Database] Successfully loaded master database with ${parsed.incidents.length} incidents from ${mainDbPath}`);
+          
+          let updated = false;
+          parsed.incidents.forEach((inc: any, idx: number) => {
+            if (!inc.createdAt || inc.createdAt === '2026-07-21 10:14:00' || !inc.createdAt.includes('-')) {
+              const daysAgo = Math.floor((idx / parsed.incidents.length) * 90);
+              const date = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+              const yyyy = date.getFullYear();
+              const mm = String(date.getMonth() + 1).padStart(2, '0');
+              const dd = String(date.getDate()).padStart(2, '0');
+              inc.createdAt = `${yyyy}-${mm}-${dd} 10:14:00`;
+              updated = true;
+            }
+          });
+
+          if (updated) {
+            fs.writeFileSync(mainDbPath, JSON.stringify(parsed, null, 2), 'utf-8');
+            this.logger.log(`[Single Database] Distributed ${parsed.incidents.length} incident timestamps over the last 3 months and saved.`);
+          }
+
+          const incidents = (parsed.incidents && parsed.incidents.length >= 1000) ? parsed.incidents : this.loadFileJson<any[]>('incidents.json', []);
+          const knowledgeArticles = (parsed.knowledgeArticles && parsed.knowledgeArticles.length > 0) ? parsed.knowledgeArticles : this.loadFileJson<any[]>('knowledge_articles.json', []);
+          const agentHistory = (parsed.agentHistory && parsed.agentHistory.length > 0) ? parsed.agentHistory : this.loadFileJson<any[]>('agent_history.json', []);
+
           return {
-            incidents: parsed.incidents || [],
-            knowledgeArticles: parsed.knowledgeArticles || [],
-            problems: parsed.problems || [],
-            changes: parsed.changes || [],
+            incidents,
+            knowledgeArticles,
+            problems: (parsed.problems && parsed.problems.length > 0) ? parsed.problems : this.loadFileJson<any[]>('problems.json', []),
+            changes: (parsed.changes && parsed.changes.length > 0) ? parsed.changes : this.loadFileJson<any[]>('changes.json', []),
             analyzedIncidents: parsed.analyzedIncidents || [],
             agentApprovals: parsed.agentApprovals || [],
-            agentHistory: parsed.agentHistory || [],
+            agentHistory,
             configurationItems: parsed.configurationItems || [],
             workflows: parsed.workflows || [],
+            agentModelConfig: parsed.agentModelConfig,
           };
         }
       }
@@ -101,6 +178,7 @@ export class SingleDatabaseService {
       agentHistory,
       configurationItems: [],
       workflows: [],
+      agentModelConfig: undefined,
     };
 
     this.saveDatabaseToFile(consolidated);
@@ -121,6 +199,22 @@ export class SingleDatabaseService {
     } catch (err: any) {
       this.logger.error(`[Single Database] Failed to write master database to ${filePath}: ${err.message}`);
     }
+
+    // Sync to PostgreSQL asynchronously
+    this.prisma.masterDb.upsert({
+      where: { key: 'master_itsm_db' },
+      create: {
+        key: 'master_itsm_db',
+        data: this.data as any,
+      },
+      update: {
+        data: this.data as any,
+      },
+    }).then(() => {
+      this.logger.log(`[SingleDatabaseService] Successfully synced Master Database updates to PostgreSQL.`);
+    }).catch((err: any) => {
+      this.logger.error(`[SingleDatabaseService] Failed to sync database updates to PostgreSQL: ${err.message}`);
+    });
   }
 
   // Getters & Setters
@@ -177,6 +271,22 @@ export class SingleDatabaseService {
   }
   set agentHistory(val: any[]) {
     this.data.agentHistory = val;
+    this.saveDatabaseToFile();
+  }
+
+  get agentModelConfig(): any {
+    return this.data.agentModelConfig;
+  }
+  set agentModelConfig(val: any) {
+    this.data.agentModelConfig = val;
+    this.saveDatabaseToFile();
+  }
+
+  get agentTimeline(): any[] {
+    return this.data.agentTimeline || [];
+  }
+  set agentTimeline(val: any[]) {
+    this.data.agentTimeline = val;
     this.saveDatabaseToFile();
   }
 

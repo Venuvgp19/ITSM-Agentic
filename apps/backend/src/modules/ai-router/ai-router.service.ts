@@ -3,6 +3,7 @@ import { IncidentService } from '../incidents/incident.service';
 import { LlmService } from './llm.service';
 import * as fs from 'fs';
 import * as path from 'path';
+import { SingleDatabaseService } from '../../database/single-db.service';
 
 export interface AiRouterConfig {
   autoAssignConfidenceThreshold: number;
@@ -48,7 +49,8 @@ export class AiRouterService implements OnModuleInit {
 
   constructor(
     private readonly incidentService: IncidentService,
-    private readonly llmService: LlmService
+    private readonly llmService: LlmService,
+    private readonly singleDb: SingleDatabaseService
   ) {}
 
   onModuleInit() {
@@ -106,6 +108,15 @@ export class AiRouterService implements OnModuleInit {
     return this.config;
   }
 
+  private getDynamicModelName(): string {
+    let modelName = this.config.modelName;
+    const dbConfig = this.singleDb.agentModelConfig;
+    if (dbConfig && dbConfig.routerModel) {
+      modelName = dbConfig.routerModel;
+    }
+    return modelName;
+  }
+
   async analyzeIncident(tenantId: string, incidentId: string) {
     const inc = await this.incidentService.findOne(tenantId, incidentId);
     if (!inc) {
@@ -121,7 +132,7 @@ export class AiRouterService implements OnModuleInit {
       priority: inc.priority,
       impact: inc.impact,
       urgency: inc.urgency,
-    }, this.config.modelName);
+    }, this.getDynamicModelName());
 
     return {
       incident: inc,

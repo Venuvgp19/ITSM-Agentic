@@ -56,7 +56,7 @@ async function seed1000Incidents() {
       const impact = impacts[idx % impacts.length];
       const urgency = (urgencies[idx % urgencies.length] as Urgency) || Urgency.MEDIUM;
       
-      let priority = Priority.MODERATE;
+      let priority: Priority = Priority.MODERATE;
       if (impact === Impact.ENTERPRISE && urgency === Urgency.CRITICAL) priority = Priority.CRITICAL;
       else if (impact === Impact.ENTERPRISE || urgency === Urgency.CRITICAL) priority = Priority.HIGH;
       else if (impact === Impact.INDIVIDUAL && urgency === Urgency.LOW) priority = Priority.LOW;
@@ -74,7 +74,7 @@ async function seed1000Incidents() {
       });
     }
 
-    await prisma.incident.createMany({ data: batch, skipDuplicates: true });
+    await prisma.incident.createMany({ data: batch });
     console.log(`Seeded incidents ${i} to ${Math.min(i + batchSize - 1, 1000)}...`);
   }
 

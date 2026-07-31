@@ -87,4 +87,25 @@ export class AgentGovernanceController {
   updateConfig(@Body() patch: any) {
     return this.governanceService.updateModelConfig(patch);
   }
+
+  @Public()
+  @Get('timeline')
+  @ApiOperation({ summary: 'Get active agent execution progress timelines' })
+  getTimeline() {
+    return this.governanceService.getTimeline();
+  }
+
+  @Public()
+  @Post('timeline')
+  @ApiOperation({ summary: 'Update agent execution step or status' })
+  updateTimeline(@Body() dto: any) {
+    return this.governanceService.updateTimeline(dto);
+  }
+
+  @Public()
+  @Post('reset-locks')
+  @ApiOperation({ summary: 'Force reset stuck execution locks and refresh governance state' })
+  resetLocks() {
+    return this.governanceService.resetLocks();
+  }
 }

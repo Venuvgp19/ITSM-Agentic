@@ -121,8 +121,15 @@ export class AuthService {
     }
 
     // Dev mode fallback
+    let sub = 'usr_admin_01';
+    if (dto.email.includes('resolver')) {
+      sub = 'usr_resolver_agent';
+    } else if (dto.email.includes('router')) {
+      sub = 'usr_router_agent';
+    }
+
     const token = this.jwtService.sign({
-      sub: 'usr_admin_01',
+      sub,
       email: dto.email,
       tenantId: 'tenant_acme_01',
     });

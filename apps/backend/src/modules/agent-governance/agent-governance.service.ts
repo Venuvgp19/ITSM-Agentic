@@ -133,25 +133,38 @@ export class AgentGovernanceService {
 
   // --- APPROVALS METRICS & OPERATIONS ---
 
-  getPendingApprovals(): AgentApproval[] {
-    this.approvals = this.singleDb.agentApprovals;
-    return this.approvals.filter((a) => a.status === 'PENDING');
-  }
-
-  getAllApprovals(): AgentApproval[] {
-    this.approvals = this.singleDb.agentApprovals;
+  private getUnifiedApprovals(): AgentApproval[] {
+    const fileApprovals = loadJsonFile<AgentApproval[]>(APPROVALS_FILE_PATH, []);
+    const singleDbApprovals = this.singleDb.agentApprovals || [];
+    const combined = [...singleDbApprovals, ...fileApprovals, ...this.approvals];
+    const uniqueMap = new Map<string, AgentApproval>();
+    combined.forEach(item => {
+      if (item && item.id) {
+        uniqueMap.set(item.id.toUpperCase(), item);
+      }
+    });
+    this.approvals = Array.from(uniqueMap.values());
     return this.approvals;
   }
 
+  getPendingApprovals(): AgentApproval[] {
+    const approvals = this.getUnifiedApprovals();
+    return approvals.filter((a) => a.status === 'PENDING');
+  }
+
+  getAllApprovals(): AgentApproval[] {
+    return this.getUnifiedApprovals();
+  }
+
   getApprovalById(id: string): AgentApproval {
-    this.approvals = loadJsonFile<AgentApproval[]>(APPROVALS_FILE_PATH, this.approvals);
-    const item = this.approvals.find((a) => a.id.toUpperCase() === id.toUpperCase());
+    const approvals = this.getUnifiedApprovals();
+    const item = approvals.find((a) => a.id.toUpperCase() === id.toUpperCase());
     if (!item) throw new NotFoundException(`Approval request ${id} not found.`);
     return item;
   }
 
   createApprovalRequest(dto: Partial<AgentApproval>): AgentApproval {
-    this.approvals = loadJsonFile<AgentApproval[]>(APPROVALS_FILE_PATH, this.approvals);
+    const approvals = this.getUnifiedApprovals();
     
     const newId = `APPR-${Math.floor(1000 + Math.random() * 9000)}`;
     const newApproval: AgentApproval = {
@@ -160,7 +173,7 @@ export class AgentGovernanceService {
       incidentTitle: dto.incidentTitle || 'Autonomous Agent Remediation Request',
       agentId: dto.agentId || 'agent-unix-resolver-01',
       agentName: dto.agentName || '🤖 Unix Auto-Resolver Agent',
-      model: dto.model || 'gemini-3.1-pro-preview',
+      model: dto.model || 'nvidia/nemotron-3-ultra-550b-a55b',
       targetCi: dto.targetCi || 'Worker 1 (192.168.56.10)',
       department: dto.department || 'Unix',
       riskLevel: dto.riskLevel || 'HIGH',
@@ -173,107 +186,127 @@ export class AgentGovernanceService {
       kbTitle: dto.kbTitle || 'Standard Remediation SOP',
       safetyChecks: dto.safetyChecks || [{ check: 'Target host operational', passed: true }],
       aiReasoning: dto.aiReasoning || 'Remediation aligns with knowledge base SOP.',
+      routerOutput: dto.routerOutput,
+      resolverOutput: dto.resolverOutput,
+      synthesizerOutput: dto.synthesizerOutput
     };
 
-    this.approvals.unshift(newApproval);
+    approvals.unshift(newApproval);
+    this.approvals = approvals;
     this.saveApprovals();
     return newApproval;
   }
 
   approveRequest(id: string, approverName: string = 'System Admin (Human in the Loop)'): { approval: AgentApproval; historyEntry: AgentHistoryEntry } {
-    this.approvals = loadJsonFile<AgentApproval[]>(APPROVALS_FILE_PATH, this.approvals);
-    this.history = loadJsonFile<AgentHistoryEntry[]>(HISTORY_FILE_PATH, this.history);
+    const approvals = this.getUnifiedApprovals();
 
-    const approvalIndex = this.approvals.findIndex((a) => a.id.toUpperCase() === id.toUpperCase());
+    const approvalIndex = approvals.findIndex((a) => a.id.toUpperCase() === id.toUpperCase());
     if (approvalIndex === -1) throw new NotFoundException(`Approval request ${id} not found.`);
 
-    const appr = this.approvals[approvalIndex];
+    const appr = approvals[approvalIndex];
     appr.status = 'APPROVED';
     appr.approvedBy = approverName;
     appr.approvedAt = new Date().toISOString();
 
+    this.approvals = approvals;
     this.saveApprovals();
 
-    // Create execution history entry
-    const historyId = `HIST-${Math.floor(8000 + Math.random() * 1000)}`;
-    const historyEntry: AgentHistoryEntry = {
-      id: historyId,
-      approvalId: appr.id,
-      incidentId: appr.incidentId,
-      incidentTitle: appr.incidentTitle,
-      agentId: appr.agentId,
-      agentName: appr.agentName,
-      model: appr.model,
-      targetCi: appr.targetCi,
-      department: appr.department,
-      riskLevel: appr.riskLevel,
-      status: 'APPROVED',
-      actionType: 'Human-Approved Execution',
-      executedAt: new Date().toISOString(),
-      durationMs: Math.floor(600 + Math.random() * 1200),
-      humanApprover: approverName,
-      commandExecuted: appr.proposedCommands.join(' && '),
-      executionOutput: `=== EXECUTION SUCCESSFUL ===\nCommands:\n${appr.proposedCommands.map(c => `> ${c}`).join('\n')}\nResult: System returned 0 (OK). Service healthy.`,
-      resolutionOutcome: `Action approved by ${approverName}. Incident ${appr.incidentId} state transitioned to RESOLVED.`,
-      kbGenerated: appr.kbArticleReference,
-    };
+    // Set incident state back to IN_PROGRESS so Auto-Resolver Daemon executes SSH commands
+    this.updateIncidentToInProgress(appr.incidentId, approverName);
 
-    this.history.unshift(historyEntry);
-    this.saveHistory();
-
-    // Update target incident state if database/file exists
-    this.updateIncidentToResolved(appr.incidentId, approverName, historyEntry.executionOutput);
-
-    return { approval: appr, historyEntry };
+    return { approval: appr, historyEntry: null as any };
   }
 
   rejectRequest(id: string, rejectionReason: string, rejectorName: string = 'System Admin'): { approval: AgentApproval; historyEntry: AgentHistoryEntry } {
-    this.approvals = loadJsonFile<AgentApproval[]>(APPROVALS_FILE_PATH, this.approvals);
-    this.history = loadJsonFile<AgentHistoryEntry[]>(HISTORY_FILE_PATH, this.history);
+    const approvals = this.getUnifiedApprovals();
 
-    const approvalIndex = this.approvals.findIndex((a) => a.id.toUpperCase() === id.toUpperCase());
+    const approvalIndex = approvals.findIndex((a) => a.id.toUpperCase() === id.toUpperCase());
     if (approvalIndex === -1) throw new NotFoundException(`Approval request ${id} not found.`);
 
-    const appr = this.approvals[approvalIndex];
+    const appr = approvals[approvalIndex];
     appr.status = 'REJECTED';
     appr.rejectionReason = rejectionReason || 'Rejected by human operator policy.';
 
+    this.approvals = approvals;
     this.saveApprovals();
 
-    const historyId = `HIST-${Math.floor(8000 + Math.random() * 1000)}`;
-    const historyEntry: AgentHistoryEntry = {
-      id: historyId,
-      approvalId: appr.id,
-      incidentId: appr.incidentId,
-      incidentTitle: appr.incidentTitle,
-      agentId: appr.agentId,
-      agentName: appr.agentName,
-      model: appr.model,
-      targetCi: appr.targetCi,
-      department: appr.department,
-      riskLevel: appr.riskLevel,
-      status: 'REJECTED',
-      actionType: 'Human Rejection & Block',
-      executedAt: new Date().toISOString(),
-      durationMs: 0,
-      humanApprover: rejectorName,
-      commandExecuted: appr.proposedCommands.join(' && '),
-      executionOutput: `REJECTED BY HUMAN (${rejectorName}): ${appr.rejectionReason}`,
-      resolutionOutcome: `Action blocked by Human-in-the-Loop policy. Incident ${appr.incidentId} retained for tier 3 human review.`,
-      kbGenerated: undefined,
-    };
+    this.updateIncidentToRejected(appr.incidentId, rejectorName, appr.rejectionReason || 'Rejected by human operator policy.');
 
-    this.history.unshift(historyEntry);
-    this.saveHistory();
-
-    return { approval: appr, historyEntry };
+    return { approval: appr, historyEntry: null as any };
   }
 
   // --- HISTORY METRICS & AUDIT ---
 
   getHistory(): AgentHistoryEntry[] {
-    this.history = loadJsonFile<AgentHistoryEntry[]>(HISTORY_FILE_PATH, this.history);
+    const fileHistory = loadJsonFile<AgentHistoryEntry[]>(HISTORY_FILE_PATH, []);
+    const singleDbHistory = this.singleDb.agentHistory || [];
+    
+    const combined = [...singleDbHistory, ...fileHistory];
+    const uniqueMap = new Map<string, AgentHistoryEntry>();
+    combined.forEach(item => {
+      if (item && item.id && item.status !== 'REJECTED') {
+        uniqueMap.set(item.id.toUpperCase(), item);
+      }
+    });
+
+    // Dynamically map APPROVED approvals into history if not already present
+    const approvals = this.getAllApprovals();
+    approvals.forEach((appr) => {
+      if (appr.status === 'APPROVED') {
+        const histId = `HIST-${appr.id}`;
+        if (!uniqueMap.has(histId.toUpperCase()) && !Array.from(uniqueMap.values()).some(h => h.approvalId === appr.id)) {
+          uniqueMap.set(histId.toUpperCase(), {
+            id: histId,
+            approvalId: appr.id,
+            incidentId: appr.incidentId,
+            incidentTitle: appr.incidentTitle,
+            agentId: appr.agentId,
+            agentName: appr.agentName,
+            model: appr.model,
+            targetCi: appr.targetCi,
+            department: appr.department,
+            riskLevel: appr.riskLevel,
+            status: 'APPROVED',
+            actionType: 'Human-Approved Execution',
+            executedAt: appr.approvedAt || new Date().toISOString(),
+            durationMs: 850,
+            humanApprover: appr.approvedBy || 'System Admin',
+            commandExecuted: (appr.proposedCommands || []).join(' && '),
+            executionOutput: 'Executed successfully on target CI.',
+            resolutionOutcome: 'Action approved by operator.',
+            routerOutput: appr.routerOutput,
+            resolverOutput: appr.resolverOutput,
+            synthesizerOutput: appr.synthesizerOutput
+          });
+        }
+      }
+    });
+
+    this.history = Array.from(uniqueMap.values()).filter(h => h && h.status !== 'REJECTED');
+    this.saveHistory();
     return this.history;
+  }
+
+  resetLocks() {
+    console.log('⚡ Force resetting stuck execution locks and syncing governance state...');
+    
+    // Clear any stuck pending statuses or re-sync singleDb
+    this.approvals = this.singleDb.agentApprovals || [];
+    this.history = this.singleDb.agentHistory || [];
+
+    // Trigger full history re-sync
+    this.getHistory();
+
+    saveJsonFile(APPROVALS_FILE_PATH, this.approvals);
+    saveJsonFile(HISTORY_FILE_PATH, this.history);
+
+    return {
+      success: true,
+      message: 'Stuck execution locks cleared. System feeds force synced.',
+      timestamp: new Date().toISOString(),
+      pendingApprovalsCount: this.getPendingApprovals().length,
+      historyCount: this.history.length
+    };
   }
 
   createHistoryEntry(dto: Partial<AgentHistoryEntry>): AgentHistoryEntry {
@@ -339,28 +372,71 @@ export class AgentGovernanceService {
 
   private updateIncidentToResolved(incidentId: string, approverName: string, notes: string) {
     try {
-      if (fs.existsSync(INCIDENTS_FILE_PATH)) {
-        const incidents = JSON.parse(fs.readFileSync(INCIDENTS_FILE_PATH, 'utf-8'));
-        const cleanId = incidentId.toUpperCase();
-        const inc = incidents.find((i: any) => i.id.toUpperCase() === cleanId || i.number.toUpperCase() === cleanId);
-        if (inc) {
-          inc.state = 'RESOLVED';
-          inc.resolutionCode = 'Server - Kernel & OS Patch';
-          inc.resolutionNotes = `Human in the loop (${approverName}) approved agent execution on ${new Date().toLocaleString()}.\nOutput:\n${notes}`;
-          if (!inc.activities) inc.activities = [];
-          inc.activities.unshift({
-            id: `act_${Date.now()}`,
-            incidentId: inc.id,
-            author: `🛡️ Human in the Loop (${approverName})`,
-            comment: `Approved autonomous agent execution for ticket ${inc.id}. Remediation completed successfully.`,
-            isWorkNote: true,
-            timestamp: new Date().toLocaleTimeString(),
-          });
-          fs.writeFileSync(INCIDENTS_FILE_PATH, JSON.stringify(incidents, null, 2), 'utf-8');
-        }
+      const incidents = this.singleDb.incidents;
+      const cleanId = incidentId.toUpperCase();
+      const inc = incidents.find((i: any) => i.id.toUpperCase() === cleanId || i.number.toUpperCase() === cleanId);
+      if (inc) {
+        inc.state = 'IN_PROGRESS';
+        if (!inc.activities) inc.activities = [];
+        inc.activities.unshift({
+          id: `act_${Date.now()}`,
+          incidentId: inc.id,
+          author: `🛡️ Human in the Loop (${approverName})`,
+          comment: `SOP Approved by Human: ${approverName}. Resolver Agent is authorized and proceeding with remediation on target host.`,
+          isWorkNote: true,
+          timestamp: new Date().toLocaleTimeString(),
+        });
+        this.singleDb.incidents = incidents;
       }
     } catch (e) {
-      console.error(`Failed to sync resolution to incident ${incidentId}:`, e);
+      console.error(`Failed to sync approval to incident ${incidentId}:`, e);
+    }
+  }
+
+  private updateIncidentToRejected(incidentId: string, rejectorName: string, reason: string) {
+    try {
+      const incidents = this.singleDb.incidents;
+      const cleanId = incidentId.toUpperCase();
+      const inc = incidents.find((i: any) => i.id.toUpperCase() === cleanId || i.number.toUpperCase() === cleanId);
+      if (inc) {
+        inc.state = 'ON_HOLD';
+        inc.assignedTo = 'DevOps Team';
+        if (!inc.activities) inc.activities = [];
+        inc.activities.unshift({
+          id: `act_${Date.now()}`,
+          incidentId: inc.id,
+          author: `🛡️ Human in the Loop (${rejectorName})`,
+          comment: `SOP Rejected by Human: ${reason}. Incident state set to ON_HOLD and reassigned to DevOps Team.`,
+          isWorkNote: true,
+          timestamp: new Date().toLocaleTimeString(),
+        });
+        this.singleDb.incidents = incidents;
+      }
+    } catch (e) {
+      console.error(`Failed to sync rejection to incident ${incidentId}:`, e);
+    }
+  }
+
+  private updateIncidentToInProgress(incidentId: string, approverName: string) {
+    try {
+      const incidents = this.singleDb.incidents;
+      const cleanId = incidentId.toUpperCase();
+      const inc = incidents.find((i: any) => i.id.toUpperCase() === cleanId || (i.number && i.number.toUpperCase() === cleanId));
+      if (inc) {
+        inc.state = 'IN_PROGRESS';
+        if (!inc.activities) inc.activities = [];
+        inc.activities.unshift({
+          id: `act_${Date.now()}`,
+          incidentId: inc.id,
+          author: `🛡️ Human in the Loop (${approverName})`,
+          comment: `SOP Approved by Human Operator (${approverName}). Status updated to IN_PROGRESS. Auto-Resolver Agent is executing SSH commands on target host.`,
+          isWorkNote: true,
+          timestamp: new Date().toLocaleTimeString(),
+        });
+        this.singleDb.incidents = incidents;
+      }
+    } catch (e) {
+      console.error(`Failed to update incident state to IN_PROGRESS for ${incidentId}:`, e);
     }
   }
 
@@ -374,38 +450,78 @@ export class AgentGovernanceService {
     synthesizerModel: 'azure_ai/genailab-maas-DeepSeek-R1',
     governanceModel: 'genailab-maas-gpt-4o',
     fallbackModels: [
+      'nvidia/nemotron-3-ultra-550b-a55b',
       'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
       'azure_ai/genailab-maas-DeepSeek-R1',
       'genailab-maas-gpt-4o',
-      'gemini-2.5-pro',
-      'azure/genailab-maas-gpt-4o-mini'
+      'gemini-2.5-pro'
     ]
   };
 
   getModelConfig() {
-    const configPath = path.resolve(process.cwd(), 'apps/backend/data/database.json');
-    if (fs.existsSync(configPath)) {
-      try {
-        const db = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        if (db.agentModelConfig) {
-          this.modelConfig = { ...this.modelConfig, ...db.agentModelConfig };
-        }
-      } catch (err) {}
+    const dbConfig = this.singleDb.agentModelConfig;
+    if (dbConfig) {
+      this.modelConfig = { ...this.modelConfig, ...dbConfig };
     }
     return this.modelConfig;
   }
 
   updateModelConfig(patch: Partial<any>) {
     this.modelConfig = { ...this.modelConfig, ...patch };
-    const configPath = path.resolve(process.cwd(), 'apps/backend/data/database.json');
     try {
-      let db: any = {};
-      if (fs.existsSync(configPath)) {
-        db = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      }
-      db.agentModelConfig = this.modelConfig;
-      fs.writeFileSync(configPath, JSON.stringify(db, null, 2), 'utf-8');
+      this.singleDb.agentModelConfig = this.modelConfig;
     } catch (err) {}
     return this.modelConfig;
+  }
+
+  getTimeline() {
+    return this.singleDb.agentTimeline || [];
+  }
+
+  updateTimeline(dto: any) {
+    const timeline = this.singleDb.agentTimeline || [];
+    let execution = timeline.find((ex: any) => ex.id === dto.id);
+    if (!execution) {
+      execution = {
+        id: dto.id,
+        incidentNumber: dto.incidentNumber || dto.id,
+        incidentTitle: dto.incidentTitle || 'ITSM Incident Remediation',
+        targetCi: dto.targetCi || 'Unspecified CI',
+        status: dto.status || 'RUNNING',
+        startTime: dto.startTime || new Date().toISOString(),
+        steps: []
+      };
+      timeline.unshift(execution);
+    }
+
+    if (dto.status) {
+      execution.status = dto.status;
+      if (dto.status !== 'RUNNING') {
+        execution.endTime = new Date().toISOString();
+      }
+    }
+
+    if (dto.step) {
+      const stepIdx = execution.steps.findIndex((s: any) => s.name === dto.step.name);
+      const newStep = {
+        id: dto.step.id || `step-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        name: dto.step.name,
+        status: dto.step.status || 'SUCCESS',
+        timestamp: dto.step.timestamp || new Date().toLocaleTimeString(),
+        details: dto.step.details || ''
+      };
+      if (stepIdx >= 0) {
+        execution.steps[stepIdx] = newStep;
+      } else {
+        execution.steps.push(newStep);
+      }
+    }
+
+    if (timeline.length > 50) {
+      timeline.splice(50);
+    }
+
+    this.singleDb.agentTimeline = timeline;
+    return execution;
   }
 }

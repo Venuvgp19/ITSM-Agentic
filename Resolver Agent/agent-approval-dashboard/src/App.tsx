@@ -12,15 +12,19 @@ import {
   Cpu,
   Lock,
   Zap,
-  Terminal
+  Terminal,
+  Brain
 } from 'lucide-react';
 import { PendingApprovalsView, AgentApproval } from './components/PendingApprovalsView';
 import { HistoricalActivityView, AgentHistoryEntry } from './components/HistoricalActivityView';
 import { GovernanceAnalyticsView } from './components/GovernanceAnalyticsView';
 import { ModelConfigView } from './components/ModelConfigView';
+import { VectorSpace3D } from './components/VectorSpace3D';
+import { IncidentAnalysisView } from './components/IncidentAnalysisView';
+import { AgentExecutionTimelineView } from './components/AgentExecutionTimelineView';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'approvals' | 'history' | 'analytics' | 'config'>('approvals');
+  const [activeTab, setActiveTab] = useState<'approvals' | 'history' | 'analytics' | 'config' | 'vector' | 'analysis' | 'timeline'>('approvals');
   const [approvals, setApprovals] = useState<AgentApproval[]>([]);
   const [history, setHistory] = useState<AgentHistoryEntry[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -115,10 +119,28 @@ export function App() {
           <button
             onClick={fetchData}
             disabled={loading}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50"
+            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-400' : 'text-slate-400'}`} />
             Refresh Feed
+          </button>
+
+          <button
+            onClick={async () => {
+              setLoading(true);
+              try {
+                await fetch('http://localhost:4000/api/v1/agent/reset-locks', { method: 'POST' });
+              } catch (e) {
+                console.error('Reset locks error:', e);
+              }
+              await fetchData();
+            }}
+            disabled={loading}
+            className="px-3.5 py-2 bg-rose-950/50 hover:bg-rose-900/80 text-rose-300 border border-rose-800/80 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95 disabled:opacity-50"
+            title="Force unlock stuck agent queues & refresh governance state"
+          >
+            <Zap className="w-4 h-4 text-rose-400 animate-pulse" />
+            Force Unlock Queue
           </button>
         </div>
       </header>
@@ -169,6 +191,42 @@ export function App() {
           >
             <Activity className="w-4.5 h-4.5" />
             Governance Analytics & Guardrail Matrix
+          </button>
+
+          <button
+            onClick={() => setActiveTab('vector')}
+            className={`flex items-center gap-2.5 px-6 py-3.5 text-xs font-extrabold border-b-2 transition-all uppercase tracking-wider ${
+              activeTab === 'vector'
+                ? 'border-cyan-500 text-cyan-400 bg-cyan-500/10 rounded-t-xl shadow-sm'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <Layers className="w-4.5 h-4.5" />
+            3D Vector Database Map
+          </button>
+
+          <button
+            onClick={() => setActiveTab('analysis')}
+            className={`flex items-center gap-2.5 px-6 py-3.5 text-xs font-extrabold border-b-2 transition-all uppercase tracking-wider ${
+              activeTab === 'analysis'
+                ? 'border-cyan-500 text-cyan-400 bg-cyan-500/10 rounded-t-xl shadow-sm'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <Brain className="w-4.5 h-4.5 text-cyan-400" />
+            Incident Analysis Agent
+          </button>
+
+          <button
+            onClick={() => setActiveTab('timeline')}
+            className={`flex items-center gap-2.5 px-6 py-3.5 text-xs font-extrabold border-b-2 transition-all uppercase tracking-wider ${
+              activeTab === 'timeline'
+                ? 'border-cyan-500 text-cyan-400 bg-cyan-500/10 rounded-t-xl shadow-sm'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <Terminal className="w-4.5 h-4.5 text-cyan-400" />
+            Execution Timeline
           </button>
           
           <button
@@ -231,6 +289,15 @@ export function App() {
 
         {/* Tab 4: Model Configuration */}
         {activeTab === 'config' && <ModelConfigView />}
+
+        {/* Tab 5: 3D Vector DB Map */}
+        {activeTab === 'vector' && <VectorSpace3D />}
+
+        {/* Tab 6: Incident Analysis Agent */}
+        {activeTab === 'analysis' && <IncidentAnalysisView />}
+
+        {/* Tab 7: Agent Execution Timeline */}
+        {activeTab === 'timeline' && <AgentExecutionTimelineView />}
       </main>
 
       {/* Footer Bar */}

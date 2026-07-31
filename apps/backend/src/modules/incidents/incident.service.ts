@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateIncidentDto, UpdateIncidentDto, AddActivityDto } from './dto/incident.dto';
 import { Impact, Urgency, Priority, IncidentState } from '@itsm/db';
@@ -53,12 +53,20 @@ function generate1000DatabaseIncidents() {
     const deptInfo = departmentLogTemplates[dept] || departmentLogTemplates['Unix'];
     const resCode = resolutionCodes[i % resolutionCodes.length];
 
+    // Distribute creation dates over the last 90 days (3 months)
+    const daysAgo = Math.floor((i / 1000) * 90);
+    const date = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const createdAtStr = `${yyyy}-${mm}-${dd} 10:14:00`;
+
     list.push({
       id: `INC${String(i).padStart(7, '0')}`,
       number: `INC${String(i).padStart(7, '0')}`,
       shortDescription: title,
       description: `Incident Record #${i}. Diagnostic log: ${deptInfo.log}`,
-      state: 'IN_PROGRESS',
+      state: 'RESOLVED',
       impact: i % 5 === 0 ? 'ENTERPRISE' : i % 3 === 0 ? 'DEPARTMENT' : 'TEAM',
       urgency: i % 4 === 0 ? 'CRITICAL' : i % 2 === 0 ? 'HIGH' : 'MEDIUM',
       priority: i % 5 === 0 ? 'P1' : i % 3 === 0 ? 'P2' : i % 2 === 0 ? 'P3' : 'P4',
@@ -68,7 +76,7 @@ function generate1000DatabaseIncidents() {
       resolutionNotes: deptInfo.log,
       caller: 'Monitoring Bot',
       configurationItem: i % 3 === 0 ? 'postgres-prod-01' : i % 2 === 0 ? 'router-border-nyc-01' : 'mainframe-host-01',
-      createdAt: '2026-07-21 10:14:00',
+      createdAt: createdAtStr,
       activities: [
         { id: `act_${i}_1`, author: 'Monitoring Bot', isWorkNote: true, comment: `Automated alert created ticket INC${String(i).padStart(7, '0')}.`, timestamp: '10:14 AM' }
       ]
@@ -98,6 +106,26 @@ function loadOrSeedDatabase(): any[] {
       const parsed = JSON.parse(content);
       if (Array.isArray(parsed) && parsed.length >= 1000) {
         console.log(`[IncidentService] Loaded ${parsed.length} incidents from database file: ${filePath}`);
+        
+        // Retroactively update dates if they are static or missing YYYY-MM-DD
+        let updated = false;
+        parsed.forEach((inc, idx) => {
+          if (!inc.createdAt || inc.createdAt === '2026-07-21 10:14:00') {
+            const daysAgo = Math.floor((idx / parsed.length) * 90);
+            const date = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+            const yyyy = date.getFullYear();
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const dd = String(date.getDate()).padStart(2, '0');
+            inc.createdAt = `${yyyy}-${mm}-${dd} 10:14:00`;
+            updated = true;
+          }
+        });
+
+        if (updated) {
+          fs.writeFileSync(filePath, JSON.stringify(parsed, null, 2), 'utf-8');
+          console.log(`[IncidentService] Retroactively updated stored incident timestamps over last 3 months.`);
+        }
+
         return parsed;
       }
     }
@@ -127,12 +155,14 @@ function saveDatabaseToFile(incidents: any[]) {
 import { SingleDatabaseService } from '../../database/single-db.service';
 
 @Injectable()
-export class IncidentService {
+export class IncidentService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private singleDb: SingleDatabaseService
-  ) {
-    if (!this.singleDb.incidents || this.singleDb.incidents.length < 1000) {
+  ) {}
+
+  onModuleInit() {
+    if (!this.singleDb.incidents || this.singleDb.incidents.length === 0) {
       console.log(`[IncidentService] Seeding 1,000 baseline incidents into single master database...`);
       this.singleDb.incidents = generate1000DatabaseIncidents();
     }
@@ -221,16 +251,17 @@ export class IncidentService {
   }
 
   async findAll(tenantId: string) {
+    if (this.singleDb.incidents && this.singleDb.incidents.length > 0) {
+      return this.singleDb.incidents;
+    }
     try {
       const records = await this.prisma.incident.findMany({
         where: { tenantId },
-        take: 1000,
+        take: 2000,
         orderBy: { createdAt: 'desc' },
       });
       if (records.length > 0) {
-        const dbNumbers = new Set(records.map(r => r.number || r.id));
-        const remainingMemory = this.singleDb.incidents.filter(i => !dbNumbers.has(i.id) && !dbNumbers.has(i.number));
-        return [...records, ...remainingMemory];
+        return records;
       }
     } catch (err) {
       // Fallback to in-memory incidents
@@ -358,10 +389,22 @@ export class IncidentService {
 
   async addActivity(tenantId: string, incidentId: string, authorId: string, dto: AddActivityDto) {
     const inc = await this.findOne(tenantId, incidentId);
+    
+    let author = 'System Admin';
+    if (dto.author) {
+      author = dto.author;
+    } else if (authorId === 'usr_resolver_agent' || authorId === 'ai_resolver_agent') {
+      author = '🤖 Unix Auto-Resolver Agent';
+    } else if (authorId === 'usr_router_agent' || authorId === 'ai_router_agent') {
+      author = '🤖 Agentic AI Router';
+    } else if (authorId === 'ai_router_agent') {
+      author = '🤖 Agentic AI Router';
+    }
+
     const newAct = {
       id: `act_${Date.now()}`,
       incidentId,
-      author: authorId === 'ai_router_agent' ? '🤖 Agentic AI Router' : 'System Admin',
+      author,
       comment: dto.comment,
       isWorkNote: dto.isWorkNote,
       timestamp: new Date().toLocaleTimeString(),

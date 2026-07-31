@@ -287,7 +287,7 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                 </div>
 
                 {/* 3-Agent Cards Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   {/* AGENT 1: ROUTER AGENT */}
                   <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-5 space-y-3 shadow-lg">
                     <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -345,60 +345,94 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                       </div>
                     </div>
                   </div>
-
-                  {/* AGENT 3: KNOWLEDGE SYNTHESIZER AGENT */}
-                  <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-5 space-y-3 shadow-lg">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                      <div className="flex items-center gap-2 font-bold text-xs text-emerald-400">
-                        <BrainCircuit className="w-4 h-4 text-emerald-400" />
-                        AGENT 3: 🧠 KNOWLEDGE SYNTHESIZER
-                      </div>
-                      <span className="text-[10px] font-black text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
-                        {appr.synthesizerOutput?.draftKbId || 'KB-90045'}
-                      </span>
-                    </div>
-
-                    <div className="space-y-2 text-xs">
-                      <div>
-                        <span className="text-slate-500 font-medium">Draft KB Title: </span>
-                        <span className="text-emerald-300 font-bold block mt-0.5">{appr.synthesizerOutput?.kbTitle || 'SOP: High Kernel Contention Recovery'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 font-medium">Synthesized Fix: </span>
-                        <span className="text-slate-300 leading-relaxed block mt-0.5">{appr.synthesizerOutput?.synthesizedSolution || 'Issue SIGKILL and flush drop_caches memory.'}</span>
-                      </div>
-                      <div className="mt-2 pt-2 border-t border-slate-800/60 text-emerald-400 text-[11px] bg-emerald-950/20 p-2.5 rounded-xl border border-emerald-900/40">
-                        💡 <span className="font-bold">Trend Insight:</span> {appr.synthesizerOutput?.trendInsight || '3rd occurrence this week. Recommend Problem Ticket PRB-0042.'}
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 {/* Proposed Commands & Pre-flight Checks */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-extrabold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
-                      <Terminal className="w-4 h-4 text-cyan-400" />
-                      Proposed Executable CLI / SSH Payload
-                    </span>
-                    <button
-                      onClick={() => copyCommands(appr.proposedCommands, appr.id)}
-                      className="text-[11px] font-semibold text-slate-400 hover:text-cyan-400 flex items-center gap-1 transition-colors"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      {copiedId === appr.id ? 'Copied!' : 'Copy Script'}
-                    </button>
-                  </div>
+                {(() => {
+                  const getFallbackSteps = (title: string, targetCi: string): string[] => {
+                    const ipMatch = targetCi ? targetCi.match(/\d+\.\d+\.\d+\.\d+/) : null;
+                    const ip = ipMatch ? ipMatch[0] : '192.168.100.101';
+                    const t = (title || '').toLowerCase();
 
-                  <div className="bg-[#080c14] border border-slate-800 rounded-xl p-4 font-mono text-xs text-emerald-400 space-y-2 overflow-x-auto shadow-inner">
-                    {appr.proposedCommands.map((cmd, idx) => (
-                      <div key={idx} className="flex items-start gap-2.5">
-                        <span className="text-slate-600 select-none">$</span>
-                        <span className="text-slate-100">{cmd}</span>
+                    if (t.includes('user') || t.includes('venu') || t.includes('privilege') || t.includes('passwordless')) {
+                      return [
+                        `id -u venu 2>/dev/null || useradd -m -s /bin/bash venu`,
+                        `echo "venu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/venu`,
+                        `chmod 0440 /etc/sudoers.d/venu`,
+                        `visudo -c`,
+                        `sudo -u venu sudo -v`
+                      ];
+                    }
+                    if (t.includes('cpu') || t.includes('kernel') || t.includes('spike') || t.includes('degradation')) {
+                      return [
+                        `ps aux --sort=-%cpu | head -20`,
+                        `top -bn1 | head -20`,
+                        `systemctl --failed`,
+                        `journalctl -p err -b --no-pager | head -50`,
+                        `systemctl restart control-plane`
+                      ];
+                    }
+                    return [
+                      `systemctl status control-plane`,
+                      `journalctl -u control-plane -n 50 --no-pager`,
+                      `systemctl restart control-plane`
+                    ];
+                  };
+
+                  const rawCommands = Array.isArray(appr.proposedCommands) && appr.proposedCommands.length > 0
+                    ? appr.proposedCommands
+                    : (Array.isArray(appr.synthesizerOutput?.resolutionSteps) && appr.synthesizerOutput.resolutionSteps.length > 0
+                        ? appr.synthesizerOutput.resolutionSteps
+                        : (appr.synthesizerOutput?.synthesizedSolution
+                            ? appr.synthesizerOutput.synthesizedSolution.split('\n').filter(Boolean)
+                            : getFallbackSteps(appr.incidentTitle || appr.summary, appr.targetCi)));
+
+                  const targetIp = (appr.targetCi ? (appr.targetCi.match(/\d+\.\d+\.\d+\.\d+/)?.[0] || '192.168.100.101') : '192.168.100.101');
+                  
+                  const displayCommands = rawCommands
+                    .map((cmd) => cmd.replace(/^\d+\.\s*/, '').trim())
+                    .filter((cmd) => {
+                      const clean = cmd.toLowerCase().trim();
+                      // Strip standalone SSH connection line without payload
+                      if (clean === `ssh root@${targetIp}` || clean === 'ssh root@192.168.100.101' || /^ssh\s+[^\s]+$/.test(clean)) {
+                        return false;
+                      }
+                      return Boolean(clean);
+                    })
+                    .map((cmd) => {
+                      if (cmd.toLowerCase().startsWith('ssh ')) {
+                        return cmd;
+                      }
+                      return `ssh root@${targetIp} "${cmd.replace(/"/g, '\\"')}"`;
+                    });
+
+                  return (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-extrabold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
+                          <Terminal className="w-4 h-4 text-cyan-400" />
+                          Proposed Executable CLI / SSH Payload
+                        </span>
+                        <button
+                          onClick={() => copyCommands(displayCommands, appr.id)}
+                          className="text-[11px] font-semibold text-slate-400 hover:text-cyan-400 flex items-center gap-1 transition-colors"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          {copiedId === appr.id ? 'Copied!' : 'Copy Script'}
+                        </button>
                       </div>
-                    ))}
-                  </div>
-                </div>
+
+                      <div className="bg-[#080c14] border border-slate-800 rounded-xl p-4 font-mono text-xs text-emerald-400 space-y-2 overflow-x-auto shadow-inner">
+                        {displayCommands.map((cmd, idx) => (
+                          <div key={idx} className="flex items-start gap-2.5">
+                            <span className="text-slate-600 select-none">$</span>
+                            <span className="text-slate-100">{cmd}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

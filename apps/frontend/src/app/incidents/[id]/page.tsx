@@ -32,7 +32,7 @@ const sampleTitles = [
 ];
 
 const departments = ['Unix', 'Network Ops', 'App Support', 'Desktop Support', 'DevOps Ops', 'SecOps', 'DBA Team'];
-const cis = ['router-border-nyc-01', 'k8s-prod-cluster-east-1', 'db-postgres-primary', 'api-gateway-envoy-v2', 'vpn-gateway-01'];
+const cis = ['router-border-nyc-01', 'k8s-prod-cluster-east-1', 'db-postgres-primary', 'api-gateway-envoy-v2', 'vpn-gateway-01', 'control plane'];
 
 const resolutionCodes = [
   'Server - Kernel & OS Patch',
@@ -92,21 +92,19 @@ export default function IncidentDetailPage() {
   const router = useRouter();
   const idParam = (params.id as string) || 'INC0001042';
 
-  const [incident, setIncident] = useState(() => getIncidentDetailById(idParam));
-  const [state, setState] = useState(incident.state);
-  const [resCode, setResCode] = useState(incident.resolutionCode);
-  const [ciVal, setCiVal] = useState(incident.ci);
-
-  const [activities, setActivities] = useState([
-    { id: 'act_1', author: 'Monitoring Bot', isWorkNote: true, comment: `Automated telemetry created incident ${incident.id} for target CI ${incident.ci}.`, timestamp: '10:14 AM' },
-    { id: 'act_2', author: incident.assignedTo, isWorkNote: true, comment: `Department ${incident.department} member assigned. Executing diagnostic procedures.`, timestamp: '10:22 AM' },
-  ]);
+  const [incident, setIncident] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [state, setState] = useState('NEW');
+  const [resCode, setResCode] = useState('Pending Triage');
+  const [ciVal, setCiVal] = useState('');
+  const [activities, setActivities] = useState<any[]>([]);
 
   const [commentText, setCommentText] = useState('');
   const [isWorkNote, setIsWorkNote] = useState(true);
 
   useEffect(() => {
     const fetchIncident = async () => {
+      setIsLoading(true);
       try {
         const res = await fetch(`/api/v1/incidents/${idParam}`);
         if (res.ok) {
@@ -138,6 +136,7 @@ export default function IncidentDetailPage() {
               { id: 'act_2', author: mappedInc.assignedTo, isWorkNote: true, comment: `Department ${mappedInc.department} assigned. State: ${mappedInc.state}.`, timestamp: '10:22 AM' },
             ]);
           }
+          setIsLoading(false);
           return;
         }
       } catch {
@@ -148,10 +147,12 @@ export default function IncidentDetailPage() {
       setIncident(updatedInc);
       setState(updatedInc.state);
       setResCode(updatedInc.resolutionCode);
+      setCiVal(updatedInc.ci);
       setActivities([
         { id: 'act_1', author: 'Monitoring Bot', isWorkNote: true, comment: `Automated telemetry created incident ${updatedInc.id} for target CI ${updatedInc.ci}.`, timestamp: '10:14 AM' },
         { id: 'act_2', author: updatedInc.assignedTo, isWorkNote: true, comment: `Department ${updatedInc.department} assigned.`, timestamp: '10:22 AM' },
       ]);
+      setIsLoading(false);
     };
 
     fetchIncident();
@@ -172,6 +173,15 @@ export default function IncidentDetailPage() {
     setActivities([newAct, ...activities]);
     setCommentText('');
   };
+
+  if (isLoading || !incident) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 py-40 text-slate-100 min-h-screen bg-slate-950">
+        <div className="w-8 h-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin"></div>
+        <p className="text-xs text-slate-400 font-medium">Loading incident details...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -462,7 +472,7 @@ export default function IncidentDetailPage() {
                   <span className="text-[10px] text-slate-400 font-mono">{act.timestamp}</span>
                 </div>
 
-                <p className="text-xs text-slate-200 leading-relaxed font-sans">{act.comment}</p>
+                <p className="text-xs text-slate-200 leading-relaxed font-sans whitespace-pre-wrap">{act.comment}</p>
               </div>
             ))}
           </div>
