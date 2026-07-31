@@ -59,12 +59,15 @@ export function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleApprove = async (id: string) => {
+  const handleApprove = async (id: string, proposedCommands?: string[]) => {
     try {
       const res = await fetch(`${API_BASE}/approvals/${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approverName: 'Sarah Jenkins (Human in the Loop)' }),
+        body: JSON.stringify({ 
+          approverName: 'Sarah Jenkins (Human in the Loop)',
+          proposedCommands: proposedCommands
+        }),
       });
       if (res.ok) {
         await fetchData();

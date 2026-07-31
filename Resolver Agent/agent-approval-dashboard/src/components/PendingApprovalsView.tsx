@@ -77,7 +77,7 @@ export interface AgentApproval {
 
 interface PendingApprovalsViewProps {
   approvals: AgentApproval[];
-  onApprove: (id: string) => Promise<void>;
+  onApprove: (id: string, proposedCommands?: string[]) => Promise<void>;
   onReject: (id: string, reason: string) => Promise<void>;
 }
 
@@ -87,6 +87,8 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
   const [rejectionReason, setRejectionReason] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editedCommandsMap, setEditedCommandsMap] = useState<Record<string, string>>({});
+  const [editingIdSet, setEditingIdSet] = useState<Set<string>>(new Set());
 
   const getRiskBadge = (risk: string) => {
     switch (risk) {
@@ -101,10 +103,33 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
     }
   };
 
+  const toggleEdit = (id: string, initialCommands: string[]) => {
+    const nextSet = new Set(editingIdSet);
+    if (nextSet.has(id)) {
+      nextSet.delete(id);
+    } else {
+      nextSet.add(id);
+      if (!(id in editedCommandsMap)) {
+        setEditedCommandsMap((prev) => ({
+          ...prev,
+          [id]: initialCommands.join('\n')
+        }));
+      }
+    }
+    setEditingIdSet(nextSet);
+  };
+
   const handleApprove = async (id: string) => {
     setIsSubmitting(id);
     try {
-      await onApprove(id);
+      let finalCommands: string[] | undefined = undefined;
+      if (id in editedCommandsMap && editedCommandsMap[id].trim()) {
+        finalCommands = editedCommandsMap[id]
+          .split('\n')
+          .map((c) => c.trim())
+          .filter(Boolean);
+      }
+      await onApprove(id, finalCommands);
     } finally {
       setIsSubmitting(null);
     }
@@ -406,30 +431,67 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                       return `ssh root@${targetIp} "${cmd.replace(/"/g, '\\"')}"`;
                     });
 
+                  const isEditing = editingIdSet.has(appr.id);
+                  const currentText = (appr.id in editedCommandsMap) ? editedCommandsMap[appr.id] : displayCommands.join('\n');
+
                   return (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-extrabold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
                           <Terminal className="w-4 h-4 text-cyan-400" />
                           Proposed Executable CLI / SSH Payload
                         </span>
-                        <button
-                          onClick={() => copyCommands(displayCommands, appr.id)}
-                          className="text-[11px] font-semibold text-slate-400 hover:text-cyan-400 flex items-center gap-1 transition-colors"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                          {copiedId === appr.id ? 'Copied!' : 'Copy Script'}
-                        </button>
+                        
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => toggleEdit(appr.id, displayCommands)}
+                            className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+                              isEditing
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                                : 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border-cyan-800/50'
+                            }`}
+                          >
+                            <FileCode2 className="w-3.5 h-3.5" />
+                            {isEditing ? 'Done Editing' : 'Edit Commands'}
+                          </button>
+
+                          <button
+                            onClick={() => copyCommands(isEditing ? currentText.split('\n') : displayCommands, appr.id)}
+                            className="text-[11px] font-semibold text-slate-400 hover:text-cyan-400 flex items-center gap-1 transition-colors"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            {copiedId === appr.id ? 'Copied!' : 'Copy Script'}
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="bg-[#080c14] border border-slate-800 rounded-xl p-4 font-mono text-xs text-emerald-400 space-y-2 overflow-x-auto shadow-inner">
-                        {displayCommands.map((cmd, idx) => (
-                          <div key={idx} className="flex items-start gap-2.5">
-                            <span className="text-slate-600 select-none">$</span>
-                            <span className="text-slate-100">{cmd}</span>
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <div className="text-[11px] text-amber-400 bg-amber-950/40 border border-amber-800/40 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span>✏️ <strong>EDIT MODE ACTIVE:</strong> Modified commands will be executed by the Auto-Resolver Agent and saved into the Knowledge Base SOP.</span>
                           </div>
-                        ))}
-                      </div>
+                          <textarea
+                            value={currentText}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setEditedCommandsMap((prev) => ({ ...prev, [appr.id]: val }));
+                            }}
+                            rows={Math.max(4, currentText.split('\n').length + 1)}
+                            className="w-full bg-[#050811] border border-amber-500/50 rounded-xl p-4 font-mono text-xs text-emerald-300 focus:outline-none focus:border-amber-400 shadow-2xl leading-relaxed font-semibold"
+                            placeholder="Enter executable CLI commands (one per line)..."
+                          />
+                        </div>
+                      ) : (
+                        <div className="bg-[#080c14] border border-slate-800 rounded-xl p-4 font-mono text-xs text-emerald-400 space-y-2 overflow-x-auto shadow-inner">
+                          {(currentText ? currentText.split('\n') : displayCommands).map((cmd, idx) => (
+                            <div key={idx} className="flex items-start gap-2.5">
+                              <span className="text-slate-600 select-none">$</span>
+                              <span className="text-slate-100">{cmd}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

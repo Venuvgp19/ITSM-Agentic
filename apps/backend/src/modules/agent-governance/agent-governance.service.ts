@@ -166,6 +166,21 @@ export class AgentGovernanceService {
   createApprovalRequest(dto: Partial<AgentApproval>): AgentApproval {
     const approvals = this.getUnifiedApprovals();
     
+    // Deduplication check: if a PENDING approval already exists for this incidentId, update & return it
+    const existingPending = approvals.find(
+      (a) => a.incidentId === dto.incidentId && a.status === 'PENDING'
+    );
+    if (existingPending) {
+      existingPending.incidentTitle = dto.incidentTitle || existingPending.incidentTitle;
+      existingPending.proposedCommands = dto.proposedCommands || existingPending.proposedCommands;
+      existingPending.summary = dto.summary || existingPending.summary;
+      existingPending.aiReasoning = dto.aiReasoning || existingPending.aiReasoning;
+      existingPending.safetyChecks = dto.safetyChecks || existingPending.safetyChecks;
+      existingPending.requestedAt = new Date().toISOString();
+      this.saveApprovals();
+      return existingPending;
+    }
+
     const newId = `APPR-${Math.floor(1000 + Math.random() * 9000)}`;
     const newApproval: AgentApproval = {
       id: newId,
@@ -197,7 +212,7 @@ export class AgentGovernanceService {
     return newApproval;
   }
 
-  approveRequest(id: string, approverName: string = 'System Admin (Human in the Loop)'): { approval: AgentApproval; historyEntry: AgentHistoryEntry } {
+  approveRequest(id: string, approverName: string = 'System Admin (Human in the Loop)', proposedCommands?: string[]): { approval: AgentApproval; historyEntry: AgentHistoryEntry } {
     const approvals = this.getUnifiedApprovals();
 
     const approvalIndex = approvals.findIndex((a) => a.id.toUpperCase() === id.toUpperCase());
@@ -207,6 +222,10 @@ export class AgentGovernanceService {
     appr.status = 'APPROVED';
     appr.approvedBy = approverName;
     appr.approvedAt = new Date().toISOString();
+
+    if (Array.isArray(proposedCommands) && proposedCommands.length > 0) {
+      appr.proposedCommands = proposedCommands;
+    }
 
     this.approvals = approvals;
     this.saveApprovals();
@@ -285,6 +304,24 @@ export class AgentGovernanceService {
     this.history = Array.from(uniqueMap.values()).filter(h => h && h.status !== 'REJECTED');
     this.saveHistory();
     return this.history;
+  }
+
+  clearAllApprovals() {
+    this.approvals = [];
+    this.history = [];
+    this.singleDb.agentApprovals = [];
+    this.singleDb.agentHistory = [];
+
+    saveJsonFile(APPROVALS_FILE_PATH, []);
+    saveJsonFile(HISTORY_FILE_PATH, []);
+
+    return {
+      success: true,
+      message: 'All approval requests and history entries cleared successfully.',
+      timestamp: new Date().toISOString(),
+      pendingApprovalsCount: 0,
+      historyCount: 0
+    };
   }
 
   resetLocks() {

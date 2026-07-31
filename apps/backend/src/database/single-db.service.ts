@@ -217,12 +217,40 @@ export class SingleDatabaseService implements OnModuleInit {
     });
   }
 
+  private deduplicateIncidentActivities(incidents: any[]): any[] {
+    if (!Array.isArray(incidents)) return [];
+    for (const inc of incidents) {
+      if (inc && Array.isArray(inc.activities) && inc.activities.length > 1) {
+        const seenTypes = new Set<string>();
+        const cleanActs: any[] = [];
+        for (const act of inc.activities) {
+          const comment = act.comment || '';
+          let cType = '';
+          if (comment.includes('Logged new incident')) cType = 'CREATED';
+          else if (comment.includes('Agentic AI Router')) cType = 'ROUTED';
+          else if (comment.includes('NEW SOP SUBMITTED FOR APPROVAL')) cType = 'APPROVAL_REQUESTED';
+          else if (comment.includes('SOP Approved by Human Operator')) cType = 'HUMAN_APPROVED';
+          else if (comment.includes('LIVE EXECUTION PROOF')) cType = 'EXECUTION_PROOF';
+          else if (comment.includes('AUTOMATED REMEDIATION UNABLE TO COMPLETE')) cType = 'ESCALATED';
+          else cType = `OTHER_${comment.slice(0, 40)}`;
+
+          if (!seenTypes.has(cType)) {
+            seenTypes.add(cType);
+            cleanActs.push(act);
+          }
+        }
+        inc.activities = cleanActs;
+      }
+    }
+    return incidents;
+  }
+
   // Getters & Setters
   get incidents(): any[] {
-    return this.data.incidents;
+    return this.deduplicateIncidentActivities(this.data.incidents || []);
   }
   set incidents(val: any[]) {
-    this.data.incidents = val;
+    this.data.incidents = this.deduplicateIncidentActivities(val || []);
     this.saveDatabaseToFile();
   }
 

@@ -378,6 +378,7 @@ export class IncidentService implements OnModuleInit {
       if (dto.impact) inc.impact = dto.impact;
       if (dto.urgency) inc.urgency = dto.urgency;
       if (dto.priority) inc.priority = dto.priority;
+      if ((dto as any).activities) inc.activities = (dto as any).activities;
       if (dto.configurationItem) inc.configurationItem = dto.configurationItem;
       if (dto.ci) inc.configurationItem = dto.ci;
       if (dto.caller) inc.caller = dto.caller;

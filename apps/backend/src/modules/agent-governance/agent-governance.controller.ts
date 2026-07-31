@@ -38,8 +38,9 @@ export class AgentGovernanceController {
   approveRequest(
     @Param('id') id: string,
     @Body('approverName') approverName?: string,
+    @Body('proposedCommands') proposedCommands?: string[],
   ) {
-    return this.governanceService.approveRequest(id, approverName || 'System Admin (Human in the Loop)');
+    return this.governanceService.approveRequest(id, approverName || 'System Admin (Human in the Loop)', proposedCommands);
   }
 
   @Public()
@@ -107,5 +108,12 @@ export class AgentGovernanceController {
   @ApiOperation({ summary: 'Force reset stuck execution locks and refresh governance state' })
   resetLocks() {
     return this.governanceService.resetLocks();
+  }
+
+  @Public()
+  @Post('clear-approvals')
+  @ApiOperation({ summary: 'Clear all approval requests and history stream' })
+  clearApprovals() {
+    return this.governanceService.clearAllApprovals();
   }
 }
