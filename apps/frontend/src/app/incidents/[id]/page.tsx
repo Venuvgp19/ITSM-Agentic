@@ -13,6 +13,7 @@ import {
   FileText,
   Server,
   CheckCircle2,
+  CheckCircle,
   Lock,
   Tag,
 } from 'lucide-react';
