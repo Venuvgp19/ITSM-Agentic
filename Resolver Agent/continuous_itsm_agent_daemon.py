@@ -95,16 +95,32 @@ def get_current_model_config():
         pass
     return None
 
-def invoke_llm_with_fallback(messages, response_format=None):
+# ---------------------------------------------------------------------------
+# Session-wide token usage accumulator
+# Tracks prompt_tokens, completion_tokens, total_tokens per LLM call and
+# accumulates them across the entire session for per-incident reporting.
+# ---------------------------------------------------------------------------
+TOKEN_USAGE_SESSION = {
+    "calls": [],           # list of per-call dicts
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+}
+
+# Tracks which incident is currently being processed (set by solve_in_progress_incident)
+CURRENT_INCIDENT_TOKEN_SNAPSHOT = {}
+
+def invoke_llm_with_fallback(messages, response_format=None, call_label="LLM Call"):
     """
     Invokes LLM with automatic fallback to NVIDIA Nemotron 3 Ultra or high-performing MaaS models.
+    Captures and accumulates token usage from every API response.
     """
     config = get_current_model_config()
-    
+
     default_api_key = GENAI_API_KEY
     default_base_url = GENAI_LAB_URL
     fallback_models = FALLBACK_MODELS
-    
+
     if config:
         default_api_key = config.get("apiKey") or default_api_key
         default_base_url = config.get("baseUrl") or default_base_url
@@ -126,6 +142,31 @@ def invoke_llm_with_fallback(messages, response_format=None):
             if "nvidia" in model.lower() or "nemotron" in model.lower():
                 kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 16384}
             res = client.chat.completions.create(**kwargs)
+
+            # ── Token tracking ────────────────────────────────────────────
+            usage = getattr(res, "usage", None)
+            if usage:
+                pt = getattr(usage, "prompt_tokens", 0) or 0
+                ct = getattr(usage, "completion_tokens", 0) or 0
+                tt = getattr(usage, "total_tokens", 0) or (pt + ct)
+                call_record = {
+                    "label":             call_label,
+                    "model":             model,
+                    "prompt_tokens":     pt,
+                    "completion_tokens": ct,
+                    "total_tokens":      tt,
+                }
+                TOKEN_USAGE_SESSION["calls"].append(call_record)
+                TOKEN_USAGE_SESSION["prompt_tokens"]     += pt
+                TOKEN_USAGE_SESSION["completion_tokens"] += ct
+                TOKEN_USAGE_SESSION["total_tokens"]      += tt
+                logger.info(
+                    f"📊 Token Usage [{call_label}] model={model} "
+                    f"prompt={pt:,} completion={ct:,} total={tt:,} "
+                    f"| session_total={TOKEN_USAGE_SESSION['total_tokens']:,}"
+                )
+            # ─────────────────────────────────────────────────────────────
+
             return res.choices[0].message.content, model
         except Exception as e:
             logger.warning(f"Model {model} invocation fallback trigger: {e}")
@@ -825,7 +866,37 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
                 "article": user_kb
             }]
 
-    # 2. General Technical Keyword Overlap Matching (Disk Space, etcd, CPU, Services, Memory)
+    # 2. Intent Detection for NexaCore Application / Port 8080 Issues
+    nexacore_patterns = [
+        "nexacore", "port 8080", "8080", "nexacore portal", "nexacore app",
+        "application down", "app down", "app crash", "app not responding",
+        "web app", "web server down", "python app", "nexacore down",
+        "http 8080", "workernode1hl app", "application recovery",
+        "web service down", "application unreachable", "app unreachable"
+    ]
+    is_nexacore = any(p in full_text for p in nexacore_patterns)
+
+    if is_nexacore:
+        nexacore_kb = next(
+            (a for a in kb_articles if "KB0000015" in a.get("number", "")),
+            None
+        )
+        if not nexacore_kb:
+            try:
+                all_articles = requests.get("http://localhost:4000/api/v1/knowledge/articles", timeout=5).json()
+                nexacore_kb = next((a for a in all_articles if "KB0000015" in a.get("number", "")), None)
+            except Exception:
+                pass
+        if nexacore_kb:
+            logger.info(f"🎯 Embedding-Free Intent Match: NexaCore/App-Down detected → Matched Master Recovery SOP [{nexacore_kb.get('number')}] '{nexacore_kb.get('title')}' (Score: 0.9900)")
+            return [{
+                "number": nexacore_kb.get("number"),
+                "title": nexacore_kb.get("title"),
+                "score": 0.9900,
+                "article": nexacore_kb
+            }]
+
+    # 3. General Technical Keyword Overlap Matching (Disk Space, etcd, CPU, Services, Memory)
     stop_words = {"a", "an", "the", "in", "on", "of", "for", "to", "and", "or", "is", "are", "with", "server", "cluster", "node", "issue", "alert", "error"}
     query_tokens = set(re.findall(r'[a-z0-9]+', full_text)) - stop_words
     
@@ -984,7 +1055,8 @@ Respond ONLY in JSON format:
         try:
             plan_content, used_model = invoke_llm_with_fallback(
                 messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                call_label=f"SOP Synthesis [{ticket_number}]"
             )
             if plan_content:
                 plan = json.loads(plan_content) if isinstance(plan_content, str) else plan_content
@@ -1072,7 +1144,8 @@ Respond ONLY in JSON:
         try:
             plan_content, used_model = invoke_llm_with_fallback(
                 messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                call_label=f"SOP Parameterization [{ticket_number}]"
             )
             if plan_content:
                 plan = json.loads(plan_content) if isinstance(plan_content, str) else plan_content
@@ -1421,12 +1494,26 @@ Respond ONLY in valid JSON format:
         try:
             eval_content, eval_model = invoke_llm_with_fallback(
                 messages=[{"role": "user", "content": eval_prompt}],
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                call_label=f"SSH Output Evaluation [{number}]"
             )
             if eval_content:
                 evaluation = json.loads(eval_content) if isinstance(eval_content, str) else eval_content
                 if isinstance(evaluation, list) and len(evaluation) > 0: evaluation = evaluation[0]
                 logger.info(f"Verified live SSH proof using model: '{eval_model}'")
+                # Per-incident token summary — log calls made since last snapshot
+                inc_calls = [c for c in TOKEN_USAGE_SESSION["calls"] if number in c.get("label", "")]
+                if inc_calls:
+                    inc_prompt = sum(c["prompt_tokens"] for c in inc_calls)
+                    inc_completion = sum(c["completion_tokens"] for c in inc_calls)
+                    inc_total = sum(c["total_tokens"] for c in inc_calls)
+                    logger.info(
+                        f"📊 ━━ INCIDENT TOKEN SUMMARY [{number}] ━━ "
+                        f"LLM calls={len(inc_calls)} | "
+                        f"prompt={inc_prompt:,} | completion={inc_completion:,} | "
+                        f"TOTAL={inc_total:,} tokens "
+                        f"(~${inc_total / 1_000_000 * 8.00:.4f} USD @ $8/1M tokens)"
+                    )
         except Exception as e:
             logger.error(f"LLM Evaluation failed for {number}: {e}")
             evaluation = {}

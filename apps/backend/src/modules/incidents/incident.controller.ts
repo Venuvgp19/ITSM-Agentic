@@ -26,14 +26,14 @@ export class IncidentController {
     @CurrentUser('id') callerId: string,
     @Body() dto: CreateIncidentDto,
   ) {
-    return this.incidentService.create(tenantId || 'demo-tenant-id', callerId || 'monitoring-bot-id', dto);
+    return this.incidentService.create(tenantId || 'tenant_acme_01', callerId || 'monitoring-bot-id', dto);
   }
 
   @Public()
   @Get()
   @ApiOperation({ summary: 'List all incident tickets for current tenant' })
   async findAll(@CurrentUser('tenantId') tenantId: string) {
-    return this.incidentService.findAll(tenantId || 'demo-tenant-id');
+    return this.incidentService.findAll(tenantId || 'tenant_acme_01');
   }
 
   @Public()
@@ -43,7 +43,7 @@ export class IncidentController {
     @CurrentUser('tenantId') tenantId: string,
     @Param('id') id: string,
   ) {
-    return this.incidentService.findOne(tenantId || 'demo-tenant-id', id);
+    return this.incidentService.findOne(tenantId || 'tenant_acme_01', id);
   }
 
   @Public()
@@ -54,7 +54,7 @@ export class IncidentController {
     @Param('id') id: string,
     @Body() dto: UpdateIncidentDto,
   ) {
-    return this.incidentService.update(tenantId || 'demo-tenant-id', id, dto);
+    return this.incidentService.update(tenantId || 'tenant_acme_01', id, dto);
   }
 
   @Public()
@@ -66,6 +66,6 @@ export class IncidentController {
     @Param('id') id: string,
     @Body() dto: AddActivityDto,
   ) {
-    return this.incidentService.addActivity(tenantId || 'demo-tenant-id', id, authorId || 'monitoring-bot-id', dto);
+    return this.incidentService.addActivity(tenantId || 'tenant_acme_01', id, authorId || 'monitoring-bot-id', dto);
   }
 }

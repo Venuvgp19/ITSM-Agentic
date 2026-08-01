@@ -131,7 +131,8 @@ export default function IncidentsPage() {
         const data = await res.json();
         if (Array.isArray(data)) {
           const apiMapped = data.map((inc: any) => ({
-            id: inc.id || inc.number,
+            id: inc.id,
+            number: inc.number || inc.id,
             title: inc.shortDescription || inc.title,
             priority: (inc.priority || '').includes('P1') ? 'P1' : (inc.priority || '').includes('P2') ? 'P2' : (inc.priority || '').includes('P3') ? 'P3' : 'P4',
             state: inc.state || 'NEW',
@@ -393,7 +394,7 @@ export default function IncidentsPage() {
                 className="hover:bg-slate-800/40 cursor-pointer transition-colors"
               >
                 <td className="px-6 py-4 font-mono font-bold text-brand-400">
-                  {item.id}
+                  {item.number}
                 </td>
                 <td className="px-6 py-4 space-y-1">
                   <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded ${

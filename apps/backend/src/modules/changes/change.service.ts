@@ -1,8 +1,6 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateChangeDto, UpdateChangeDto } from './dto/change.dto';
-import * as fs from 'fs';
-import * as path from 'path';
 
 export interface ChangeRecord {
   id: string;
@@ -25,167 +23,136 @@ export interface ChangeRecord {
   updatedAt: string;
 }
 
-const sampleChangeTitles = [
-  'Upgrade NYC Border Router Firmware to v15.4 Build 90',
-  'Production PostgreSQL Cluster Major Release v15.2 Vacuum Tuning',
-  'Kubernetes Ingress NGINX Controller Capacity Scaling (3 to 12 replicas)',
-  'Active Directory Kerberos & LDAP TLS Certificate Renewal 2026',
-  'AWS DynamoDB Session Table Provisioned Throughput Auto-Scale',
-  'Palo Alto Perimeter Firewall Policy Ingress Rule Update',
-  'SAP ERP Financials SSO SAML 2.0 Identity Provider Certificate Rotation',
-  'Unix Host 01 Kernel Parameter Sysctl Tuning & Reboot Maintenance',
-  'Kafka Event Bus Cluster Storage Expansion (5TB to 20TB)',
-  'Okta MFA Webhook Callback Handler Failover Endpoint Migration',
-];
-
-import { SingleDatabaseService } from '../../database/single-db.service';
-
 @Injectable()
 export class ChangeService {
   private readonly logger = new Logger(ChangeService.name);
-  private changes: ChangeRecord[] = [];
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly singleDb: SingleDatabaseService
-  ) {
-    if (!this.singleDb.changes || this.singleDb.changes.length === 0) {
-      this.singleDb.changes = this.generateInitial50Changes();
-    }
-    this.changes = this.singleDb.changes;
+  constructor(private readonly prisma: PrismaService) {}
+
+  private mapChangeToDTO(record: any): ChangeRecord {
+    return {
+      id: record.id,
+      number: record.number,
+      title: record.title || '',
+      description: record.description || '',
+      changeType: record.changeType || 'NORMAL',
+      state: record.state || 'DRAFT',
+      approvalState: record.approvalState || 'NOT_REQUESTED',
+      riskScore: record.riskScore || 1,
+      configurationItem: record.configurationItemName || '',
+      assignedTo: record.assignedToName || '',
+      requestedBy: record.requestedByName || '',
+      plannedStartDate: record.plannedStartDate ? record.plannedStartDate.toISOString() : '',
+      plannedEndDate: record.plannedEndDate ? record.plannedEndDate.toISOString() : '',
+      implementationPlan: record.implementationPlan || '',
+      backoutPlan: record.backoutPlan || '',
+      cabNotes: record.cabNotes || '',
+      createdAt: record.createdAt ? record.createdAt.toISOString() : new Date().toISOString(),
+      updatedAt: record.updatedAt ? record.updatedAt.toISOString() : new Date().toISOString(),
+    };
   }
 
-  private saveDatabaseToFile(data: ChangeRecord[]) {
-    this.singleDb.changes = data;
-  }
-
-  private generateInitial50Changes(): ChangeRecord[] {
-    const list: ChangeRecord[] = [];
-    const cis = ['router-border-nyc-01', 'db-postgres-primary', 'k8s-prod-cluster-east-1', 'ad-dc-master-01', 'vpn-gateway-01', 'control plane'];
-    const techs = ['Sarah Connor (Network Ops)', 'DBA Team', 'DevOps Ops', 'SecOps', 'Richard Stallman (Unix)'];
-
-    for (let i = 1; i <= 50; i++) {
-      const id = `CHG${String(i).padStart(7, '0')}`;
-      const title = sampleChangeTitles[i % sampleChangeTitles.length];
-      const changeType = i % 5 === 0 ? 'EMERGENCY' : i % 3 === 0 ? 'STANDARD' : 'NORMAL';
-      const approvalState = i % 4 === 0 ? 'APPROVED' : i % 2 === 0 ? 'REQUESTED' : 'NOT_REQUESTED';
-      const state = approvalState === 'APPROVED' ? 'SCHEDULED' : i % 3 === 0 ? 'ASSESS' : 'AUTHORIZE';
-
-      list.push({
-        id,
-        number: id,
-        title: `${title} (#${i})`,
-        description: `Request for Change (RFC) #${i}: Implement controlled system update for ${cis[i % cis.length]}.`,
-        changeType,
-        state,
-        approvalState,
-        riskScore: (i % 4) + 1,
-        configurationItem: cis[i % cis.length],
-        assignedTo: techs[i % techs.length],
-        requestedBy: 'System Admin',
-        plannedStartDate: new Date(Date.now() + (i * 86400000)).toISOString(),
-        plannedEndDate: new Date(Date.now() + (i * 86400000) + 14400000).toISOString(),
-        implementationPlan: `1. Notify Operations Team.\n2. Apply patch image to ${cis[i % cis.length]}.\n3. Verify post-implementation health checks.`,
-        backoutPlan: `1. Trigger snapshot restore.\n2. Revert BGP/DNS routing records.\n3. Validate baseline telemetry.`,
-        cabNotes: `CAB Review Meeting on ${new Date(Date.now() + (i * 86400000)).toLocaleDateString()}: Approved based on risk score assessment.`,
-        createdAt: new Date(Date.now() - (50 - i) * 86400000).toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-    }
-    return list;
-  }
-
-  async findAll(query?: string, changeType?: string, state?: string, approvalState?: string): Promise<ChangeRecord[]> {
-    let result = [...this.changes];
+  async findAll(tenantId: string, query?: string, changeType?: string, state?: string, approvalState?: string): Promise<ChangeRecord[]> {
+    const whereClause: any = { tenantId };
 
     if (query) {
-      const q = query.toLowerCase();
-      result = result.filter(
-        (c) =>
-          c.id.toLowerCase().includes(q) ||
-          c.title.toLowerCase().includes(q) ||
-          c.configurationItem.toLowerCase().includes(q) ||
-          c.assignedTo.toLowerCase().includes(q)
-      );
+      whereClause.OR = [
+        { id: { contains: query, mode: 'insensitive' } },
+        { title: { contains: query, mode: 'insensitive' } },
+        { configurationItemName: { contains: query, mode: 'insensitive' } },
+        { assignedToName: { contains: query, mode: 'insensitive' } },
+      ];
     }
 
     if (changeType && changeType.toLowerCase() !== 'all') {
-      result = result.filter((c) => c.changeType.toLowerCase() === changeType.toLowerCase());
+      whereClause.changeType = { equals: changeType, mode: 'insensitive' };
     }
 
     if (state && state.toLowerCase() !== 'all') {
-      result = result.filter((c) => c.state.toLowerCase() === state.toLowerCase());
+      whereClause.state = { equals: state, mode: 'insensitive' };
     }
 
     if (approvalState && approvalState.toLowerCase() !== 'all') {
-      result = result.filter((c) => c.approvalState.toLowerCase() === approvalState.toLowerCase());
+      whereClause.approvalState = { equals: approvalState, mode: 'insensitive' };
     }
 
-    return result.sort((a, b) => {
-      const numA = parseInt((a.id || '').replace(/\D/g, ''), 10) || 0;
-      const numB = parseInt((b.id || '').replace(/\D/g, ''), 10) || 0;
-      return numB - numA;
+    const records = await this.prisma.changeRequest.findMany({
+      where: whereClause,
+      orderBy: { createdAt: 'desc' },
+      take: 500,
     });
+
+    return records.map(r => this.mapChangeToDTO(r));
   }
 
-  async findOne(id: string): Promise<ChangeRecord> {
+  async findOne(tenantId: string, id: string): Promise<ChangeRecord> {
     const cleanId = id.toUpperCase();
-    const change = this.changes.find(
-      (c) => c.id.toUpperCase() === cleanId || c.number.toUpperCase() === cleanId
-    );
-    if (!change) {
+    const record = await this.prisma.changeRequest.findFirst({
+      where: { tenantId, OR: [{ id: cleanId }, { number: cleanId }] },
+    });
+    
+    if (!record) {
       throw new NotFoundException(`Change Order ${id} not found.`);
     }
-    return change;
+    return this.mapChangeToDTO(record);
   }
 
-  async create(dto: CreateChangeDto): Promise<ChangeRecord> {
-    const newIdNum = this.changes.length + 1;
-    const id = `CHG${String(newIdNum).padStart(7, '0')}`;
+  async create(tenantId: string, dto: CreateChangeDto): Promise<ChangeRecord> {
+    const totalCount = await this.prisma.changeRequest.count({ where: { tenantId } });
+    const id = `CHG${String(totalCount + 1).padStart(7, '0')}`;
 
-    const newRecord: ChangeRecord = {
-      id,
-      number: id,
-      title: dto.title,
-      description: dto.description || `Change Request #${id}.`,
-      changeType: dto.changeType || 'NORMAL',
-      state: 'DRAFT',
-      approvalState: 'NOT_REQUESTED',
-      riskScore: dto.riskScore || 2,
-      configurationItem: dto.configurationItem || 'router-border-nyc-01',
-      assignedTo: 'Change Advisory Board (CAB)',
-      requestedBy: 'System Admin',
-      plannedStartDate: dto.plannedStartDate || new Date(Date.now() + 86400000).toISOString(),
-      plannedEndDate: dto.plannedEndDate || new Date(Date.now() + 97200000).toISOString(),
-      implementationPlan: dto.implementationPlan || '1. Pre-flight backup.\n2. Package installation.\n3. Service restart.',
-      backoutPlan: dto.backoutPlan || '1. Rollback configuration.\n2. Restore DB snapshot.',
-      cabNotes: 'Pending CAB Review.',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    const record = await this.prisma.changeRequest.create({
+      data: {
+        id,
+        tenantId,
+        number: id,
+        title: dto.title,
+        description: dto.description || `Change Request #${id}.`,
+        changeType: dto.changeType || 'NORMAL',
+        state: 'DRAFT',
+        approvalState: 'NOT_REQUESTED',
+        riskScore: dto.riskScore || 2,
+        configurationItemName: dto.configurationItem || 'router-border-nyc-01',
+        assignedToName: 'Change Advisory Board (CAB)',
+        requestedByName: 'System Admin',
+        plannedStartDate: dto.plannedStartDate ? new Date(dto.plannedStartDate) : new Date(Date.now() + 86400000),
+        plannedEndDate: dto.plannedEndDate ? new Date(dto.plannedEndDate) : new Date(Date.now() + 97200000),
+        implementationPlan: dto.implementationPlan || '1. Pre-flight backup.\n2. Package installation.\n3. Service restart.',
+        backoutPlan: dto.backoutPlan || '1. Rollback configuration.\n2. Restore DB snapshot.',
+        cabNotes: 'Pending CAB Review.',
+      }
+    });
 
-    this.changes.unshift(newRecord);
-    this.saveDatabaseToFile(this.changes);
-    return newRecord;
+    return this.mapChangeToDTO(record);
   }
 
-  async update(id: string, dto: UpdateChangeDto): Promise<ChangeRecord> {
-    const change = await this.findOne(id);
+  async update(tenantId: string, id: string, dto: UpdateChangeDto): Promise<ChangeRecord> {
+    const cleanId = id.toUpperCase();
+    const existing = await this.prisma.changeRequest.findFirst({
+      where: { tenantId, OR: [{ id: cleanId }, { number: cleanId }] },
+    });
 
-    if (dto.title !== undefined) change.title = dto.title;
-    if (dto.description !== undefined) change.description = dto.description;
-    if (dto.state !== undefined) change.state = dto.state;
-    if (dto.approvalState !== undefined) change.approvalState = dto.approvalState;
-    if (dto.changeType !== undefined) change.changeType = dto.changeType;
-    if (dto.riskScore !== undefined) change.riskScore = dto.riskScore;
-    if (dto.configurationItem !== undefined) change.configurationItem = dto.configurationItem;
-    if (dto.assignedTo !== undefined) change.assignedTo = dto.assignedTo;
-    if (dto.implementationPlan !== undefined) change.implementationPlan = dto.implementationPlan;
-    if (dto.backoutPlan !== undefined) change.backoutPlan = dto.backoutPlan;
-    if (dto.cabNotes !== undefined) change.cabNotes = dto.cabNotes;
+    if (!existing) {
+      throw new NotFoundException(`Change Order ${id} not found.`);
+    }
 
-    change.updatedAt = new Date().toISOString();
-    this.saveDatabaseToFile(this.changes);
-    return change;
+    const updated = await this.prisma.changeRequest.update({
+      where: { id: existing.id },
+      data: {
+        title: dto.title !== undefined ? dto.title : undefined,
+        description: dto.description !== undefined ? dto.description : undefined,
+        state: dto.state !== undefined ? dto.state : undefined,
+        approvalState: dto.approvalState !== undefined ? dto.approvalState : undefined,
+        changeType: dto.changeType !== undefined ? dto.changeType : undefined,
+        riskScore: dto.riskScore !== undefined ? dto.riskScore : undefined,
+        configurationItemName: dto.configurationItem !== undefined ? dto.configurationItem : undefined,
+        assignedToName: dto.assignedTo !== undefined ? dto.assignedTo : undefined,
+        implementationPlan: dto.implementationPlan !== undefined ? dto.implementationPlan : undefined,
+        backoutPlan: dto.backoutPlan !== undefined ? dto.backoutPlan : undefined,
+        cabNotes: dto.cabNotes !== undefined ? dto.cabNotes : undefined,
+      }
+    });
+
+    return this.mapChangeToDTO(updated);
   }
 }

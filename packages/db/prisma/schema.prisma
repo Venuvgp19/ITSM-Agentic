@@ -254,8 +254,10 @@ model Incident {
   impact             String        @default("TEAM")
   urgency            String        @default("MEDIUM")
   priority           String        @default("MODERATE")
-  callerId           String
+  callerId           String?
+  callerName         String?
   assignedToId       String?
+  assignedToName     String?
   assignmentGroupId  String?
   configurationItemId String?
   resolvedAt         DateTime?
@@ -264,8 +266,13 @@ model Incident {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
+  department         String?
+  resolutionCode     String?
+  configurationItemName String?
+  activitiesJson     Json?
+
   tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  caller             User               @relation("ReportedIncidents", fields: [callerId], references: [id])
+  caller             User?              @relation("ReportedIncidents", fields: [callerId], references: [id])
   assignedTo         User?              @relation("AssignedIncidents", fields: [assignedToId], references: [id])
   assignmentGroup    Group?             @relation("AssignmentGroups", fields: [assignmentGroupId], references: [id])
   configurationItem  ConfigurationItem? @relation(fields: [configurationItemId], references: [id])
@@ -296,6 +303,9 @@ model Problem {
   knownError       Boolean  @default(false)
   state            String   @default("NEW")
   priority         String   @default("MODERATE")
+  configurationItemName String?
+  assignedToName   String?
+  relatedIncidentsCount Int @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -313,17 +323,23 @@ model ChangeRequest {
   approvalState      String        @default("NOT_REQUESTED")
   riskScore          Int           @default(1)
   impact             String        @default("TEAM")
-  requestedById      String
+  requestedById      String?
+  requestedByName    String?
   assignedToId       String?
+  assignedToName     String?
   assignmentGroupId  String?
   configurationItemId String?
+  configurationItemName String?
+  implementationPlan String?
+  backoutPlan        String?
+  cabNotes           String?
   plannedStartDate   DateTime?
   plannedEndDate     DateTime?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
   tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  requestedBy       User               @relation("RequestedChanges", fields: [requestedById], references: [id])
+  requestedBy       User?              @relation("RequestedChanges", fields: [requestedById], references: [id])
   assignedTo        User?              @relation("AssignedChanges", fields: [assignedToId], references: [id])
   assignmentGroup   Group?             @relation("ChangeAssignmentGroups", fields: [assignmentGroupId], references: [id])
   configurationItem ConfigurationItem? @relation(fields: [configurationItemId], references: [id])
@@ -382,9 +398,20 @@ model KnowledgeArticle {
   tenantId    String
   number      String   @unique
   title       String
-  content     String
-  category    String
-  authorId    String
+  content     String?
+  category    String?
+  authorId    String?
+  
+  configurationItem String?
+  summary           String?
+  symptoms          Json?
+  rootCause         String?
+  resolutionSteps   Json?
+  workNotesAnalyzedCount Int?
+  sourceIncidentIds Json?
+  author            String?
+  modelUsed         String?
+  helpfulCount      Int      @default(0)
   viewsCount  Int      @default(0)
   rating      Float    @default(5.0)
   isPublished Boolean  @default(false)
@@ -546,3 +573,27 @@ model MasterDb {
   data      Json
   updatedAt DateTime @updatedAt
 }
+
+model AgentApproval {
+  id              String   @id @default(uuid())
+  type            String
+  entityId        String
+  entityType      String
+  summary         String
+  proposedAction  String
+  confidenceScore Float
+  status          String
+  timestamp       DateTime @default(now())
+  details         Json?
+}
+
+model AgentHistory {
+  id          String   @id @default(uuid())
+  type        String
+  timestamp   DateTime @default(now())
+  incidentId  String?
+  title       String
+  description String
+  metadata    Json?
+}
+

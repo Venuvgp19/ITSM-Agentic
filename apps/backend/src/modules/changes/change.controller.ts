@@ -23,24 +23,24 @@ export class ChangeController {
     @Query('state') state?: string,
     @Query('approvalState') approvalState?: string
   ) {
-    return this.changeService.findAll(query, changeType, state, approvalState);
+    return this.changeService.findAll('tenant_acme_01', query, changeType, state, approvalState);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get Change Request Order by ID' })
   async findOne(@Param('id') id: string) {
-    return this.changeService.findOne(id);
+    return this.changeService.findOne('tenant_acme_01', id);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create New Change Request Order' })
   async create(@Body() dto: CreateChangeDto) {
-    return this.changeService.create(dto);
+    return this.changeService.create('tenant_acme_01', dto);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update Change Request Order & CAB Status' })
   async update(@Param('id') id: string, @Body() dto: UpdateChangeDto) {
-    return this.changeService.update(id, dto);
+    return this.changeService.update('tenant_acme_01', id, dto);
   }
 }

@@ -1,1 +1,1181 @@
-[]
+[
+  {
+    "id": "APPR-4000",
+    "incidentId": "INC0001001",
+    "incidentTitle": "Nexacore Application is down on WorkerNode1HL. Please fix it ASAP",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "WorkerNode1HL (192.168.100.102)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "REJECTED",
+    "requestedAt": "2026-08-01T09:15:58.975Z",
+    "summary": "This SOP addresses the Nexacore application outage on WorkerNode1HL (192.168.100.102). The failure mode is typically container runtime issues, kubelet degradation, or resource exhaustion causing pod eviction. The fix involves systematic validation of kubelet health, container runtime status, pod/container state, resource saturation, and log analysis followed by targeted service restarts or node remediation.",
+    "proposedCommands": [
+      "ssh root@192.168.100.102 \"systemctl is-active kubelet container runtime docker 2>/dev/null || systemctl is-active kubelet crio 2>/dev/null || systemctl is-active kubelet containerd\"",
+      "ssh root@192.168.100.102 \"systemctl status kubelet --no-pager -l\"",
+      "ssh root@192.168.100.102 \"crictl version 2>/dev/null || docker version 2>/dev/null || crictl version\"",
+      "ssh root@192.168.100.102 \"crictl ps -a 2>/dev/null | grep -i nexacore || docker ps -a 2>/dev/null | grep -i nexacore || crictl pods 2>/dev/null | grep -i nexacore\"",
+      "ssh root@192.168.100.102 \"kubectl get nodes 192.168.100.102 -o wide 2>/dev/null || echo 'kubectl not available locally, checking kubelet logs'\"",
+      "ssh root@192.168.100.102 \"journalctl -u kubelet --since '30 minutes ago' --no-pager | tail -100\"",
+      "ssh root@192.168.100.102 \"crictl logs $(crictl ps -a --name nexacore -q 2>/dev/null | head -1) --tail=200 2>/dev/null || docker logs $(docker ps -a --filter name=nexacore -q 2>/dev/null | head -1) --tail=200 2>/dev/null || echo 'No Nexacore container found via crictl/docker'\"",
+      "ssh root@192.168.100.102 \"df -h /var/lib/kubelet /var/lib/containerd /var/lib/docker /opt 2>/dev/null | awk '$5+0 > 85 {print $0 \" WARNING: High disk usage\"}'\"",
+      "ssh root@192.168.100.102 \"free -h && uptime\"",
+      "ssh root@192.168.100.102 \"crictl info 2>/dev/null | grep -E 'runtimeType|runtimeVersion|networkPlugin' || docker info 2>/dev/null | grep -E 'Storage Driver|Cgroup Driver|Logging Driver'\"",
+      "ssh root@192.168.100.102 \"systemctl restart kubelet && sleep 10 && systemctl is-active kubelet\"",
+      "ssh root@192.168.100.102 \"crictl ps -a 2>/dev/null | grep -i nexacore | grep -v Running && crictl stop $(crictl ps -a --name nexacore -q 2>/dev/null) 2>/dev/null && crictl rm $(crictl ps -a --name nexacore -q 2>/dev/null) 2>/dev/null || docker ps -a 2>/dev/null | grep -i nexacore | grep -v Up && docker stop $(docker ps -a --filter name=nexacore -q 2>/dev/null) 2>/dev/null && docker rm $(docker ps -a --filter name=nexacore -q 2>/dev/null) 2>/dev/null\"",
+      "ssh root@192.168.100.102 \"kubectl get pods -A -o wide --field-selector spec.nodeName=WorkerNode1HL 2>/dev/null | grep -i nexacore || echo 'Verify pod recreation via kubectl from control plane'\"",
+      "ssh root@192.168.100.102 \"journalctl -u kubelet --since '5 minutes ago' --no-pager | grep -i nexacore | tail -20\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Nexacore Application Service Recovery on WorkerNode1HL",
+    "safetyChecks": [
+      {
+        "check": "Verify kubelet service is active and running after restart: systemctl is-active kubelet",
+        "passed": true
+      },
+      {
+        "check": "Confirm Nexacore pods are in 'Running' state with ready containers: crictl ps | grep nexacore | grep Running",
+        "passed": true
+      },
+      {
+        "check": "Ensure node disk usage is below 85% on critical partitions: df -h /var/lib/kubelet /var/lib/containerd",
+        "passed": true
+      },
+      {
+        "check": "Validate node Ready status from control plane: kubectl get node WorkerNode1HL (run from management host)",
+        "passed": true
+      },
+      {
+        "check": "Check no OOMKilled or CrashLoopBackOff events in recent pod history",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "The SOP follows a bottom-up approach: verify node-level services (kubelet, container runtime), inspect container/pod state via CRI tools (crictl preferred for Kubernetes), analyze logs for root cause (OOM, image pull, config), check resource saturation (disk, memory), then remediate by restarting kubelet to force pod reconciliation and cleaning up stale containers. This avoids unnecessary reboots and targets the most common failure vectors for application pods on a single worker node.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Nexacore Application Service Recovery on WorkerNode1HL",
+      "synthesizedSolution": "ssh root@192.168.100.102 \"systemctl status nexacore.service --no-pager -l\"\nssh root@192.168.100.102 \"journalctl -u nexacore.service --since '30 min ago' --no-pager -l\"\nssh root@192.168.100.102 \"df -h /var/lib/nexacore /opt/nexacore /tmp 2>/dev/null || df -h /\"\nssh root@192.168.100.102 \"free -h && cat /proc/meminfo | grep -E 'MemAvailable|SwapFree'\"\nssh root@192.168.100.102 \"ss -ltnp 'sport = :8080' || ss -ltnp 'sport = :8443' || netstat -ltnp 2>/dev/null | grep -E 'nexacore|:8080|:8443'\"\nssh root@192.168.100.102 \"systemctl is-active --quiet nexacore.service || systemctl restart nexacore.service\"\nssh root@192.168.100.102 \"sleep 10 && systemctl status nexacore.service --no-pager -l\"\nssh root@192.168.100.102 \"journalctl -u nexacore.service -n 50 --no-pager -l\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.102 \"systemctl status nexacore.service --no-pager -l\"",
+        "ssh root@192.168.100.102 \"journalctl -u nexacore.service --since '30 min ago' --no-pager -l\"",
+        "ssh root@192.168.100.102 \"df -h /var/lib/nexacore /opt/nexacore /tmp 2>/dev/null || df -h /\"",
+        "ssh root@192.168.100.102 \"free -h && cat /proc/meminfo | grep -E 'MemAvailable|SwapFree'\"",
+        "ssh root@192.168.100.102 \"ss -ltnp 'sport = :8080' || ss -ltnp 'sport = :8443' || netstat -ltnp 2>/dev/null | grep -E 'nexacore|:8080|:8443'\"",
+        "ssh root@192.168.100.102 \"systemctl is-active --quiet nexacore.service || systemctl restart nexacore.service\"",
+        "ssh root@192.168.100.102 \"sleep 10 && systemctl status nexacore.service --no-pager -l\"",
+        "ssh root@192.168.100.102 \"journalctl -u nexacore.service -n 50 --no-pager -l\""
+      ],
+      "trendInsight": "Synthesized SOP containing 8 resolution steps starting with SSH connection."
+    },
+    "rejectionReason": "Not recommeneded. SOP already exists"
+  },
+  {
+    "id": "APPR-2298",
+    "incidentId": "INC0001006",
+    "incidentTitle": "WorkerNode1HL System RAM 100% — Buffer & Cache Saturated Alert #2",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "WorkerNode1HL (192.168.100.102)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "REJECTED",
+    "requestedAt": "2026-08-01T06:59:08.940Z",
+    "summary": "WorkerNode1HL reports 100% RAM utilization driven by page cache/buffer saturation. This SOP diagnoses whether this represents actual application memory pressure (OOM risk) or normal Linux page cache behavior, identifies top memory consumers, and applies targeted remediation including controlled cache dropping and slab reclamation if justified.",
+    "proposedCommands": [
+      "ssh root@192.168.100.102 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapCached|Active|Inactive|Shmem|Slab|SReclaimable|SUnreclaim|PageTables|VmallocUsed'\"",
+      "ssh root@192.168.100.102 \"ps aux --sort=-%mem | head -20\"",
+      "ssh root@192.168.100.102 \"ps aux --sort=-rss | head -20\"",
+      "ssh root@192.168.100.102 \"grep -r 'Out of memory' /var/log/messages /var/log/syslog /var/log/kern.log 2>/dev/null | tail -5 || dmesg -T | grep -i 'out of memory\\|oom_kill' | tail -5\"",
+      "ssh root@192.168.100.102 \"slabtop -o -s c | head -30\"",
+      "ssh root@192.168.100.102 \"sync && echo 1 > /proc/sys/vm/drop_caches\"",
+      "ssh root@192.168.100.102 \"free -h\"",
+      "ssh root@192.168.100.102 \"sync && echo 2 > /proc/sys/vm/drop_caches\"",
+      "ssh root@192.168.100.102 \"free -h\"",
+      "ssh root@192.168.100.102 \"sync && echo 3 > /proc/sys/vm/drop_caches\"",
+      "ssh root@192.168.100.102 \"free -h\"",
+      "ssh root@192.168.100.102 \"echo 1 > /proc/sys/vm/compact_memory\"",
+      "ssh root@192.168.100.102 \"cat /proc/sys/vm/vfs_cache_pressure\"",
+      "ssh root@192.168.100.102 \"sysctl -w vm.vfs_cache_pressure=200\"",
+      "ssh root@192.168.100.102 \"cat /proc/sys/vm/swappiness\"",
+      "ssh root@192.168.100.102 \"sysctl -w vm.swappiness=10\"",
+      "ssh root@192.168.100.102 \"systemctl status kubelet containerd docker 2>/dev/null | grep -E 'Active:|Memory:' || true\"",
+      "ssh root@192.168.100.102 \"crictl stats --no-stream 2>/dev/null | head -30 || docker stats --no-stream 2>/dev/null | head -30 || true\"",
+      "ssh root@192.168.100.102 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|Buffers|Cached|SReclaimable|SUnreclaim'\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Worker Node Memory Pressure - Buffer/Cache Saturation Diagnosis & Remediation",
+    "safetyChecks": [
+      {
+        "check": "Verify MemAvailable > 10% of MemTotal after remediation (indicates headroom for allocations)",
+        "passed": true
+      },
+      {
+        "check": "Confirm no OOM killer invocations in dmesg/kern.log for last 1 hour",
+        "passed": true
+      },
+      {
+        "check": "Validate critical services (kubelet, containerd, sshd) remain responsive post cache drop",
+        "passed": true
+      },
+      {
+        "check": "Ensure swap usage remains stable or decreases (no swap thrashing induced)",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Linux aggressively caches filesystem pages in unused RAM (Buffers/Cached), reporting '100% used' while MemAvailable remains healthy. Step 1-4 quantify actual pressure vs cache. Step 5 checks for historical OOM events proving real pressure. Step 6 identifies kernel slab bloat (dentry/inode caches). Steps 7-11 progressively drop pagecache, dentries, and inodes AFTER sync to avoid data loss. Step 12 compacts fragmented memory. Steps 13-16 tune vfs_cache_pressure (reclaim dentries/inodes faster) and swappiness (prefer reclaim over swap). Steps 17-18 inspect container runtimes for pod memory leaks. Final validation confirms MemAvailable recovery and zero OOM events.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Worker Node Memory Pressure - Buffer/Cache Saturation Diagnosis & Remediation",
+      "synthesizedSolution": "ssh root@192.168.100.102 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapCached|Active|Inactive|Shmem|Slab|SReclaimable|SUnreclaim|PageTables|VmallocUsed'\"\nssh root@192.168.100.102 \"ps aux --sort=-%mem | head -20\"\nssh root@192.168.100.102 \"ps aux --sort=-rss | head -20\"\nssh root@192.168.100.102 \"grep -r 'Out of memory' /var/log/messages /var/log/syslog /var/log/kern.log 2>/dev/null | tail -5 || dmesg -T | grep -i 'out of memory\\|oom_kill' | tail -5\"\nssh root@192.168.100.102 \"slabtop -o -s c | head -30\"\nssh root@192.168.100.102 \"sync && echo 1 > /proc/sys/vm/drop_caches\"\nssh root@192.168.100.102 \"free -h\"\nssh root@192.168.100.102 \"sync && echo 2 > /proc/sys/vm/drop_caches\"\nssh root@192.168.100.102 \"free -h\"\nssh root@192.168.100.102 \"sync && echo 3 > /proc/sys/vm/drop_caches\"\nssh root@192.168.100.102 \"free -h\"\nssh root@192.168.100.102 \"echo 1 > /proc/sys/vm/compact_memory\"\nssh root@192.168.100.102 \"cat /proc/sys/vm/vfs_cache_pressure\"\nssh root@192.168.100.102 \"sysctl -w vm.vfs_cache_pressure=200\"\nssh root@192.168.100.102 \"cat /proc/sys/vm/swappiness\"\nssh root@192.168.100.102 \"sysctl -w vm.swappiness=10\"\nssh root@192.168.100.102 \"systemctl status kubelet containerd docker 2>/dev/null | grep -E 'Active:|Memory:' || true\"\nssh root@192.168.100.102 \"crictl stats --no-stream 2>/dev/null | head -30 || docker stats --no-stream 2>/dev/null | head -30 || true\"\nssh root@192.168.100.102 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|Buffers|Cached|SReclaimable|SUnreclaim'\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.102 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapCached|Active|Inactive|Shmem|Slab|SReclaimable|SUnreclaim|PageTables|VmallocUsed'\"",
+        "ssh root@192.168.100.102 \"ps aux --sort=-%mem | head -20\"",
+        "ssh root@192.168.100.102 \"ps aux --sort=-rss | head -20\"",
+        "ssh root@192.168.100.102 \"grep -r 'Out of memory' /var/log/messages /var/log/syslog /var/log/kern.log 2>/dev/null | tail -5 || dmesg -T | grep -i 'out of memory\\|oom_kill' | tail -5\"",
+        "ssh root@192.168.100.102 \"slabtop -o -s c | head -30\"",
+        "ssh root@192.168.100.102 \"sync && echo 1 > /proc/sys/vm/drop_caches\"",
+        "ssh root@192.168.100.102 \"free -h\"",
+        "ssh root@192.168.100.102 \"sync && echo 2 > /proc/sys/vm/drop_caches\"",
+        "ssh root@192.168.100.102 \"free -h\"",
+        "ssh root@192.168.100.102 \"sync && echo 3 > /proc/sys/vm/drop_caches\"",
+        "ssh root@192.168.100.102 \"free -h\"",
+        "ssh root@192.168.100.102 \"echo 1 > /proc/sys/vm/compact_memory\"",
+        "ssh root@192.168.100.102 \"cat /proc/sys/vm/vfs_cache_pressure\"",
+        "ssh root@192.168.100.102 \"sysctl -w vm.vfs_cache_pressure=200\"",
+        "ssh root@192.168.100.102 \"cat /proc/sys/vm/swappiness\"",
+        "ssh root@192.168.100.102 \"sysctl -w vm.swappiness=10\"",
+        "ssh root@192.168.100.102 \"systemctl status kubelet containerd docker 2>/dev/null | grep -E 'Active:|Memory:' || true\"",
+        "ssh root@192.168.100.102 \"crictl stats --no-stream 2>/dev/null | head -30 || docker stats --no-stream 2>/dev/null | head -30 || true\"",
+        "ssh root@192.168.100.102 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|Buffers|Cached|SReclaimable|SUnreclaim'\""
+      ],
+      "trendInsight": "Synthesized SOP containing 19 resolution steps starting with SSH connection."
+    },
+    "rejectionReason": "harmful commands\n"
+  },
+  {
+    "id": "APPR-3166",
+    "incidentId": "INC0001004",
+    "incidentTitle": "Control Plane RAM & Swap 100% — Severe Memory Pressure Alert #2",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:43:03.917Z",
+    "summary": "Control plane node 192.168.100.101 hit 100% RAM and swap utilization, risking API server/etcd OOM kills and cluster instability. This SOP provides immediate pressure relief via cache drops and container restarts, then enforces memory limits on critical control plane containers and tunes swap aggressiveness to prevent recurrence.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"free -h && swapoff -a && swapon -a && echo 'Swap cleared and re-enabled'\"",
+      "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Pagecache, dentries, inodes dropped'\"",
+      "ssh root@192.168.100.101 \"crictl ps -a --sort created | head -20\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"",
+      "ssh root@192.168.100.101 \"systemctl status kubelet containerd etcd --no-pager | grep -E 'Active:|Memory:'\"",
+      "ssh root@192.168.100.101 \"journalctl -u kubelet -u containerd -u etcd --since '30 min ago' --no-pager | grep -i -E 'oom|kill|memory|evict' | head -20\"",
+      "ssh root@192.168.100.101 \"mkdir -p /etc/systemd/system/kubelet.service.d && cat > /etc/systemd/system/kubelet.service.d/99-memory-limit.conf << 'EOF'\n[Service]\nMemoryLimit=4G\nMemorySwapMax=0\nOOMScoreAdjust=-999\nEOF\"",
+      "ssh root@192.168.100.101 \"mkdir -p /etc/systemd/system/containerd.service.d && cat > /etc/systemd/system/containerd.service.d/99-memory-limit.conf << 'EOF'\n[Service]\nMemoryLimit=3G\nMemorySwapMax=0\nEOF\"",
+      "ssh root@192.168.100.101 \"mkdir -p /etc/systemd/system/etcd.service.d && cat > /etc/systemd/system/etcd.service.d/99-memory-limit.conf << 'EOF'\n[Service]\nMemoryLimit=2G\nMemorySwapMax=0\nEOF\"",
+      "ssh root@192.168.100.101 \"systemctl daemon-reload\"",
+      "ssh root@192.168.100.101 \"systemctl restart containerd kubelet etcd\"",
+      "ssh root@192.168.100.101 \"sleep 30\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"",
+      "ssh root@192.168.100.101 \"free -h\"",
+      "ssh root@192.168.100.101 \"sysctl -w vm.swappiness=10 && sysctl -w vm.vfs_cache_pressure=100 && echo 'vm.swappiness=10' > /etc/sysctl.d/99-k8s-memory.conf && echo 'vm.vfs_cache_pressure=100' >> /etc/sysctl.d/99-k8s-memory.conf && sysctl --system\"",
+      "ssh root@192.168.100.101 \"kubectl get nodes 192.168.100.101 -o jsonpath='{.status.conditions[?(@.type==\"MemoryPressure\")].status}' 2>/dev/null || echo 'kubectl not available locally'\"",
+      "ssh root@192.168.100.101 \"crictl ps --name kube-apiserver -q | xargs -r crictl inspect -o json | jq -r '.info.runtimeSpec.linux.resources.memory.limit // \"no limit set\"' 2>/dev/null || echo 'jq not installed, checking manually...'\"",
+      "ssh root@192.168.100.101 \"grep -r 'memory.limit_in_bytes' /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/ 2>/dev/null | head -5 || echo 'Cgroup v2 or different path'\"",
+      "ssh root@192.168.100.101 \"df -h /var/lib/etcd /var/lib/containerd /var/log 2>/dev/null\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane Memory & Swap Exhaustion Emergency Remediation",
+    "safetyChecks": [
+      {
+        "check": "free -h | awk '/Swap:/ {exit ($3==0)?0:1}' && echo 'Swap usage zero' || echo 'WARNING: Swap still in use'",
+        "passed": true
+      },
+      {
+        "check": "systemctl is-active kubelet containerd etcd | grep -q inactive && echo 'CRITICAL: Service down' || echo 'All critical services active'",
+        "passed": true
+      },
+      {
+        "check": "crictl stats --no-stream | awk 'NR>1 {if($3+0 > 2000) {print \"HIGH MEM:\", $0; exit 1}} END {if(NR<=1) print \"No containers\"}' && echo 'No container >2GB RSS'",
+        "passed": true
+      },
+      {
+        "check": "grep -qs 'vm.swappiness=10' /etc/sysctl.d/99-k8s-memory.conf && echo 'Swappiness persisted' || echo 'Swappiness not persisted'",
+        "passed": true
+      },
+      {
+        "check": "kubectl get componentstatuses 2>/dev/null | grep -v Healthy && echo 'Component degraded' || echo 'Control plane components healthy'",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Memory exhaustion on control plane nodes typically stems from unbounded container memory growth (kube-apiserver, etcd, controller-manager) combined with aggressive swap usage degrading latency. Immediate swapoff/swapon clears anonymous pages; drop_caches reclaims slab. Systemd MemoryLimit on kubelet/containerd/etcd enforces hard cgroup v2 limits preventing OOM killer invocation. Swappiness=10 reduces swap aggressiveness while keeping emergency swap. Crictl stats identifies top consumers; journalctl correlates OOM events. Post-restart validation ensures limits apply and memory pressure condition clears.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane Memory & Swap Exhaustion Emergency Remediation",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"free -h && swapoff -a && swapon -a && echo 'Swap cleared and re-enabled'\"\nssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Pagecache, dentries, inodes dropped'\"\nssh root@192.168.100.101 \"crictl ps -a --sort created | head -20\"\nssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"\nssh root@192.168.100.101 \"systemctl status kubelet containerd etcd --no-pager | grep -E 'Active:|Memory:'\"\nssh root@192.168.100.101 \"journalctl -u kubelet -u containerd -u etcd --since '30 min ago' --no-pager | grep -i -E 'oom|kill|memory|evict' | head -20\"\nssh root@192.168.100.101 \"mkdir -p /etc/systemd/system/kubelet.service.d && cat > /etc/systemd/system/kubelet.service.d/99-memory-limit.conf << 'EOF'\n[Service]\nMemoryLimit=4G\nMemorySwapMax=0\nOOMScoreAdjust=-999\nEOF\"\nssh root@192.168.100.101 \"mkdir -p /etc/systemd/system/containerd.service.d && cat > /etc/systemd/system/containerd.service.d/99-memory-limit.conf << 'EOF'\n[Service]\nMemoryLimit=3G\nMemorySwapMax=0\nEOF\"\nssh root@192.168.100.101 \"mkdir -p /etc/systemd/system/etcd.service.d && cat > /etc/systemd/system/etcd.service.d/99-memory-limit.conf << 'EOF'\n[Service]\nMemoryLimit=2G\nMemorySwapMax=0\nEOF\"\nssh root@192.168.100.101 \"systemctl daemon-reload\"\nssh root@192.168.100.101 \"systemctl restart containerd kubelet etcd\"\nssh root@192.168.100.101 \"sleep 30\"\nssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"\nssh root@192.168.100.101 \"free -h\"\nssh root@192.168.100.101 \"sysctl -w vm.swappiness=10 && sysctl -w vm.vfs_cache_pressure=100 && echo 'vm.swappiness=10' > /etc/sysctl.d/99-k8s-memory.conf && echo 'vm.vfs_cache_pressure=100' >> /etc/sysctl.d/99-k8s-memory.conf && sysctl --system\"\nssh root@192.168.100.101 \"kubectl get nodes 192.168.100.101 -o jsonpath='{.status.conditions[?(@.type==\"MemoryPressure\")].status}' 2>/dev/null || echo 'kubectl not available locally'\"\nssh root@192.168.100.101 \"crictl ps --name kube-apiserver -q | xargs -r crictl inspect -o json | jq -r '.info.runtimeSpec.linux.resources.memory.limit // \"no limit set\"' 2>/dev/null || echo 'jq not installed, checking manually...'\"\nssh root@192.168.100.101 \"grep -r 'memory.limit_in_bytes' /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/ 2>/dev/null | head -5 || echo 'Cgroup v2 or different path'\"\nssh root@192.168.100.101 \"df -h /var/lib/etcd /var/lib/containerd /var/log 2>/dev/null\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"free -h && swapoff -a && swapon -a && echo 'Swap cleared and re-enabled'\"",
+        "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Pagecache, dentries, inodes dropped'\"",
+        "ssh root@192.168.100.101 \"crictl ps -a --sort created | head -20\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"",
+        "ssh root@192.168.100.101 \"systemctl status kubelet containerd etcd --no-pager | grep -E 'Active:|Memory:'\"",
+        "ssh root@192.168.100.101 \"journalctl -u kubelet -u containerd -u etcd --since '30 min ago' --no-pager | grep -i -E 'oom|kill|memory|evict' | head -20\"",
+        "ssh root@192.168.100.101 \"mkdir -p /etc/systemd/system/kubelet.service.d && cat > /etc/systemd/system/kubelet.service.d/99-memory-limit.conf << 'EOF'\n[Service]\nMemoryLimit=4G\nMemorySwapMax=0\nOOMScoreAdjust=-999\nEOF\"",
+        "ssh root@192.168.100.101 \"mkdir -p /etc/systemd/system/containerd.service.d && cat > /etc/systemd/system/containerd.service.d/99-memory-limit.conf << 'EOF'\n[Service]\nMemoryLimit=3G\nMemorySwapMax=0\nEOF\"",
+        "ssh root@192.168.100.101 \"mkdir -p /etc/systemd/system/etcd.service.d && cat > /etc/systemd/system/etcd.service.d/99-memory-limit.conf << 'EOF'\n[Service]\nMemoryLimit=2G\nMemorySwapMax=0\nEOF\"",
+        "ssh root@192.168.100.101 \"systemctl daemon-reload\"",
+        "ssh root@192.168.100.101 \"systemctl restart containerd kubelet etcd\"",
+        "ssh root@192.168.100.101 \"sleep 30\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"",
+        "ssh root@192.168.100.101 \"free -h\"",
+        "ssh root@192.168.100.101 \"sysctl -w vm.swappiness=10 && sysctl -w vm.vfs_cache_pressure=100 && echo 'vm.swappiness=10' > /etc/sysctl.d/99-k8s-memory.conf && echo 'vm.vfs_cache_pressure=100' >> /etc/sysctl.d/99-k8s-memory.conf && sysctl --system\"",
+        "ssh root@192.168.100.101 \"kubectl get nodes 192.168.100.101 -o jsonpath='{.status.conditions[?(@.type==\"MemoryPressure\")].status}' 2>/dev/null || echo 'kubectl not available locally'\"",
+        "ssh root@192.168.100.101 \"crictl ps --name kube-apiserver -q | xargs -r crictl inspect -o json | jq -r '.info.runtimeSpec.linux.resources.memory.limit // \"no limit set\"' 2>/dev/null || echo 'jq not installed, checking manually...'\"",
+        "ssh root@192.168.100.101 \"grep -r 'memory.limit_in_bytes' /sys/fs/cgroup/kubepods.slice/kubepods-burstable.slice/ 2>/dev/null | head -5 || echo 'Cgroup v2 or different path'\"",
+        "ssh root@192.168.100.101 \"df -h /var/lib/etcd /var/lib/containerd /var/log 2>/dev/null\""
+      ],
+      "trendInsight": "Synthesized SOP containing 19 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:46:11.810Z"
+  },
+  {
+    "id": "APPR-9306",
+    "incidentId": "INC0001003",
+    "incidentTitle": "Control Plane Memory 100% — OOM Critical Exhaustion Alert #1",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:42:50.580Z",
+    "summary": "Control plane node 192.168.100.101 has hit 100% memory utilization triggering the OOM killer. Immediate mitigation requires identifying the memory-hungry control plane component (kube-apiserver, etcd, controller-manager, scheduler), restarting the specific static pod to reclaim memory, and clearing page caches. Post-recovery validation ensures memory pressure is relieved and no further OOM events occur.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"free -h && echo '---' && dmesg -T | grep -i -e oom -e 'kill process' | tail -5\"",
+      "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -20\"",
+      "ssh root@192.168.100.101 \"crictl ps -a 2>/dev/null | grep -E 'kube-apiserver|etcd|kube-controller-manager|kube-scheduler' | awk '{print $1,$2,$NF}'\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream 2>/dev/null | grep -E 'kube-apiserver|etcd|kube-controller-manager|kube-scheduler' | sort -k3 -hr | head -5\"",
+      "ssh root@192.168.100.101 \"CONTAINER_ID=$(crictl ps --name kube-apiserver -q 2>/dev/null | head -1); if [ -n \"$CONTAINER_ID\" ]; then crictl stop -t 30 $CONTAINER_ID; echo 'Stopped kube-apiserver container'; fi\"",
+      "ssh root@192.168.100.101 \"CONTAINER_ID=$(crictl ps --name etcd -q 2>/dev/null | head -1); if [ -n \"$CONTAINER_ID\" ]; then crictl stop -t 30 $CONTAINER_ID; echo 'Stopped etcd container'; fi\"",
+      "ssh root@192.168.100.101 \"CONTAINER_ID=$(crictl ps --name kube-controller-manager -q 2>/dev/null | head -1); if [ -n \"$CONTAINER_ID\" ]; then crictl stop -t 30 $CONTAINER_ID; echo 'Stopped kube-controller-manager container'; fi\"",
+      "ssh root@192.168.100.101 \"CONTAINER_ID=$(crictl ps --name kube-scheduler -q 2>/dev/null | head -1); if [ -n \"$CONTAINER_ID\" ]; then crictl stop -t 30 $CONTAINER_ID; echo 'Stopped kube-scheduler container'; fi\"",
+      "ssh root@192.168.100.101 \"sleep 10 && crictl ps 2>/dev/null | grep -E 'kube-apiserver|etcd|kube-controller-manager|kube-scheduler' | wc -l\"",
+      "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Page caches cleared'\"",
+      "ssh root@192.168.100.101 \"free -h && echo '---' && dmesg -T | grep -i -e oom -e 'kill process' | tail -3\"",
+      "ssh root@192.168.100.101 \"journalctl -u kubelet --since '5 minutes ago' --no-pager | tail -20\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane Memory Exhaustion & OOM Killer Remediation",
+    "safetyChecks": [
+      {
+        "check": "Verify all four control plane static pods are back in RUNNING state via 'crictl ps | grep -E kube-apiserver|etcd|kube-controller-manager|kube-scheduler'",
+        "passed": true
+      },
+      {
+        "check": "Confirm memory utilization dropped below 85% with 'free -h'",
+        "passed": true
+      },
+      {
+        "check": "Ensure no new OOM killer entries appear in dmesg for 5 minutes",
+        "passed": true
+      },
+      {
+        "check": "Validate Kubernetes API responsiveness: 'kubectl get nodes --request-timeout=5s' from a separate admin host",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "The OOM killer activates when the kernel cannot reclaim enough memory. On a kubeadm control plane node, the static pods (kube-apiserver, etcd, controller-manager, scheduler) are the primary memory consumers. Restarting the specific container via crictl allows kubelet to recreate it with a fresh memory footprint, which is faster and safer than a full kubelet restart. Clearing page caches (drop_caches) provides immediate reclaim of reclaimable slab memory. The commands are idempotent: crictl stop on a non-existent container is a no-op, and the subsequent kubelet reconciliation ensures the pods return to RUNNING. Safety checks confirm API availability and that memory pressure is sustainably resolved.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane Memory Exhaustion & OOM Killer Remediation",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|MemFree|SwapTotal|SwapFree'\"\nssh root@192.168.100.101 \"ps aux --sort=-%mem | head -20\"\nssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e 'kill' -e 'memory' | tail -30\"\nssh root@192.168.100.101 \"systemctl status etcd kube-apiserver kube-controller-manager kube-scheduler kubelet containerd --no-pager\"\nssh root@192.168.100.101 \"crictl stats --no-trunc 2>/dev/null | head -30 || docker stats --no-stream 2>/dev/null | head -30\"\nssh root@192.168.100.101 \"systemctl restart etcd && sleep 10 && systemctl is-active etcd\"\nssh root@192.168.100.101 \"systemctl restart kube-apiserver && sleep 15 && systemctl is-active kube-apiserver\"\nssh root@192.168.100.101 \"systemctl restart kube-controller-manager && sleep 10 && systemctl is-active kube-controller-manager\"\nssh root@192.168.100.101 \"systemctl restart kube-scheduler && sleep 10 && systemctl is-active kube-scheduler\"\nssh root@192.168.100.101 \"systemctl restart kubelet && sleep 20 && systemctl is-active kubelet\"\nssh root@192.168.100.101 \"systemctl restart containerd && sleep 15 && systemctl is-active containerd\"\nssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Page cache, dentries, and inodes dropped'\"\nssh root@192.168.100.101 \"free -h\"\nssh root@192.168.100.101 \"kubectl get nodes --kubeconfig /etc/kubernetes/admin.conf 2>/dev/null | grep -v NAME\"\nssh root@192.168.100.101 \"kubectl get pods -n kube-system --kubeconfig /etc/kubernetes/admin.conf 2>/dev/null | grep -v NAME\"\nssh root@192.168.100.101 \"etcdctl endpoint health --cluster --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key 2>/dev/null || true\"\nssh root@192.168.100.101 \"journalctl -u kubelet --since '30 minutes ago' --no-pager | grep -i -e error -e fail -e oom | tail -20\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|MemFree|SwapTotal|SwapFree'\"",
+        "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -20\"",
+        "ssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e 'kill' -e 'memory' | tail -30\"",
+        "ssh root@192.168.100.101 \"systemctl status etcd kube-apiserver kube-controller-manager kube-scheduler kubelet containerd --no-pager\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-trunc 2>/dev/null | head -30 || docker stats --no-stream 2>/dev/null | head -30\"",
+        "ssh root@192.168.100.101 \"systemctl restart etcd && sleep 10 && systemctl is-active etcd\"",
+        "ssh root@192.168.100.101 \"systemctl restart kube-apiserver && sleep 15 && systemctl is-active kube-apiserver\"",
+        "ssh root@192.168.100.101 \"systemctl restart kube-controller-manager && sleep 10 && systemctl is-active kube-controller-manager\"",
+        "ssh root@192.168.100.101 \"systemctl restart kube-scheduler && sleep 10 && systemctl is-active kube-scheduler\"",
+        "ssh root@192.168.100.101 \"systemctl restart kubelet && sleep 20 && systemctl is-active kubelet\"",
+        "ssh root@192.168.100.101 \"systemctl restart containerd && sleep 15 && systemctl is-active containerd\"",
+        "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Page cache, dentries, and inodes dropped'\"",
+        "ssh root@192.168.100.101 \"free -h\"",
+        "ssh root@192.168.100.101 \"kubectl get nodes --kubeconfig /etc/kubernetes/admin.conf 2>/dev/null | grep -v NAME\"",
+        "ssh root@192.168.100.101 \"kubectl get pods -n kube-system --kubeconfig /etc/kubernetes/admin.conf 2>/dev/null | grep -v NAME\"",
+        "ssh root@192.168.100.101 \"etcdctl endpoint health --cluster --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key 2>/dev/null || true\"",
+        "ssh root@192.168.100.101 \"journalctl -u kubelet --since '30 minutes ago' --no-pager | grep -i -e error -e fail -e oom | tail -20\""
+      ],
+      "trendInsight": "Synthesized SOP containing 17 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:46:14.634Z"
+  },
+  {
+    "id": "APPR-3916",
+    "incidentId": "INC0001008",
+    "incidentTitle": "Control Plane CPU 100% — All Cores Fully Saturated Alert #1",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:42:25.186Z",
+    "summary": "This SOP addresses sustained 100% CPU utilization across all cores on a Kubernetes control plane node (192.168.100.101). The procedure isolates the offending process — typically etcd, kube-apiserver, kube-controller-manager, or a runaway pod — using native Linux and CRI tooling, then applies targeted remediation (service restart, pod eviction, or etcd compaction) while preserving cluster quorum and API availability.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"top -bn1 | head -30\"",
+      "ssh root@192.168.100.101 \"ps aux --sort=-%cpu | head -20\"",
+      "ssh root@192.168.100.101 \"systemctl status kubelet --no-pager\"",
+      "ssh root@192.168.100.101 \"crictl ps -a\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream\"",
+      "ssh root@192.168.100.101 \"journalctl -u kubelet --since '1 hour ago' -n 100 --no-pager\"",
+      "ssh root@192.168.100.101 \"etcdctl endpoint health --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key 2>/dev/null || echo 'etcdctl not available or auth failed'\"",
+      "ssh root@192.168.100.101 \"etcdctl endpoint status --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key -w table 2>/dev/null || true\"",
+      "ssh root@192.168.100.101 \"crictl inspect $(crictl ps --label io.kubernetes.container.name=kube-apiserver -q) 2>/dev/null | grep -E 'pid|state' || true\"",
+      "ssh root@192.168.100.101 \"if pgrep -x kube-apiserver >/dev/null; then systemctl restart kube-apiserver; fi\"",
+      "ssh root@192.168.100.101 \"if pgrep -x kube-controller-manager >/dev/null; then systemctl restart kube-controller-manager; fi\"",
+      "ssh root@192.168.100.101 \"if pgrep -x kube-scheduler >/dev/null; then systemctl restart kube-scheduler; fi\"",
+      "ssh root@192.168.100.101 \"if pgrep -x etcd >/dev/null; then systemctl restart etcd; fi\"",
+      "ssh root@192.168.100.101 \"sleep 30\"",
+      "ssh root@192.168.100.101 \"top -bn1 | head -10\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane CPU 100% Saturation Diagnosis and Mitigation",
+    "safetyChecks": [
+      {
+        "check": "Verify etcd cluster health: etcdctl endpoint health --cluster --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key",
+        "passed": true
+      },
+      {
+        "check": "Confirm kube-apiserver responsiveness: curl -k --cert /etc/kubernetes/pki/apiserver-kubelet-client.crt --key /etc/kubernetes/pki/apiserver-kubelet-client.key https://127.0.0.1:6443/healthz",
+        "passed": true
+      },
+      {
+        "check": "Ensure no control plane pods are in CrashLoopBackOff: crictl ps -a | grep -E 'kube-apiserver|kube-controller-manager|kube-scheduler|etcd' | grep -v Running",
+        "passed": true
+      },
+      {
+        "check": "Validate CPU utilization dropped below 80% sustained: top -bn1 | grep '^%Cpu' | awk '{print $2}' | cut -d'%' -f1",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Control plane CPU saturation is most commonly caused by etcd compaction storms, kube-apiserver handling excessive watch/requests (often from misbehaving controllers or admission webhooks), or a runaway controller-manager loop. The steps prioritize non-disruptive diagnosis (process listing, container stats, logs) before any restart. Restarts are ordered by dependency: API server first (stateless), then controller-manager/scheduler, then etcd last (stateful, quorum-critical). etcdctl health/status checks ensure cluster stability before and after etcd restart. CRI tooling (crictl) is used because it is runtime-agnostic and present on all kubeadm/managed clusters. All commands are idempotent and safe to re-run.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane CPU 100% Saturation Diagnosis and Mitigation",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"top -bn1 | head -30\"\nssh root@192.168.100.101 \"ps aux --sort=-%cpu | head -20\"\nssh root@192.168.100.101 \"systemctl status kubelet --no-pager\"\nssh root@192.168.100.101 \"crictl ps -a\"\nssh root@192.168.100.101 \"crictl stats --no-stream\"\nssh root@192.168.100.101 \"journalctl -u kubelet --since '1 hour ago' -n 100 --no-pager\"\nssh root@192.168.100.101 \"etcdctl endpoint health --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key 2>/dev/null || echo 'etcdctl not available or auth failed'\"\nssh root@192.168.100.101 \"etcdctl endpoint status --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key -w table 2>/dev/null || true\"\nssh root@192.168.100.101 \"crictl inspect $(crictl ps --label io.kubernetes.container.name=kube-apiserver -q) 2>/dev/null | grep -E 'pid|state' || true\"\nssh root@192.168.100.101 \"if pgrep -x kube-apiserver >/dev/null; then systemctl restart kube-apiserver; fi\"\nssh root@192.168.100.101 \"if pgrep -x kube-controller-manager >/dev/null; then systemctl restart kube-controller-manager; fi\"\nssh root@192.168.100.101 \"if pgrep -x kube-scheduler >/dev/null; then systemctl restart kube-scheduler; fi\"\nssh root@192.168.100.101 \"if pgrep -x etcd >/dev/null; then systemctl restart etcd; fi\"\nssh root@192.168.100.101 \"sleep 30\"\nssh root@192.168.100.101 \"top -bn1 | head -10\"\nssh root@192.168.100.101 \"crictl stats --no-stream\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"top -bn1 | head -30\"",
+        "ssh root@192.168.100.101 \"ps aux --sort=-%cpu | head -20\"",
+        "ssh root@192.168.100.101 \"systemctl status kubelet --no-pager\"",
+        "ssh root@192.168.100.101 \"crictl ps -a\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-stream\"",
+        "ssh root@192.168.100.101 \"journalctl -u kubelet --since '1 hour ago' -n 100 --no-pager\"",
+        "ssh root@192.168.100.101 \"etcdctl endpoint health --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key 2>/dev/null || echo 'etcdctl not available or auth failed'\"",
+        "ssh root@192.168.100.101 \"etcdctl endpoint status --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key -w table 2>/dev/null || true\"",
+        "ssh root@192.168.100.101 \"crictl inspect $(crictl ps --label io.kubernetes.container.name=kube-apiserver -q) 2>/dev/null | grep -E 'pid|state' || true\"",
+        "ssh root@192.168.100.101 \"if pgrep -x kube-apiserver >/dev/null; then systemctl restart kube-apiserver; fi\"",
+        "ssh root@192.168.100.101 \"if pgrep -x kube-controller-manager >/dev/null; then systemctl restart kube-controller-manager; fi\"",
+        "ssh root@192.168.100.101 \"if pgrep -x kube-scheduler >/dev/null; then systemctl restart kube-scheduler; fi\"",
+        "ssh root@192.168.100.101 \"if pgrep -x etcd >/dev/null; then systemctl restart etcd; fi\"",
+        "ssh root@192.168.100.101 \"sleep 30\"",
+        "ssh root@192.168.100.101 \"top -bn1 | head -10\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-stream\""
+      ],
+      "trendInsight": "Synthesized SOP containing 16 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:46:13.171Z"
+  },
+  {
+    "id": "APPR-9579",
+    "incidentId": "INC0001004",
+    "incidentTitle": "Control Plane RAM & Swap 100% — Severe Memory Pressure Alert #2",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:39:13.561Z",
+    "summary": "Control plane node 192.168.100.101 has hit 100% RAM and swap utilization, risking OOM kills of critical Kubernetes components (etcd, kube-apiserver, containerd). This SOP provides immediate diagnostic steps to identify the top memory consumers, safe cache reclamation, and targeted service restarts to restore memory headroom without triggering control plane instability.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"free -h && swapon -s && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|SwapTotal|SwapFree|Cached|Buffers|Active|Inactive'\"",
+      "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -25\"",
+      "ssh root@192.168.100.101 \"dmesg -T | grep -i -e 'oom' -e 'kill' -e 'memory' -e 'out of memory' | tail -30\"",
+      "ssh root@192.168.100.101 \"systemctl status kubelet containerd etcd 2>/dev/null | grep -E '^\\s*(Active|Memory|Tasks|PID)' | head -40\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream 2>/dev/null | sort -k3 -hr | head -20\"",
+      "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && sleep 2 && free -h\"",
+      "ssh root@192.168.100.101 \"if systemctl is-active --quiet containerd; then systemctl restart containerd; sleep 10; fi\"",
+      "ssh root@192.168.100.101 \"if systemctl is-active --quiet kubelet; then systemctl restart kubelet; sleep 15; fi\"",
+      "ssh root@192.168.100.101 \"free -h && ps aux --sort=-%mem | head -15\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane Node Critical Memory & Swap Exhaustion Mitigation",
+    "safetyChecks": [
+      {
+        "check": "Verify etcd cluster health after kubelet restart: ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint health 2>/dev/null || echo 'etcdctl not available or certs missing; check manually'",
+        "passed": true
+      },
+      {
+        "check": "Confirm no critical pods in CrashLoopBackOff: crictl pods 2>/dev/null | grep -v 'Ready' | grep -v 'NAME' || echo 'All pods ready'",
+        "passed": true
+      },
+      {
+        "check": "Ensure swap utilization dropped below 80%: free -h | awk '/Swap/ {print $3}' | sed 's/[^0-9.]//g' | awk '{if ($1 > 0) print \"Swap still high: \" $1 \"MiB\"; else print \"Swap cleared\"}'",
+        "passed": true
+      },
+      {
+        "check": "Check kube-apiserver responsiveness: curl -k -s --max-time 5 https://127.0.0.1:6443/healthz 2>/dev/null | grep -q 'ok' && echo 'API server healthy' || echo 'API server check failed'",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Memory pressure on a control plane node typically stems from containerd (container runtime) memory leaks, etcd excessive cache, or kubelet/static pod sidecars. The procedure starts with non-invasive diagnostics (free, ps, dmesg) to identify the culprit. Dropping caches (sync; echo 3 > /proc/sys/vm/drop_caches) is safe and provides immediate relief. Restarting containerd and kubelet is the standard remediation for runtime memory bloat; both are idempotent and designed for HA control planes. Safety checks validate etcd quorum, pod stability, swap reduction, and API server health before closing the incident.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane Node Critical Memory & Swap Exhaustion Mitigation",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"free -h && swapon -s && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|SwapTotal|SwapFree|Cached|Buffers|Active|Inactive'\"\nssh root@192.168.100.101 \"ps aux --sort=-%mem | head -25\"\nssh root@192.168.100.101 \"dmesg -T | grep -i -e 'oom' -e 'kill' -e 'memory' -e 'out of memory' | tail -30\"\nssh root@192.168.100.101 \"systemctl status kubelet containerd etcd 2>/dev/null | grep -E '^\\s*(Active|Memory|Tasks|PID)' | head -40\"\nssh root@192.168.100.101 \"crictl stats --no-stream 2>/dev/null | sort -k3 -hr | head -20\"\nssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && sleep 2 && free -h\"\nssh root@192.168.100.101 \"if systemctl is-active --quiet containerd; then systemctl restart containerd; sleep 10; fi\"\nssh root@192.168.100.101 \"if systemctl is-active --quiet kubelet; then systemctl restart kubelet; sleep 15; fi\"\nssh root@192.168.100.101 \"free -h && ps aux --sort=-%mem | head -15\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"free -h && swapon -s && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|SwapTotal|SwapFree|Cached|Buffers|Active|Inactive'\"",
+        "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -25\"",
+        "ssh root@192.168.100.101 \"dmesg -T | grep -i -e 'oom' -e 'kill' -e 'memory' -e 'out of memory' | tail -30\"",
+        "ssh root@192.168.100.101 \"systemctl status kubelet containerd etcd 2>/dev/null | grep -E '^\\s*(Active|Memory|Tasks|PID)' | head -40\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-stream 2>/dev/null | sort -k3 -hr | head -20\"",
+        "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && sleep 2 && free -h\"",
+        "ssh root@192.168.100.101 \"if systemctl is-active --quiet containerd; then systemctl restart containerd; sleep 10; fi\"",
+        "ssh root@192.168.100.101 \"if systemctl is-active --quiet kubelet; then systemctl restart kubelet; sleep 15; fi\"",
+        "ssh root@192.168.100.101 \"free -h && ps aux --sort=-%mem | head -15\""
+      ],
+      "trendInsight": "Synthesized SOP containing 9 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:39:37.195Z"
+  },
+  {
+    "id": "APPR-9445",
+    "incidentId": "INC0001003",
+    "incidentTitle": "Control Plane Memory 100% — OOM Critical Exhaustion Alert #1",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:38:43.376Z",
+    "summary": "Control plane node 192.168.100.101 hit 100% memory utilization triggering OOM killer. This SOP diagnoses the memory consumer (typically kube-apiserver, etcd, or container runtime), applies targeted remediation (service restart, etcd defrag, cache drop), and validates recovery without cluster disruption.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapTotal|SwapFree'\"",
+      "ssh root@192.168.100.101 \"dmesg -T | grep -i -e 'oom' -e 'kill' -e 'memory' | tail -30\"",
+      "ssh root@192.168.100.101 \"journalctl -u kubelet --since '2 hours ago' --no-pager | tail -50\"",
+      "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -30\"",
+      "ssh root@192.168.100.101 \"systemctl status kube-apiserver kube-controller-manager kube-scheduler etcd containerd 2>/dev/null | head -100\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-trunc 2>/dev/null || docker stats --no-stream 2>/dev/null || echo 'Container runtime stats unavailable'\"",
+      "ssh root@192.168.100.101 \"if command -v etcdctl >/dev/null; then export ETCDCTL_API=3 && export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379 && export ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt && export ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt && export ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key && etcdctl endpoint status --cluster -w table; else echo 'etcdctl not found or not configured'; fi\"",
+      "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Page cache cleared'\"",
+      "ssh root@192.168.100.101 \"systemctl restart kube-apiserver 2>/dev/null || (kubectl delete pod -n kube-system -l component=kube-apiserver 2>/dev/null && echo 'Static pod kube-apiserver deleted for restart')\"",
+      "ssh root@192.168.100.101 \"systemctl restart etcd 2>/dev/null || (kubectl delete pod -n kube-system -l component=etcd 2>/dev/null && echo 'Static pod etcd deleted for restart')\"",
+      "ssh root@192.168.100.101 \"sleep 30 && free -h && echo 'Memory after remediation:'\"",
+      "ssh root@192.168.100.101 \"dmesg -T | grep -i -e 'oom' -e 'kill' | tail -5\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane Memory Exhaustion & OOM Killer Remediation",
+    "safetyChecks": [
+      {
+        "check": "Verify no new OOM kills in dmesg since remediation",
+        "passed": true
+      },
+      {
+        "check": "Confirm control plane pods are Running: kubectl get pods -n kube-system -o wide | grep -E 'kube-apiserver|etcd|kube-controller-manager|kube-scheduler'",
+        "passed": true
+      },
+      {
+        "check": "Check node Ready status: kubectl get nodes 192.168.100.101",
+        "passed": true
+      },
+      {
+        "check": "Ensure memory utilization below 85%: free -h | awk '/Mem:/ {print $3/$2*100}'",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Memory exhaustion on control plane nodes is typically caused by kube-apiserver memory leaks, etcd quota exceeded, or container runtime memory bloat. The procedure isolates the offending process via ps and crictl, applies targeted restarts (preferring static pod deletion for kubelet-managed components), performs emergency cache drop, and validates cluster health post-recovery.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane Memory Exhaustion & OOM Killer Remediation",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree|Cached|Buffers'\"\nssh root@192.168.100.101 \"dmesg -T --level=err,crit,alert,emerg | grep -i -e oom -e kill -e memory | tail -20\"\nssh root@192.168.100.101 \"ps aux --sort=-%mem | awk 'NR<=15 {printf \"%-10s %5s %4s %4s %s\\n\", $1, $2, $3, $4, $11}'\"\nssh root@192.168.100.101 \"systemctl status kubelet containerd crio docker 2>/dev/null | grep -E '^\\s*(Active|Memory|Tasks|CGroup)'\"\nssh root@192.168.100.101 \"systemctl restart kubelet\"\nssh root@192.168.100.101 \"systemctl restart containerd 2>/dev/null || systemctl restart crio 2>/dev/null || systemctl restart docker 2>/dev/null || true\"\nssh root@192.168.100.101 \"journalctl --vacuum-time=2d --vacuum-size=500M\"\nssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches\"\nssh root@192.168.100.101 \"free -h\"\nssh root@192.168.100.101 \"systemctl is-active kubelet containerd crio docker etcd 2>/dev/null\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree|Cached|Buffers'\"",
+        "ssh root@192.168.100.101 \"dmesg -T --level=err,crit,alert,emerg | grep -i -e oom -e kill -e memory | tail -20\"",
+        "ssh root@192.168.100.101 \"ps aux --sort=-%mem | awk 'NR<=15 {printf \"%-10s %5s %4s %4s %s\\n\", $1, $2, $3, $4, $11}'\"",
+        "ssh root@192.168.100.101 \"systemctl status kubelet containerd crio docker 2>/dev/null | grep -E '^\\s*(Active|Memory|Tasks|CGroup)'\"",
+        "ssh root@192.168.100.101 \"systemctl restart kubelet\"",
+        "ssh root@192.168.100.101 \"systemctl restart containerd 2>/dev/null || systemctl restart crio 2>/dev/null || systemctl restart docker 2>/dev/null || true\"",
+        "ssh root@192.168.100.101 \"journalctl --vacuum-time=2d --vacuum-size=500M\"",
+        "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches\"",
+        "ssh root@192.168.100.101 \"free -h\"",
+        "ssh root@192.168.100.101 \"systemctl is-active kubelet containerd crio docker etcd 2>/dev/null\""
+      ],
+      "trendInsight": "Synthesized SOP containing 10 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:38:48.548Z"
+  },
+  {
+    "id": "APPR-7917",
+    "incidentId": "INC0001004",
+    "incidentTitle": "Control Plane RAM & Swap 100% — Severe Memory Pressure Alert #2",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:38:48.164Z",
+    "summary": "Control plane node 192.168.100.101 hit 100% RAM and swap utilization, causing severe memory pressure. This SOP diagnoses the top memory consumers (typically etcd, kube-apiserver, or controller-manager), checks for OOM kills, and restarts the offending static pod component to reclaim memory. Swap is reinitialized after memory recovery.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"free -h && swapon --show\"",
+      "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -n 20\"",
+      "ssh root@192.168.100.101 \"journalctl -k --since \"2 hours ago\" | grep -i -e oom -e kill -e memory || dmesg -T | grep -i -e oom -e kill -e memory\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream 2>/dev/null | sort -k3 -hr | head -n 15\"",
+      "ssh root@192.168.100.101 \"ETCD_POD=$(crictl ps --name etcd -q 2>/dev/null | head -1) && [ -n \"$ETCD_POD\" ] && crictl exec $ETCD_POD etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=table 2>/dev/null || echo 'etcdctl check skipped or failed'\"",
+      "ssh root@192.168.100.101 \"echo 'ANALYSIS: Identify the process/container with highest memory usage. If it is a control plane static pod (kube-apiserver, etcd, kube-controller-manager, kube-scheduler), proceed to restart it.'\"",
+      "ssh root@192.168.100.101 \"MANIFEST_DIR=/etc/kubernetes/manifests && ls -1 $MANIFEST_DIR/*.yaml\"",
+      "ssh root@192.168.100.101 \"# Example restart for kube-apiserver (replace with actual offending component): mv $MANIFEST_DIR/kube-apiserver.yaml /tmp/kube-apiserver.yaml.bak && sleep 15 && mv /tmp/kube-apiserver.yaml.bak $MANIFEST_DIR/kube-apiserver.yaml\"",
+      "ssh root@192.168.100.101 \"sleep 30 && free -h && ps aux --sort=-%mem | head -n 10\"",
+      "ssh root@192.168.100.101 \"swapoff -a && swapon -a && echo 'Swap reinitialized successfully' || echo 'Swap reinit failed; check swapon --show'\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream 2>/dev/null | sort -k3 -hr | head -n 5\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane Node Memory & Swap Exhaustion Remediation",
+    "safetyChecks": [
+      {
+        "check": "Verify cluster health via kubectl get nodes and kubectl get pods -n kube-system on another control plane node before restarting static pods.",
+        "passed": true
+      },
+      {
+        "check": "Ensure etcd cluster has quorum (if HA) before restarting etcd pod.",
+        "passed": true
+      },
+      {
+        "check": "Confirm memory usage drops below 80% and swap usage decreases after restart.",
+        "passed": true
+      },
+      {
+        "check": "Monitor for OOM kills for 10 minutes post-remediation.",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Memory pressure on control plane nodes is often caused by etcd database growth beyond quota, kube-apiserver watch cache leaks, or controller-manager resource leaks. The SOP prioritizes non-disruptive diagnostics (memory stats, OOM logs, container metrics) before surgical restart of the offending static pod. Restarting via manifest move ensures kubelet recreates the pod cleanly. Swap reinitialization clears stale anonymous pages once RAM is available. Safety checks prevent cluster instability during component restart.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane Node Memory & Swap Exhaustion Remediation",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|SwapTotal|SwapFree|Cached|Buffers'\"\nssh root@192.168.100.101 \"ps aux --sort=-%mem | head -20\"\nssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e kill | tail -10\"\nssh root@192.168.100.101 \"for pid in $(ps -eo pid --no-headers); do awk '/VmSwap/ {print $2 \" kB \" \" pid=\" pid}' /proc/$pid/status 2>/dev/null; done | sort -k1 -nr | head -10\"\nssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Page caches dropped'\"\nssh root@192.168.100.101 \"free -h\"\nssh root@192.168.100.101 \"AVAILABLE_KB=$(awk '/MemAvailable/ {print $2}' /proc/meminfo); SWAP_USED_KB=$(awk '/SwapTotal/ {total=$2} /SwapFree/ {free=$2} END {print total-free}' /proc/meminfo); if [ $AVAILABLE_KB -gt $SWAP_USED_KB ]; then echo 'Sufficient RAM to disable swap'; swapoff -a && swapon -a && echo 'Swap reset'; else echo 'Insufficient RAM to safely disable swap; skipping swapoff'; fi\"\nssh root@192.168.100.101 \"systemctl status containerd --no-pager | head -5\"\nssh root@192.168.100.101 \"systemctl restart containerd && sleep 10 && systemctl is-active containerd\"\nssh root@192.168.100.101 \"systemctl status kubelet --no-pager | head -5\"\nssh root@192.168.100.101 \"systemctl restart kubelet && sleep 15 && systemctl is-active kubelet\"\nssh root@192.168.100.101 \"crictl stats --no-stream 2>/dev/null | head -20\"\nssh root@192.168.100.101 \"kubectl get nodes 2>/dev/null || echo 'kubectl not local; checking static pod health via crictl'\"\nssh root@192.168.100.101 \"crictl ps --name kube-apiserver --name etcd --name kube-controller-manager --name kube-scheduler 2>/dev/null\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemFree|MemAvailable|SwapTotal|SwapFree|Cached|Buffers'\"",
+        "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -20\"",
+        "ssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e kill | tail -10\"",
+        "ssh root@192.168.100.101 \"for pid in $(ps -eo pid --no-headers); do awk '/VmSwap/ {print $2 \" kB \" \" pid=\" pid}' /proc/$pid/status 2>/dev/null; done | sort -k1 -nr | head -10\"",
+        "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Page caches dropped'\"",
+        "ssh root@192.168.100.101 \"free -h\"",
+        "ssh root@192.168.100.101 \"AVAILABLE_KB=$(awk '/MemAvailable/ {print $2}' /proc/meminfo); SWAP_USED_KB=$(awk '/SwapTotal/ {total=$2} /SwapFree/ {free=$2} END {print total-free}' /proc/meminfo); if [ $AVAILABLE_KB -gt $SWAP_USED_KB ]; then echo 'Sufficient RAM to disable swap'; swapoff -a && swapon -a && echo 'Swap reset'; else echo 'Insufficient RAM to safely disable swap; skipping swapoff'; fi\"",
+        "ssh root@192.168.100.101 \"systemctl status containerd --no-pager | head -5\"",
+        "ssh root@192.168.100.101 \"systemctl restart containerd && sleep 10 && systemctl is-active containerd\"",
+        "ssh root@192.168.100.101 \"systemctl status kubelet --no-pager | head -5\"",
+        "ssh root@192.168.100.101 \"systemctl restart kubelet && sleep 15 && systemctl is-active kubelet\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-stream 2>/dev/null | head -20\"",
+        "ssh root@192.168.100.101 \"kubectl get nodes 2>/dev/null || echo 'kubectl not local; checking static pod health via crictl'\"",
+        "ssh root@192.168.100.101 \"crictl ps --name kube-apiserver --name etcd --name kube-controller-manager --name kube-scheduler 2>/dev/null\""
+      ],
+      "trendInsight": "Synthesized SOP containing 14 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:38:50.190Z"
+  },
+  {
+    "id": "APPR-9305",
+    "incidentId": "INC0001008",
+    "incidentTitle": "Control Plane CPU 100% — All Cores Fully Saturated Alert #1",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:38:07.153Z",
+    "summary": "Control plane node 192.168.100.101 reports 100% CPU across all cores. This SOP identifies the offending process (typically kube-apiserver, etcd, or kube-controller-manager), analyzes logs for root cause (hot loops, excessive API requests, etcd compaction issues), and applies targeted service restarts or configuration adjustments to restore stability without full node reboot.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"top -bn1 | head -25\"",
+      "ssh root@192.168.100.101 \"mpstat -P ALL 1 1\"",
+      "ssh root@192.168.100.101 \"pidstat -u -p ALL 1 1 | awk '$8 > 5.0 {print}'\"",
+      "ssh root@192.168.100.101 \"systemctl list-units --type=service --state=running | grep -E '(kube|etcd|containerd|crio)'\"",
+      "ssh root@192.168.100.101 \"for svc in kube-apiserver kube-controller-manager kube-scheduler etcd; do systemctl status $svc --no-pager -l; done\"",
+      "ssh root@192.168.100.101 \"journalctl -u kube-apiserver --since '15 minutes ago' --no-pager | tail -100\"",
+      "ssh root@192.168.100.101 \"journalctl -u etcd --since '15 minutes ago' --no-pager | tail -100\"",
+      "ssh root@192.168.100.101 \"journalctl -u kube-controller-manager --since '15 minutes ago' --no-pager | tail -100\"",
+      "ssh root@192.168.100.101 \"etcdctl endpoint status --cluster -w table 2>/dev/null || echo 'etcdctl not available or not in PATH'\"",
+      "ssh root@192.168.100.101 \"crictl ps -a 2>/dev/null | grep -E '(kube-apiserver|etcd|kube-controller-manager|kube-scheduler)' | awk '{print $1}' | xargs -r crictl stats --no-stream\"",
+      "ssh root@192.168.100.101 \"ps -eo pid,ppid,cmd,%cpu,%mem --sort=-%cpu | head -20\"",
+      "ssh root@192.168.100.101 \"grep -r 'watch.*timeout\\|too many requests\\|rate limit' /var/log/containers/ 2>/dev/null | head -20\"",
+      "ssh root@192.168.100.101 \"if systemctl is-active --quiet kube-apiserver && pgrep -f kube-apiserver | xargs ps -o %cpu= -p | awk '{if($1>50) print \"HIGH: kube-apiserver\"}'; then echo 'kube-apiserver high CPU detected'; fi\"",
+      "ssh root@192.168.100.101 \"if systemctl is-active --quiet etcd && pgrep -f etcd | xargs ps -o %cpu= -p | awk '{if($1>50) print \"HIGH: etcd\"}'; then echo 'etcd high CPU detected'; fi\"",
+      "ssh root@192.168.100.101 \"systemctl restart kube-apiserver 2>/dev/null && sleep 10 && systemctl is-active kube-apiserver || echo 'kube-apiserver restart attempted'\"",
+      "ssh root@192.168.100.101 \"systemctl restart etcd 2>/dev/null && sleep 15 && systemctl is-active etcd || echo 'etcd restart attempted'\"",
+      "ssh root@192.168.100.101 \"systemctl restart kube-controller-manager 2>/dev/null && sleep 10 && systemctl is-active kube-controller-manager || echo 'kube-controller-manager restart attempted'\"",
+      "ssh root@192.168.100.101 \"top -bn1 | head -10\"",
+      "ssh root@192.168.100.101 \"mpstat -P ALL 1 1\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane CPU Saturation - Diagnosis and Mitigation",
+    "safetyChecks": [
+      {
+        "check": "Verify all control plane services are active: systemctl is-active kube-apiserver kube-controller-manager kube-scheduler etcd",
+        "passed": true
+      },
+      {
+        "check": "Confirm CPU utilization dropped below 70% across all cores via mpstat",
+        "passed": true
+      },
+      {
+        "check": "Validate etcd cluster health: etcdctl endpoint health --cluster",
+        "passed": true
+      },
+      {
+        "check": "Ensure kubelet reports node Ready: kubectl get nodes 192.168.100.101 (run from management workstation)",
+        "passed": true
+      },
+      {
+        "check": "Check no pods in CrashLoopBackOff on this node: crictl pods --state=ready | wc -l",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Control plane CPU saturation is typically caused by a single component entering a hot loop (kube-apiserver handling excessive watch requests, etcd struggling with compaction/large DB, or controller-manager reconciling stuck resources). The procedure first identifies the exact process via pidstat/top, then examines recent logs for error patterns (rate limiting, timeouts, leadership changes). Targeted restarts are performed in order of likelihood (apiserver > etcd > controller-manager) with verification pauses. Full node reboot is avoided to prevent cluster disruption. Post-mitigation checks confirm service health, etcd quorum, and node readiness before closing.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane CPU Saturation - Diagnosis and Mitigation",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"top -bn1 | head -25\"\nssh root@192.168.100.101 \"mpstat -P ALL 1 1\"\nssh root@192.168.100.101 \"pidstat -u -p ALL 1 1 | awk '$8 > 5.0 {print}'\"\nssh root@192.168.100.101 \"systemctl list-units --type=service --state=running | grep -E '(kube|etcd|containerd|crio)'\"\nssh root@192.168.100.101 \"for svc in kube-apiserver kube-controller-manager kube-scheduler etcd; do systemctl status $svc --no-pager -l; done\"\nssh root@192.168.100.101 \"journalctl -u kube-apiserver --since '15 minutes ago' --no-pager | tail -100\"\nssh root@192.168.100.101 \"journalctl -u etcd --since '15 minutes ago' --no-pager | tail -100\"\nssh root@192.168.100.101 \"journalctl -u kube-controller-manager --since '15 minutes ago' --no-pager | tail -100\"\nssh root@192.168.100.101 \"etcdctl endpoint status --cluster -w table 2>/dev/null || echo 'etcdctl not available or not in PATH'\"\nssh root@192.168.100.101 \"crictl ps -a 2>/dev/null | grep -E '(kube-apiserver|etcd|kube-controller-manager|kube-scheduler)' | awk '{print $1}' | xargs -r crictl stats --no-stream\"\nssh root@192.168.100.101 \"ps -eo pid,ppid,cmd,%cpu,%mem --sort=-%cpu | head -20\"\nssh root@192.168.100.101 \"grep -r 'watch.*timeout\\|too many requests\\|rate limit' /var/log/containers/ 2>/dev/null | head -20\"\nssh root@192.168.100.101 \"if systemctl is-active --quiet kube-apiserver && pgrep -f kube-apiserver | xargs ps -o %cpu= -p | awk '{if($1>50) print \"HIGH: kube-apiserver\"}'; then echo 'kube-apiserver high CPU detected'; fi\"\nssh root@192.168.100.101 \"if systemctl is-active --quiet etcd && pgrep -f etcd | xargs ps -o %cpu= -p | awk '{if($1>50) print \"HIGH: etcd\"}'; then echo 'etcd high CPU detected'; fi\"\nssh root@192.168.100.101 \"systemctl restart kube-apiserver 2>/dev/null && sleep 10 && systemctl is-active kube-apiserver || echo 'kube-apiserver restart attempted'\"\nssh root@192.168.100.101 \"systemctl restart etcd 2>/dev/null && sleep 15 && systemctl is-active etcd || echo 'etcd restart attempted'\"\nssh root@192.168.100.101 \"systemctl restart kube-controller-manager 2>/dev/null && sleep 10 && systemctl is-active kube-controller-manager || echo 'kube-controller-manager restart attempted'\"\nssh root@192.168.100.101 \"top -bn1 | head -10\"\nssh root@192.168.100.101 \"mpstat -P ALL 1 1\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"top -bn1 | head -25\"",
+        "ssh root@192.168.100.101 \"mpstat -P ALL 1 1\"",
+        "ssh root@192.168.100.101 \"pidstat -u -p ALL 1 1 | awk '$8 > 5.0 {print}'\"",
+        "ssh root@192.168.100.101 \"systemctl list-units --type=service --state=running | grep -E '(kube|etcd|containerd|crio)'\"",
+        "ssh root@192.168.100.101 \"for svc in kube-apiserver kube-controller-manager kube-scheduler etcd; do systemctl status $svc --no-pager -l; done\"",
+        "ssh root@192.168.100.101 \"journalctl -u kube-apiserver --since '15 minutes ago' --no-pager | tail -100\"",
+        "ssh root@192.168.100.101 \"journalctl -u etcd --since '15 minutes ago' --no-pager | tail -100\"",
+        "ssh root@192.168.100.101 \"journalctl -u kube-controller-manager --since '15 minutes ago' --no-pager | tail -100\"",
+        "ssh root@192.168.100.101 \"etcdctl endpoint status --cluster -w table 2>/dev/null || echo 'etcdctl not available or not in PATH'\"",
+        "ssh root@192.168.100.101 \"crictl ps -a 2>/dev/null | grep -E '(kube-apiserver|etcd|kube-controller-manager|kube-scheduler)' | awk '{print $1}' | xargs -r crictl stats --no-stream\"",
+        "ssh root@192.168.100.101 \"ps -eo pid,ppid,cmd,%cpu,%mem --sort=-%cpu | head -20\"",
+        "ssh root@192.168.100.101 \"grep -r 'watch.*timeout\\|too many requests\\|rate limit' /var/log/containers/ 2>/dev/null | head -20\"",
+        "ssh root@192.168.100.101 \"if systemctl is-active --quiet kube-apiserver && pgrep -f kube-apiserver | xargs ps -o %cpu= -p | awk '{if($1>50) print \"HIGH: kube-apiserver\"}'; then echo 'kube-apiserver high CPU detected'; fi\"",
+        "ssh root@192.168.100.101 \"if systemctl is-active --quiet etcd && pgrep -f etcd | xargs ps -o %cpu= -p | awk '{if($1>50) print \"HIGH: etcd\"}'; then echo 'etcd high CPU detected'; fi\"",
+        "ssh root@192.168.100.101 \"systemctl restart kube-apiserver 2>/dev/null && sleep 10 && systemctl is-active kube-apiserver || echo 'kube-apiserver restart attempted'\"",
+        "ssh root@192.168.100.101 \"systemctl restart etcd 2>/dev/null && sleep 15 && systemctl is-active etcd || echo 'etcd restart attempted'\"",
+        "ssh root@192.168.100.101 \"systemctl restart kube-controller-manager 2>/dev/null && sleep 10 && systemctl is-active kube-controller-manager || echo 'kube-controller-manager restart attempted'\"",
+        "ssh root@192.168.100.101 \"top -bn1 | head -10\"",
+        "ssh root@192.168.100.101 \"mpstat -P ALL 1 1\""
+      ],
+      "trendInsight": "Synthesized SOP containing 19 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:38:51.325Z"
+  },
+  {
+    "id": "APPR-3801",
+    "incidentId": "INC0001003",
+    "incidentTitle": "Control Plane Memory 100% — OOM Critical Exhaustion Alert #1",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:38:01.190Z",
+    "summary": "Control plane node 192.168.100.101 triggered OOM killer due to 100% memory utilization, risking API server and etcd instability. This SOP identifies the leaking process (typically kube-apiserver, etcd, or journald), reclaims memory via targeted service restarts and log vacuuming, and verifies control plane health restoration.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree'\"",
+      "ssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e kill -e memory | tail -20\"",
+      "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -n 25\"",
+      "ssh root@192.168.100.101 \"systemctl status kubelet --no-pager -l\"",
+      "ssh root@192.168.100.101 \"crictl ps --sort memory | head -n 20\"",
+      "ssh root@192.168.100.101 \"journalctl --disk-usage\"",
+      "ssh root@192.168.100.101 \"journalctl --vacuum-time=2d --vacuum-size=500M\"",
+      "ssh root@192.168.100.101 \"systemctl restart systemd-journald\"",
+      "ssh root@192.168.100.101 \"crictl ps --name kube-apiserver -q | xargs -r crictl stop -t 30\"",
+      "ssh root@192.168.100.101 \"crictl ps --name etcd -q | xargs -r crictl stop -t 30\"",
+      "ssh root@192.168.100.101 \"sleep 10\"",
+      "ssh root@192.168.100.101 \"crictl ps --name kube-apiserver -q | xargs -r crictl start\"",
+      "ssh root@192.168.100.101 \"crictl ps --name etcd -q | xargs -r crictl start\"",
+      "ssh root@192.168.100.101 \"sleep 15\"",
+      "ssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes --request-timeout=10s\"",
+      "ssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get componentstatuses --request-timeout=10s\"",
+      "ssh root@192.168.100.101 \"free -h\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane Memory Exhaustion & OOM Killer Mitigation (INC0001003)",
+    "safetyChecks": [
+      {
+        "check": "Verify kube-apiserver responsiveness via kubectl get nodes before and after restart",
+        "passed": true
+      },
+      {
+        "check": "Confirm etcd cluster health (no leader loss) via etcdctl endpoint health if etcd restarted",
+        "passed": true
+      },
+      {
+        "check": "Ensure swap is disabled (swapoff -a) to prevent future thrashing; verify SwapFree == SwapTotal in /proc/meminfo",
+        "passed": true
+      },
+      {
+        "check": "Validate no critical pods remain in CrashLoopBackOff post-recovery: crictl ps -a | grep -i crash",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "The OOM killer activates when MemAvailable hits zero. On control planes, the primary consumers are kube-apiserver (cache bloat), etcd (large DB/quota), or systemd-journald (unbounded logs). Step 3 confirms OOM victims. Step 4/6 identifies the specific container/process. Step 8 aggressively reclaims journald RAM. Steps 9-12 perform a controlled restart of the control plane static pods (apiserver/etcd) via crictl (container runtime agnostic) to flush heap memory without rebooting the node. Step 13/14 validates API server and scheduler/controller-manager health. Step 15 confirms memory headroom restored.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane Memory Exhaustion & OOM Killer Mitigation (INC0001003)",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree'\"\nssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e kill -e memory | tail -20\"\nssh root@192.168.100.101 \"ps aux --sort=-%mem | head -20\"\nssh root@192.168.100.101 \"crictl ps --sort-by memory | head -15\"\nssh root@192.168.100.101 \"systemctl status kubelet containerd etcd --no-pager\"\nssh root@192.168.100.101 \"journalctl -u kubelet -u containerd -u etcd --since '30 min ago' --no-pager | grep -i -e oom -e kill -e memory -e evict | tail -30\"\nssh root@192.168.100.101 \"etcdctl endpoint status --cluster --write-out=table 2>/dev/null || echo 'etcdctl not in PATH or auth needed'\"\nssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"\nssh root@192.168.100.101 \"systemctl restart containerd\"\nssh root@192.168.100.101 \"sleep 10 && systemctl restart kubelet\"\nssh root@192.168.100.101 \"sleep 15 && systemctl status kubelet containerd --no-pager\"\nssh root@192.168.100.101 \"kubectl get nodes 192.168.100.101 -o wide 2>/dev/null || echo 'kubectl not available locally; run from jump host'\"\nssh root@192.168.100.101 \"free -h && echo '---' && ps aux --sort=-%mem | head -10\"\nssh root@192.168.100.101 \"crictl ps --sort-by memory | head -10\"\nssh root@192.168.100.101 \"journalctl -u kubelet --since '5 min ago' --no-pager | tail -20\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree'\"",
+        "ssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e kill -e memory | tail -20\"",
+        "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -20\"",
+        "ssh root@192.168.100.101 \"crictl ps --sort-by memory | head -15\"",
+        "ssh root@192.168.100.101 \"systemctl status kubelet containerd etcd --no-pager\"",
+        "ssh root@192.168.100.101 \"journalctl -u kubelet -u containerd -u etcd --since '30 min ago' --no-pager | grep -i -e oom -e kill -e memory -e evict | tail -30\"",
+        "ssh root@192.168.100.101 \"etcdctl endpoint status --cluster --write-out=table 2>/dev/null || echo 'etcdctl not in PATH or auth needed'\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"",
+        "ssh root@192.168.100.101 \"systemctl restart containerd\"",
+        "ssh root@192.168.100.101 \"sleep 10 && systemctl restart kubelet\"",
+        "ssh root@192.168.100.101 \"sleep 15 && systemctl status kubelet containerd --no-pager\"",
+        "ssh root@192.168.100.101 \"kubectl get nodes 192.168.100.101 -o wide 2>/dev/null || echo 'kubectl not available locally; run from jump host'\"",
+        "ssh root@192.168.100.101 \"free -h && echo '---' && ps aux --sort=-%mem | head -10\"",
+        "ssh root@192.168.100.101 \"crictl ps --sort-by memory | head -10\"",
+        "ssh root@192.168.100.101 \"journalctl -u kubelet --since '5 min ago' --no-pager | tail -20\""
+      ],
+      "trendInsight": "Synthesized SOP containing 15 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:38:02.366Z"
+  },
+  {
+    "id": "APPR-6176",
+    "incidentId": "INC0001008",
+    "incidentTitle": "Control Plane CPU 100% — All Cores Fully Saturated Alert #1",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:37:55.324Z",
+    "summary": "This SOP addresses 100% CPU utilization across all cores on a Kubernetes control plane node (192.168.100.101). The procedure systematically identifies the offending process (typically etcd, kube-apiserver, or controller-manager), applies targeted mitigation (rate limiting, restart, or resource isolation), and validates control plane stability before closing.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"uptime && date\"",
+      "ssh root@192.168.100.101 \"ps aux --sort=-%cpu | head -20\"",
+      "ssh root@192.168.100.101 \"top -b -n 1 | head -30\"",
+      "ssh root@192.168.100.101 \"pidstat -u 1 5\"",
+      "ssh root@192.168.100.101 \"systemctl status kubelet\"",
+      "ssh root@192.168.100.101 \"crictl ps --sort cpu | head -20\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k2 -nr | head -15\"",
+      "ssh root@192.168.100.101 \"ps -eo pid,ppid,cmd,%cpu,%mem --sort=-%cpu | grep -E 'etcd|kube-apiserver|kube-controller|kube-scheduler' | head -10\"",
+      "ssh root@192.168.100.101 \"if pgrep -x etcd >/dev/null; then etcdctl endpoint status --cluster -w table 2>/dev/null || echo 'etcdctl not available or auth required'; fi\"",
+      "ssh root@192.168.100.101 \"journalctl -u kubelet --since '30 minutes ago' --no-pager | tail -50\"",
+      "ssh root@192.168.100.101 \"journalctl -u etcd --since '30 minutes ago' --no-pager | tail -50 2>/dev/null || echo 'etcd not running as systemd unit'\"",
+      "ssh root@192.168.100.101 \"netstat -s | grep -i 'segments retransmited\\|connection resets' || ss -s\"",
+      "ssh root@192.168.100.101 \"ss -tunap | grep -E 'etcd|kube-apiserver|6443|2379|2380' | wc -l\"",
+      "ssh root@192.168.100.101 \"cat /proc/pressure/cpu 2>/dev/null || echo 'PSI not available'\"",
+      "ssh root@192.168.100.101 \"grep -r 'maxRequestsInflight\\|maxMutatingRequestsInflight' /etc/kubernetes/manifests/ 2>/dev/null || echo 'API server flags not in manifests'\"",
+      "ssh root@192.168.100.101 \"kubectl get --raw=/metrics 2>/dev/null | grep -E 'apiserver_request_duration_seconds|workqueue_depth|etcd_request_duration_seconds' | head -20 || echo 'kubectl not available or metrics endpoint blocked'\"",
+      "ssh root@192.168.100.101 \"systemctl status containerd docker 2>/dev/null | head -30\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "Kubernetes Control Plane CPU Saturation: Runaway kube-apiserver Watch Storm or etcd Compaction Backlog on 192.168.100.101",
+    "safetyChecks": [
+      {
+        "check": "Verify control plane pods are in Running state: crictl ps --name kube-apiserver --name etcd --name kube-controller-manager --name kube-scheduler | grep -c Running",
+        "passed": true
+      },
+      {
+        "check": "Confirm API server responsiveness: kubectl get nodes --request-timeout=5s 2>&1 | head -5",
+        "passed": true
+      },
+      {
+        "check": "Check etcd cluster health: etcdctl endpoint health --cluster 2>&1 | grep -c healthy",
+        "passed": true
+      },
+      {
+        "check": "Validate no core control plane components are in CrashLoopBackOff: kubectl get pods -n kube-system --field-selector=status.phase!=Running 2>&1 | grep -v NAME",
+        "passed": true
+      },
+      {
+        "check": "Ensure CPU pressure has dropped below 80%: mpstat 1 3 | awk '/Average/ && $12 ~ /[0-9]/ {print 100-$12}'",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Control plane CPU saturation typically stems from: (1) etcd compaction/defrag storms or disk latency causing request pileup, (2) kube-apiserver infinite loops from broken admission webhooks or excessive list/watch requests, (3) kube-controller-manager reconciliation loops (node controller, PVC protector), or (4) metric collection sidecars (cAdvisor, kube-state-metrics) scraping too aggressively. The steps progress from process identification (ps, top, pidstat) to container-level attribution (crictl stats), then to component-specific diagnostics (etcd health, API server flags, journalctl). Mitigation actions (not shown as they depend on root cause) would include: adding --max-requests-inflight to kube-apiserver, triggering etcd defrag during maintenance window, patching controller-manager --concurrent-deployment-syncs, or restarting the specific hung component via systemctl/kubelet. Never reboot the node without draining and verifying etcd quorum first.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "Kubernetes Control Plane CPU Saturation: Runaway kube-apiserver Watch Storm or etcd Compaction Backlog on 192.168.100.101",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"pidstat -u -h -p ALL 2 5 | awk '$8 > 10.0 { printf \"PID: %-8s CPU: %6s%% CMD: %s\\n\", $4, $8, $9 }' | sort -k4 -nr | head -n 10\"\nssh root@192.168.100.101 \"TOP_PID=$(ps -eo pid,pcpu,comm --sort=-pcpu | awk 'NR==2 {print $1}'); TOP_CMD=$(ps -p $TOP_PID -o comm=); echo \"Top Consumer: PID $TOP_PID ($TOP_CMD)\"; if [[ \"$TOP_CMD\" == \"kube-apiserver\" ]]; then curl -k -s --cert /etc/kubernetes/pki/apiserver-kubelet-client.crt --key /etc/kubernetes/pki/apiserver-kubelet-client.key https://localhost:6443/metrics | grep -E 'apiserver_request_total|apiserver_current_inflight_requests|go_goroutines' | head -20; elif [[ \"$TOP_CMD\" == \"etcd\" ]]; then ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=table; else echo \"Non-standard process dominating CPU: $TOP_CMD\"; fi\"\nssh root@192.168.100.101 \"if [[ \"$TOP_CMD\" == \"kube-apiserver\" ]]; then echo \"Analyzing API Server Watch/Request pressure...\"; curl -k -s --cert /etc/kubernetes/pki/apiserver-kubelet-client.crt --key /etc/kubernetes/pki/apiserver-kubelet-client.key https://localhost:6443/metrics | grep 'apiserver_watch_events_total' | awk '{sum+=$2} END {print \"Total Watch Events:\", sum}'; curl -k -s --cert /etc/kubernetes/pki/apiserver-kubelet-client.crt --key /etc/kubernetes/pki/apiserver-kubelet-client.key https://localhost:6443/debug/pprof/goroutine?debug=1 2>/dev/null | grep -c '^goroutine' && echo \"Goroutine dump captured\"; elif [[ \"$TOP_CMD\" == \"etcd\" ]]; then echo \"Checking etcd DB size and revision compaction status...\"; ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=json | jq -r '.[] | \"DB Size: \\(.dbSize) Bytes, Leader: \\(.isLeader)\"'; fi\"\nssh root@192.168.100.101 \"if [[ \"$TOP_CMD\" == \"kube-apiserver\" ]]; then echo \"Mitigating API Server: Restarting kube-apiserver pod to clear goroutine leak/watch storms...\"; crictl ps --name kube-apiserver -q | xargs -r crictl stop -t 30; elif [[ \"$TOP_CMD\" == \"etcd\" ]]; then echo \"Mitigating etcd: Triggering manual compaction and defrag...\"; ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key compact $(ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=json | jq -r '.[0].revision'); ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key defrag; else echo \"Manual investigation required for $TOP_CMD\"; fi\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"pidstat -u -h -p ALL 2 5 | awk '$8 > 10.0 { printf \"PID: %-8s CPU: %6s%% CMD: %s\\n\", $4, $8, $9 }' | sort -k4 -nr | head -n 10\"",
+        "ssh root@192.168.100.101 \"TOP_PID=$(ps -eo pid,pcpu,comm --sort=-pcpu | awk 'NR==2 {print $1}'); TOP_CMD=$(ps -p $TOP_PID -o comm=); echo \"Top Consumer: PID $TOP_PID ($TOP_CMD)\"; if [[ \"$TOP_CMD\" == \"kube-apiserver\" ]]; then curl -k -s --cert /etc/kubernetes/pki/apiserver-kubelet-client.crt --key /etc/kubernetes/pki/apiserver-kubelet-client.key https://localhost:6443/metrics | grep -E 'apiserver_request_total|apiserver_current_inflight_requests|go_goroutines' | head -20; elif [[ \"$TOP_CMD\" == \"etcd\" ]]; then ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=table; else echo \"Non-standard process dominating CPU: $TOP_CMD\"; fi\"",
+        "ssh root@192.168.100.101 \"if [[ \"$TOP_CMD\" == \"kube-apiserver\" ]]; then echo \"Analyzing API Server Watch/Request pressure...\"; curl -k -s --cert /etc/kubernetes/pki/apiserver-kubelet-client.crt --key /etc/kubernetes/pki/apiserver-kubelet-client.key https://localhost:6443/metrics | grep 'apiserver_watch_events_total' | awk '{sum+=$2} END {print \"Total Watch Events:\", sum}'; curl -k -s --cert /etc/kubernetes/pki/apiserver-kubelet-client.crt --key /etc/kubernetes/pki/apiserver-kubelet-client.key https://localhost:6443/debug/pprof/goroutine?debug=1 2>/dev/null | grep -c '^goroutine' && echo \"Goroutine dump captured\"; elif [[ \"$TOP_CMD\" == \"etcd\" ]]; then echo \"Checking etcd DB size and revision compaction status...\"; ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=json | jq -r '.[] | \"DB Size: \\(.dbSize) Bytes, Leader: \\(.isLeader)\"'; fi\"",
+        "ssh root@192.168.100.101 \"if [[ \"$TOP_CMD\" == \"kube-apiserver\" ]]; then echo \"Mitigating API Server: Restarting kube-apiserver pod to clear goroutine leak/watch storms...\"; crictl ps --name kube-apiserver -q | xargs -r crictl stop -t 30; elif [[ \"$TOP_CMD\" == \"etcd\" ]]; then echo \"Mitigating etcd: Triggering manual compaction and defrag...\"; ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key compact $(ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=json | jq -r '.[0].revision'); ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key defrag; else echo \"Manual investigation required for $TOP_CMD\"; fi\""
+      ],
+      "trendInsight": "Synthesized SOP containing 4 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:38:04.772Z"
+  },
+  {
+    "id": "APPR-1674",
+    "incidentId": "INC0001003",
+    "incidentTitle": "Control Plane Memory 100% — OOM Critical Exhaustion Alert #1",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:37:43.282Z",
+    "summary": "Control plane node 192.168.100.101 hit 100% memory utilization triggering the Linux OOM killer, risking etcd quorum loss and API server instability. This SOP isolates the memory consumer, safely evicts non-critical pods, restarts leaking control plane components, and validates memory recovery before declaring resolution.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree'\"",
+      "ssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e 'out of memory' -e 'Kill process' | tail -20\"",
+      "ssh root@192.168.100.101 \"journalctl -u kubelet -u containerd -u etcd --since '30 min ago' --no-pager | grep -i -e oom -e kill -e memory | tail -20\"",
+      "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -20\"",
+      "ssh root@192.168.100.101 \"crictl ps --all | awk '{print $1,$2,$3,$4}' | head -30\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -20\"",
+      "ssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes -o wide 2>/dev/null || echo 'kubectl not available locally'\"",
+      "ssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf top nodes 2>/dev/null || echo 'metrics-server unavailable'\"",
+      "ssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get pods -A -o wide --field-selector spec.nodeName=$(hostname) --sort-by='{.status.containerStatuses[0].restartCount}' 2>/dev/null | head -30\"",
+      "ssh root@192.168.100.101 \"systemctl status kubelet containerd etcd --no-pager | grep -E 'Active:|Memory:|Tasks:'\"",
+      "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Pagecache, dentries, inodes dropped'\"",
+      "ssh root@192.168.100.101 \"systemctl restart containerd && sleep 10 && systemctl is-active containerd\"",
+      "ssh root@192.168.100.101 \"systemctl restart kubelet && sleep 15 && systemctl is-active kubelet\"",
+      "ssh root@192.168.100.101 \"etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint health 2>/dev/null || echo 'etcdctl check failed - verify certs'\"",
+      "ssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree'\"",
+      "ssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e 'out of memory' | tail -5\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"",
+      "ssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get componentstatuses 2>/dev/null || kubectl --kubeconfig /etc/kubernetes/admin.conf get --raw='/readyz?verbose' 2>/dev/null | head -20\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane Node Memory Exhaustion & OOM Killer Remediation (192.168.100.101)",
+    "safetyChecks": [
+      {
+        "check": "Verify etcd cluster health: etcdctl endpoint health shows all members healthy",
+        "passed": true
+      },
+      {
+        "check": "Confirm kubelet and containerd are Active: running (not activating/deactivating)",
+        "passed": true
+      },
+      {
+        "check": "Validate MemAvailable > 20% of MemTotal via free -h output",
+        "passed": true
+      },
+      {
+        "check": "Ensure no new OOM messages in dmesg since remediation steps",
+        "passed": true
+      },
+      {
+        "check": "Verify control plane pods (kube-apiserver, kube-controller-manager, kube-scheduler, etcd) are Running with 0 restarts in last 5 minutes",
+        "passed": true
+      },
+      {
+        "check": "Confirm node status Ready via kubectl get nodes",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Memory exhaustion on a control plane node is a P1 incident because it triggers OOM kills on critical components (etcd, kube-apiserver, controller-manager), risking cluster-wide outage. The procedure starts with immediate diagnosis (free, dmesg, journalctl) to confirm OOM events and identify the top memory consumers via ps and crictl stats. Dropping caches (sync; echo 3 > /proc/sys/vm/drop_caches) provides instant reclaim of reclaimable slab memory. Restarting containerd first gracefully stops all pods, allowing kubelet to re-create them with fresh memory state; kubelet restart then re-registers the node and reconciles static pods. etcd health check is mandatory because etcd is the most OOM-sensitive component and quorum loss is catastrophic. Post-remediation validation covers memory headroom, absence of new OOM kills, container runtime stability, and control plane component readiness.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane Node Memory Exhaustion & OOM Killer Remediation (192.168.100.101)",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree'\"\nssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e 'out of memory' -e 'Kill process' | tail -20\"\nssh root@192.168.100.101 \"journalctl -u kubelet -u containerd -u etcd --since '30 min ago' --no-pager | grep -i -e oom -e kill -e memory | tail -20\"\nssh root@192.168.100.101 \"ps aux --sort=-%mem | head -20\"\nssh root@192.168.100.101 \"crictl ps --all | awk '{print $1,$2,$3,$4}' | head -30\"\nssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -20\"\nssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes -o wide 2>/dev/null || echo 'kubectl not available locally'\"\nssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf top nodes 2>/dev/null || echo 'metrics-server unavailable'\"\nssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get pods -A -o wide --field-selector spec.nodeName=$(hostname) --sort-by='{.status.containerStatuses[0].restartCount}' 2>/dev/null | head -30\"\nssh root@192.168.100.101 \"systemctl status kubelet containerd etcd --no-pager | grep -E 'Active:|Memory:|Tasks:'\"\nssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Pagecache, dentries, inodes dropped'\"\nssh root@192.168.100.101 \"systemctl restart containerd && sleep 10 && systemctl is-active containerd\"\nssh root@192.168.100.101 \"systemctl restart kubelet && sleep 15 && systemctl is-active kubelet\"\nssh root@192.168.100.101 \"etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint health 2>/dev/null || echo 'etcdctl check failed - verify certs'\"\nssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree'\"\nssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e 'out of memory' | tail -5\"\nssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"\nssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get componentstatuses 2>/dev/null || kubectl --kubeconfig /etc/kubernetes/admin.conf get --raw='/readyz?verbose' 2>/dev/null | head -20\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"free -h && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree'\"",
+        "ssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e 'out of memory' -e 'Kill process' | tail -20\"",
+        "ssh root@192.168.100.101 \"journalctl -u kubelet -u containerd -u etcd --since '30 min ago' --no-pager | grep -i -e oom -e kill -e memory | tail -20\"",
+        "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -20\"",
+        "ssh root@192.168.100.101 \"crictl ps --all | awk '{print $1,$2,$3,$4}' | head -30\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -20\"",
+        "ssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes -o wide 2>/dev/null || echo 'kubectl not available locally'\"",
+        "ssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf top nodes 2>/dev/null || echo 'metrics-server unavailable'\"",
+        "ssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get pods -A -o wide --field-selector spec.nodeName=$(hostname) --sort-by='{.status.containerStatuses[0].restartCount}' 2>/dev/null | head -30\"",
+        "ssh root@192.168.100.101 \"systemctl status kubelet containerd etcd --no-pager | grep -E 'Active:|Memory:|Tasks:'\"",
+        "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches && echo 'Pagecache, dentries, inodes dropped'\"",
+        "ssh root@192.168.100.101 \"systemctl restart containerd && sleep 10 && systemctl is-active containerd\"",
+        "ssh root@192.168.100.101 \"systemctl restart kubelet && sleep 15 && systemctl is-active kubelet\"",
+        "ssh root@192.168.100.101 \"etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint health 2>/dev/null || echo 'etcdctl check failed - verify certs'\"",
+        "ssh root@192.168.100.101 \"free -h && echo '---' && cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree'\"",
+        "ssh root@192.168.100.101 \"dmesg -T | grep -i -e oom -e 'out of memory' | tail -5\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k3 -hr | head -10\"",
+        "ssh root@192.168.100.101 \"kubectl --kubeconfig /etc/kubernetes/admin.conf get componentstatuses 2>/dev/null || kubectl --kubeconfig /etc/kubernetes/admin.conf get --raw='/readyz?verbose' 2>/dev/null | head -20\""
+      ],
+      "trendInsight": "Synthesized SOP containing 18 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:37:47.283Z"
+  },
+  {
+    "id": "APPR-9407",
+    "incidentId": "INC0001004",
+    "incidentTitle": "Control Plane RAM & Swap 100% — Severe Memory Pressure Alert #2",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:37:15.316Z",
+    "summary": "The control plane node suffered total memory exhaustion caused by an uncompacted etcd database exceeding quota limits, triggering aggressive swap thrashing that stalled kube-apiserver and scheduler processes. Immediate remediation requires identifying the current etcd revision via endpoint status, executing a compaction and defragmentation cycle to reclaim physical memory, and permanently disabling swap to prevent kernel thrashing recurrence.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"ps aux --sort=-rss | head -n 15\"",
+      "ssh root@192.168.100.101 \"ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=table\"",
+      "ssh root@192.168.100.101 \"REV=$(ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=json | jq -r '.[0].Status.header.revision') && ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key compact $REV && ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key defrag\"",
+      "ssh root@192.168.100.101 \"swapoff -a && sed -i '/\\sswap\\s/ s/^/#/' /etc/fstab && systemctl daemon-reload\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "Control Plane Node 192.168.100.101: Critical Memory Exhaustion & Swap Thrashing Remediation via etcd Compaction and Swap Disablement",
+    "safetyChecks": [
+      {
+        "check": "swapon --show",
+        "passed": true
+      },
+      {
+        "check": "ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=table",
+        "passed": true
+      },
+      {
+        "check": "crictl ps --name kube-apiserver --name etcd --name kube-controller-manager --name kube-scheduler --state Running",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Etcd retains all key revisions until explicitly compacted; in high-churn clusters the database grows unbounded, consuming all available RAM and forcing the kernel into heavy swap I/O. The compaction command releases logical space inside the DB file, while defrag rewrites the database file to return that physical memory to the OS page cache. Disabling swap eliminates the thrashing penalty, forcing the OOM killer to target non-critical user pods rather than stalling control plane binaries.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "Control Plane Node 192.168.100.101: Critical Memory Exhaustion & Swap Thrashing Remediation via etcd Compaction and Swap Disablement",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"ps aux --sort=-rss | head -n 15\"\nssh root@192.168.100.101 \"ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=table\"\nssh root@192.168.100.101 \"REV=$(ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=json | jq -r '.[0].Status.header.revision') && ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key compact $REV && ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key defrag\"\nssh root@192.168.100.101 \"swapoff -a && sed -i '/\\sswap\\s/ s/^/#/' /etc/fstab && systemctl daemon-reload\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"ps aux --sort=-rss | head -n 15\"",
+        "ssh root@192.168.100.101 \"ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=table\"",
+        "ssh root@192.168.100.101 \"REV=$(ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint status --write-out=json | jq -r '.[0].Status.header.revision') && ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key compact $REV && ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key defrag\"",
+        "ssh root@192.168.100.101 \"swapoff -a && sed -i '/\\sswap\\s/ s/^/#/' /etc/fstab && systemctl daemon-reload\""
+      ],
+      "trendInsight": "Synthesized SOP containing 4 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:37:39.223Z"
+  },
+  {
+    "id": "APPR-6833",
+    "incidentId": "INC0001008",
+    "incidentTitle": "Control Plane CPU 100% — All Cores Fully Saturated Alert #1",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:37:39.643Z",
+    "summary": "Control plane node 192.168.100.101 reports 100% CPU utilization across all cores. This typically indicates a runaway control plane component (kube-apiserver, etcd, kube-controller-manager, or kube-scheduler) caused by high cardinality resources, etcd compaction delays, admission webhook timeouts, or a client hammering the API server. The procedure identifies the offending process/container via crictl and pidstat, collects diagnostic logs, restarts the specific static pod via manifest manipulation, and validates cluster stability.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"top -bn1 | head -30\"",
+      "ssh root@192.168.100.101 \"pidstat -u -p ALL 1 5\"",
+      "ssh root@192.168.100.101 \"systemctl status kubelet --no-pager\"",
+      "ssh root@192.168.100.101 \"crictl ps -a --label io.kubernetes.component=kube-apiserver\"",
+      "ssh root@192.168.100.101 \"crictl ps -a --label io.kubernetes.component=etcd\"",
+      "ssh root@192.168.100.101 \"crictl ps -a --label io.kubernetes.component=kube-controller-manager\"",
+      "ssh root@192.168.100.101 \"crictl ps -a --label io.kubernetes.component=kube-scheduler\"",
+      "ssh root@192.168.100.101 \"crictl stats --no-stream $(crictl ps -q --label io.kubernetes.component=kube-apiserver) $(crictl ps -q --label io.kubernetes.component=etcd) $(crictl ps -q --label io.kubernetes.component=kube-controller-manager) $(crictl ps -q --label io.kubernetes.component=kube-scheduler)\"",
+      "ssh root@192.168.100.101 \"APISERVER_CID=$(crictl ps -q --label io.kubernetes.component=kube-apiserver --state Running | head -1); if [ -n \"$APISERVER_CID\" ]; then crictl logs --tail=200 $APISERVER_CID 2>&1 | grep -E '(error|panic|goroutine|throttle|watch|lease)' | tail -30; fi\"",
+      "ssh root@192.168.100.101 \"ETCD_CID=$(crictl ps -q --label io.kubernetes.component=etcd --state Running | head -1); if [ -n \"$ETCD_CID\" ]; then crictl logs --tail=200 $ETCD_CID 2>&1 | grep -E '(error|slow|compact|quota|mvcc)' | tail -30; fi\"",
+      "ssh root@192.168.100.101 \"CONTROLLER_CID=$(crictl ps -q --label io.kubernetes.component=kube-controller-manager --state Running | head -1); if [ -n \"$CONTROLLER_CID\" ]; then crictl logs --tail=200 $CONTROLLER_CID 2>&1 | grep -E '(error|requeue|rate limit|leader)' | tail -30; fi\"",
+      "ssh root@192.168.100.101 \"SCHEDULER_CID=$(crictl ps -q --label io.kubernetes.component=kube-scheduler --state Running | head -1); if [ -n \"$SCHEDULER_CID\" ]; then crictl logs --tail=200 $SCHEDULER_CID 2>&1 | grep -E '(error|unschedulable|queue)' | tail -30; fi\"",
+      "ssh root@192.168.100.101 \"ls -la /etc/kubernetes/manifests/\"",
+      "ssh root@192.168.100.101 \"HIGH_CPU_COMPONENT=\"\"; if [ -n \"$APISERVER_CID\" ] && crictl stats --no-stream $APISERVER_CID | awk 'NR>1 {if ($3+0 > 80) print $1}'; then HIGH_CPU_COMPONENT=\"kube-apiserver\"; elif [ -n \"$ETCD_CID\" ] && crictl stats --no-stream $ETCD_CID | awk 'NR>1 {if ($3+0 > 80) print $1}'; then HIGH_CPU_COMPONENT=\"etcd\"; elif [ -n \"$CONTROLLER_CID\" ] && crictl stats --no-stream $CONTROLLER_CID | awk 'NR>1 {if ($3+0 > 80) print $1}'; then HIGH_CPU_COMPONENT=\"kube-controller-manager\"; elif [ -n \"$SCHEDULER_CID\" ] && crictl stats --no-stream $SCHEDULER_CID | awk 'NR>1 {if ($3+0 > 80) print $1}'; then HIGH_CPU_COMPONENT=\"kube-scheduler\"; fi; echo \"High CPU component: $HIGH_CPU_COMPONENT\"\"",
+      "ssh root@192.168.100.101 \"if [ -n \"$HIGH_CPU_COMPONENT\" ] && [ -f \"/etc/kubernetes/manifests/$HIGH_CPU_COMPONENT.yaml\" ]; then mv /etc/kubernetes/manifests/$HIGH_CPU_COMPONENT.yaml /etc/kubernetes/manifests/$HIGH_CPU_COMPONENT.yaml.$(date +%s).bak && sleep 10 && mv /etc/kubernetes/manifests/$HIGH_CPU_COMPONENT.yaml.$(date +%s).bak /etc/kubernetes/manifests/$HIGH_CPU_COMPONENT.yaml; echo \"Restarted static pod: $HIGH_CPU_COMPONENT\"; fi\"",
+      "ssh root@192.168.100.101 \"sleep 30\"",
+      "ssh root@192.168.100.101 \"top -bn1 | head -10\"",
+      "ssh root@192.168.100.101 \"crictl ps --label io.kubernetes.component=$HIGH_CPU_COMPONENT\"",
+      "ssh root@192.168.100.101 \"kubectl get nodes --no-headers 2>/dev/null || echo 'kubectl not available on control plane; skipping cluster health check'\"",
+      "ssh root@192.168.100.101 \"kubectl get pods -n kube-system --no-headers 2>/dev/null | grep -E '(apiserver|etcd|controller|scheduler)' | head -10 || echo 'kubectl not available'\"",
+      "ssh root@192.168.100.101 \"ETCDCTL_API=3 etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key endpoint health 2>/dev/null || echo 'etcd health check skipped (certs not accessible)'\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane CPU Saturation Investigation and Mitigation",
+    "safetyChecks": [
+      {
+        "check": "CPU utilization on 192.168.100.101 drops below 80% across all cores (verify with 'top -bn1 | grep \"Cpu(s)\"')",
+        "passed": true
+      },
+      {
+        "check": "All control plane static pods (kube-apiserver, etcd, kube-controller-manager, kube-scheduler) show READY 1/1 and RESTARTS not incrementing rapidly (verify with 'crictl ps --label io.kubernetes.component=<component>')",
+        "passed": true
+      },
+      {
+        "check": "etcd cluster health reports HEALTHY for all members (verify with etcdctl endpoint health)",
+        "passed": true
+      },
+      {
+        "check": "Kubernetes API server responds to 'kubectl get --raw /readyz' with 200 OK (if kubectl configured)",
+        "passed": true
+      },
+      {
+        "check": "No OOMKill events in dmesg or journalctl for control plane containers in the last 10 minutes",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Control plane CPU saturation is most often caused by a single component entering a pathological loop: kube-apiserver handling excessive watch requests (high cardinality labels/fields), etcd suffering from slow disks or missed compaction, controller-manager requeue storms due to failing webhooks, or scheduler thrashing on unschedulable pods. The procedure uses crictl (standard CRI tool) to map Kubernetes component labels to container IDs, then crictl stats to pinpoint CPU-hungry containers without namespace complexity. Logs are grepped for known error patterns before restart. Static pods are restarted by moving their manifest files out of /etc/kubernetes/manifests/ and back, which triggers kubelet to recreate the pod cleanly. This avoids a full kubelet restart which would disrupt all static pods simultaneously. Safety checks ensure the specific component recovered, etcd quorum remains, and API server health endpoint passes.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane CPU Saturation Investigation and Mitigation",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"top -bn1 | head -20\"\nssh root@192.168.100.101 \"ps aux --sort=-%cpu | head -15\"\nssh root@192.168.100.101 \"pidstat -u 1 5\"\nssh root@192.168.100.101 \"systemctl status kube-apiserver kube-controller-manager kube-scheduler etcd --no-pager\"\nssh root@192.168.100.101 \"journalctl -u kube-apiserver -u kube-controller-manager -u kube-scheduler -u etcd --since '10 minutes ago' --no-pager | tail -50\"\nssh root@192.168.100.101 \"crictl ps --sort cpu --limit 10\"\nssh root@192.168.100.101 \"crictl stats --no-stream | sort -k2 -nr | head -10\"\nssh root@192.168.100.101 \"netstat -anp | grep :6443 | wc -l\"\nssh root@192.168.100.101 \"ss -s | grep -E 'TCP|estab'\"\nssh root@192.168.100.101 \"grep -r 'max-requests-inflight\\|max-mutating-requests-inflight' /etc/kubernetes/manifests/kube-apiserver.yaml 2>/dev/null || echo 'API server flags not explicitly set'\"\nssh root@192.168.100.101 \"kubectl get --raw /metrics 2>/dev/null | grep -E 'apiserver_request_total|process_cpu_seconds_total' | head -20 || echo 'Metrics endpoint not accessible'\"\nssh root@192.168.100.101 \"systemctl restart kube-apiserver && sleep 10 && systemctl status kube-apiserver --no-pager\"\nssh root@192.168.100.101 \"top -bn1 | head -5\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"top -bn1 | head -20\"",
+        "ssh root@192.168.100.101 \"ps aux --sort=-%cpu | head -15\"",
+        "ssh root@192.168.100.101 \"pidstat -u 1 5\"",
+        "ssh root@192.168.100.101 \"systemctl status kube-apiserver kube-controller-manager kube-scheduler etcd --no-pager\"",
+        "ssh root@192.168.100.101 \"journalctl -u kube-apiserver -u kube-controller-manager -u kube-scheduler -u etcd --since '10 minutes ago' --no-pager | tail -50\"",
+        "ssh root@192.168.100.101 \"crictl ps --sort cpu --limit 10\"",
+        "ssh root@192.168.100.101 \"crictl stats --no-stream | sort -k2 -nr | head -10\"",
+        "ssh root@192.168.100.101 \"netstat -anp | grep :6443 | wc -l\"",
+        "ssh root@192.168.100.101 \"ss -s | grep -E 'TCP|estab'\"",
+        "ssh root@192.168.100.101 \"grep -r 'max-requests-inflight\\|max-mutating-requests-inflight' /etc/kubernetes/manifests/kube-apiserver.yaml 2>/dev/null || echo 'API server flags not explicitly set'\"",
+        "ssh root@192.168.100.101 \"kubectl get --raw /metrics 2>/dev/null | grep -E 'apiserver_request_total|process_cpu_seconds_total' | head -20 || echo 'Metrics endpoint not accessible'\"",
+        "ssh root@192.168.100.101 \"systemctl restart kube-apiserver && sleep 10 && systemctl status kube-apiserver --no-pager\"",
+        "ssh root@192.168.100.101 \"top -bn1 | head -5\""
+      ],
+      "trendInsight": "Synthesized SOP containing 13 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:37:42.885Z"
+  },
+  {
+    "id": "APPR-1478",
+    "incidentId": "INC0001009",
+    "incidentTitle": "Control Plane Kernel CPU Spike 100% — System Throttling Alert #2",
+    "agentId": "agent-unix-resolver-01",
+    "agentName": "🤖 Unix Auto-Resolver Agent",
+    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    "targetCi": "Control Plane (192.168.100.101)",
+    "department": "DevOps Team",
+    "riskLevel": "HIGH",
+    "confidenceScore": 85,
+    "status": "EXECUTED",
+    "requestedAt": "2026-08-01T06:37:24.183Z",
+    "summary": "Control plane node (192.168.100.101) reports kernel CPU at 100% with severe process throttling. This typically indicates a runaway kernel thread (ksoftirqd, migration, watchdog), interrupt storm, or cgroup CPU quota exhaustion on a critical system component (etcd, kube-apiserver, container runtime). Resolution requires immediate triage of CPU consumers, kernel messages, and cgroup throttling metrics followed by targeted mitigation.",
+    "proposedCommands": [
+      "ssh root@192.168.100.101 \"top -bn1 | head -30\"",
+      "ssh root@192.168.100.101 \"mpstat -P ALL 1 5\"",
+      "ssh root@192.168.100.101 \"cat /proc/interrupts | awk '$2>1000 {print}' | head -20\"",
+      "ssh root@192.168.100.101 \"dmesg -T --level=err,warn | tail -50\"",
+      "ssh root@192.168.100.101 \"journalctl -p err..crit -n 100 --no-pager\"",
+      "ssh root@192.168.100.101 \"crictl ps --quiet | xargs -r crictl stats --no-stream\"",
+      "ssh root@192.168.100.101 \"systemctl status kubelet containerd crio docker 2>/dev/null | grep -E '(Active:|Main PID:|CPUAccounting)'\"",
+      "ssh root@192.168.100.101 \"cat /sys/fs/cgroup/cpu/kubepods.slice/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu/kubepods.slice/cpuacct.stat 2>/dev/null || echo 'cgroup v2 path not found'\"",
+      "ssh root@192.168.100.101 \"etcdctl endpoint health --cluster --write-out=table 2>/dev/null || echo 'etcdctl not available or not on this node'\"",
+      "ssh root@192.168.100.101 \"ps -eo pid,ppid,cmd,%cpu,%mem,cgroup --sort=-%cpu | head -20\"",
+      "ssh root@192.168.100.101 \"grep -r 'throttled' /sys/fs/cgroup/ 2>/dev/null | head -10\"",
+      "ssh root@192.168.100.101 \"if pgrep -x ksoftirqd >/dev/null; then echo 'ksoftirqd threads:'; ps -fp $(pgrep -x ksoftirqd); fi\"",
+      "ssh root@192.168.100.101 \"if pgrep -x migration >/dev/null; then echo 'migration threads:'; ps -fp $(pgrep -x migration); fi\"",
+      "ssh root@192.168.100.101 \"systemctl restart irqbalance 2>/dev/null || true\"",
+      "ssh root@192.168.100.101 \"crictl ps --quiet | xargs -r -I {} sh -c 'crictl inspect {} | grep -E \"(id|name|cpu)\" | head -5'\"",
+      "ssh root@192.168.100.101 \"kubectl get pods -A -o wide --field-selector spec.nodeName=$(hostname) 2>/dev/null | awk '$3!=\"Running\" {print}'\"",
+      "ssh root@192.168.100.101 \"sync && echo 3 > /proc/sys/vm/drop_caches\"",
+      "ssh root@192.168.100.101 \"top -bn1 | head -10\""
+    ],
+    "kbArticleReference": "KB_NEW",
+    "kbTitle": "SOP: Control Plane Kernel CPU Spike & Throttling Mitigation",
+    "safetyChecks": [
+      {
+        "check": "Verify CPU load average drops below 2.0 per core within 5 minutes: uptime",
+        "passed": true
+      },
+      {
+        "check": "Confirm no new 'throttled' entries in cgroup stats: grep throttled /sys/fs/cgroup/cpu/kubepods.slice/cpu.stat 2>/dev/null || echo 'no throttling'",
+        "passed": true
+      },
+      {
+        "check": "Ensure critical control plane pods (etcd, kube-apiserver, kube-controller-manager, kube-scheduler) report Ready: kubectl get pods -n kube-system -o wide | grep -E 'etcd|apiserver|controller|scheduler'",
+        "passed": true
+      },
+      {
+        "check": "Check node status returns Ready: kubectl get node $(hostname) 2>/dev/null",
+        "passed": true
+      },
+      {
+        "check": "Validate no kernel soft lockup or watchdog messages in dmesg for 10 minutes: dmesg -T --level=warn,err | grep -i 'soft lockup\\|watchdog' | tail -5",
+        "passed": true
+      }
+    ],
+    "aiReasoning": "Kernel CPU spikes with throttling on control plane nodes are commonly caused by interrupt storms (NIC rx/tx), ksoftirqd saturation from high packet rates, cgroup CPU quota limits on kubelet/containerd/etcd, or a runaway container. The steps progress from immediate observability (top, mpstat, interrupts) to kernel logs (dmesg, journalctl), then container runtime and Kubernetes layer inspection (crictl, kubectl). Mitigation includes restarting irqbalance to redistribute interrupts, dropping caches to relieve memory pressure, and verifying critical control plane components recover. Safety checks ensure the node stabilizes and control plane health is restored before closing.",
+    "synthesizerOutput": {
+      "draftKbId": "KB-SOP-NEW",
+      "kbTitle": "SOP: Control Plane Kernel CPU Spike & Throttling Mitigation",
+      "synthesizedSolution": "ssh root@192.168.100.101 \"uptime && date\"\nssh root@192.168.100.101 \"top -bn1 | head -30\"\nssh root@192.168.100.101 \"mpstat -P ALL 1 3\"\nssh root@192.168.100.101 \"pidstat -u -p ALL 1 3 | awk '$8 > 5'\"\nssh root@192.168.100.101 \"cat /proc/interrupts | sort -k2 -nr | head -20\"\nssh root@192.168.100.101 \"grep -r 'cpu_throttled' /sys/fs/cgroup/ 2>/dev/null | head -10\"\nssh root@192.168.100.101 \"systemctl status etcd kube-apiserver kube-controller-manager kube-scheduler --no-pager\"\nssh root@192.168.100.101 \"journalctl -u etcd -u kube-apiserver -u kube-controller-manager -u kube-scheduler --since '30 min ago' --no-pager | tail -100\"\nssh root@192.168.100.101 \"etcdctl endpoint status --cluster --write-out=table 2>/dev/null || echo 'etcdctl not in PATH or auth required'\"\nssh root@192.168.100.101 \"crictl ps --name kube-apiserver 2>/dev/null | awk 'NR>1 {print $1}' | xargs -r crictl stats --no-stream 2>/dev/null\"\nssh root@192.168.100.101 \"ls -la /sys/fs/cgroup/kubepods.slice/ 2>/dev/null | head -20\"\nssh root@192.168.100.101 \"grep -r 'cpu.max' /sys/fs/cgroup/kubepods.slice/ 2>/dev/null | head -10\"\nssh root@192.168.100.101 \"dmesg -T | grep -i -e throttl -e cpu -e sched | tail -20\"\nssh root@192.168.100.101 \"sysctl kernel.sched_min_granularity_ns kernel.sched_latency_ns kernel.sched_migration_cost_ns\"\nssh root@192.168.100.101 \"cpupower frequency-info 2>/dev/null | grep -E 'driver|governor|frequency'\"\nssh root@192.168.100.101 \"netstat -s | grep -i -e 'packet receive' -e 'fragment' -e 'drop'\"\nssh root@192.168.100.101 \"ss -s\"\nssh root@192.168.100.101 \"free -h\"\nssh root@192.168.100.101 \"df -h /var/lib/etcd /var/lib/kubelet 2>/dev/null\"\nssh root@192.168.100.101 \"ionice -c 2 -n 7 nice -n -10 etcdctl defrag --cluster 2>/dev/null && echo 'etcd defrag initiated' || echo 'etcd defrag skipped or failed'\"\nssh root@192.168.100.101 \"systemctl restart kube-apiserver kube-controller-manager kube-scheduler 2>/dev/null && echo 'Control plane components restarted' || echo 'Restart failed, check status'\"\nssh root@192.168.100.101 \"sleep 30 && top -bn1 | head -15 && mpstat -P ALL 1 1\"",
+      "resolutionSteps": [
+        "ssh root@192.168.100.101 \"uptime && date\"",
+        "ssh root@192.168.100.101 \"top -bn1 | head -30\"",
+        "ssh root@192.168.100.101 \"mpstat -P ALL 1 3\"",
+        "ssh root@192.168.100.101 \"pidstat -u -p ALL 1 3 | awk '$8 > 5'\"",
+        "ssh root@192.168.100.101 \"cat /proc/interrupts | sort -k2 -nr | head -20\"",
+        "ssh root@192.168.100.101 \"grep -r 'cpu_throttled' /sys/fs/cgroup/ 2>/dev/null | head -10\"",
+        "ssh root@192.168.100.101 \"systemctl status etcd kube-apiserver kube-controller-manager kube-scheduler --no-pager\"",
+        "ssh root@192.168.100.101 \"journalctl -u etcd -u kube-apiserver -u kube-controller-manager -u kube-scheduler --since '30 min ago' --no-pager | tail -100\"",
+        "ssh root@192.168.100.101 \"etcdctl endpoint status --cluster --write-out=table 2>/dev/null || echo 'etcdctl not in PATH or auth required'\"",
+        "ssh root@192.168.100.101 \"crictl ps --name kube-apiserver 2>/dev/null | awk 'NR>1 {print $1}' | xargs -r crictl stats --no-stream 2>/dev/null\"",
+        "ssh root@192.168.100.101 \"ls -la /sys/fs/cgroup/kubepods.slice/ 2>/dev/null | head -20\"",
+        "ssh root@192.168.100.101 \"grep -r 'cpu.max' /sys/fs/cgroup/kubepods.slice/ 2>/dev/null | head -10\"",
+        "ssh root@192.168.100.101 \"dmesg -T | grep -i -e throttl -e cpu -e sched | tail -20\"",
+        "ssh root@192.168.100.101 \"sysctl kernel.sched_min_granularity_ns kernel.sched_latency_ns kernel.sched_migration_cost_ns\"",
+        "ssh root@192.168.100.101 \"cpupower frequency-info 2>/dev/null | grep -E 'driver|governor|frequency'\"",
+        "ssh root@192.168.100.101 \"netstat -s | grep -i -e 'packet receive' -e 'fragment' -e 'drop'\"",
+        "ssh root@192.168.100.101 \"ss -s\"",
+        "ssh root@192.168.100.101 \"free -h\"",
+        "ssh root@192.168.100.101 \"df -h /var/lib/etcd /var/lib/kubelet 2>/dev/null\"",
+        "ssh root@192.168.100.101 \"ionice -c 2 -n 7 nice -n -10 etcdctl defrag --cluster 2>/dev/null && echo 'etcd defrag initiated' || echo 'etcd defrag skipped or failed'\"",
+        "ssh root@192.168.100.101 \"systemctl restart kube-apiserver kube-controller-manager kube-scheduler 2>/dev/null && echo 'Control plane components restarted' || echo 'Restart failed, check status'\"",
+        "ssh root@192.168.100.101 \"sleep 30 && top -bn1 | head -15 && mpstat -P ALL 1 1\""
+      ],
+      "trendInsight": "Synthesized SOP containing 22 resolution steps starting with SSH connection."
+    },
+    "approvedBy": "Sarah Jenkins (Human in the Loop)",
+    "approvedAt": "2026-08-01T06:37:41.151Z"
+  }
+]

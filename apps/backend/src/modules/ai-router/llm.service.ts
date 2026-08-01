@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SingleDatabaseService } from '../../database/single-db.service';
+
 
 export interface IncidentAnalysisRequest {
   incidentId: string;
@@ -34,19 +34,12 @@ export class LlmService {
   private readonly fallbackLiteLlmApiKey = process.env.LITELLM_API_KEY || 'sk-RRoxANx2dKdNE3N5j0mbxQ';
   private readonly fallbackDefaultModel = process.env.LLM_MODEL || 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct';
 
-  constructor(private readonly singleDb: SingleDatabaseService) {}
+  constructor() {}
 
   private getDynamicConfig() {
     let baseUrl = this.fallbackLiteLlmBaseUrl;
     let apiKey = this.fallbackLiteLlmApiKey;
     let defaultModel = this.fallbackDefaultModel;
-
-    const dbConfig = this.singleDb.agentModelConfig;
-    if (dbConfig) {
-      baseUrl = dbConfig.baseUrl || baseUrl;
-      apiKey = dbConfig.apiKey || apiKey;
-      defaultModel = dbConfig.routerModel || defaultModel;
-    }
 
     return { baseUrl, apiKey, defaultModel };
   }
