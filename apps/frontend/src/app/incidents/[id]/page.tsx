@@ -98,6 +98,8 @@ export default function IncidentDetailPage() {
   const [resCode, setResCode] = useState('Pending Triage');
   const [ciVal, setCiVal] = useState('');
   const [activities, setActivities] = useState<any[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
 
   const [commentText, setCommentText] = useState('');
   const [isWorkNote, setIsWorkNote] = useState(true);
@@ -245,22 +247,12 @@ export default function IncidentDetailPage() {
             <h1 className="text-xl font-extrabold text-slate-100">{incident.title}</h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-slate-400 font-bold">State:</span>
             <select
               value={state}
-              onChange={async (e) => {
-                const newState = e.target.value;
-                setState(newState);
-                try {
-                  await fetch(`/api/v1/incidents/${incident.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ state: newState }),
-                  });
-                } catch {}
-              }}
-              className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-200 focus:outline-none focus:border-brand-500"
+              onChange={(e) => setState(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-200 focus:outline-none focus:border-brand-500 cursor-pointer"
             >
               <option value="IN_PROGRESS">IN_PROGRESS</option>
               <option value="ON_HOLD">ON_HOLD</option>
@@ -268,8 +260,48 @@ export default function IncidentDetailPage() {
               <option value="RESOLVED">RESOLVED</option>
               <option value="CLOSED">CLOSED</option>
             </select>
+
+            <button
+              onClick={async () => {
+                if (!incident) return;
+                setIsSaving(true);
+                try {
+                  const res = await fetch(`/api/v1/incidents/${incident.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      state,
+                      resolutionCode: resCode,
+                      configurationItem: ciVal,
+                    }),
+                  });
+                  if (res.ok) {
+                    setSaveMessage(`Incident ${incident.id} state updated to '${state}' in PostgreSQL Database! ✅`);
+                    setTimeout(() => setSaveMessage(''), 4000);
+                  } else {
+                    setSaveMessage('Failed to update state in database.');
+                  }
+                } catch {
+                  setSaveMessage('Error updating status in database.');
+                } finally {
+                  setIsSaving(false);
+                }
+              }}
+              disabled={isSaving}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition cursor-pointer disabled:opacity-50"
+            >
+              <CheckCircle className="w-3.5 h-3.5" />
+              {isSaving ? 'Saving...' : 'Save Status to Database'}
+            </button>
           </div>
         </div>
+
+        {saveMessage && (
+          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2 shadow-lg animate-pulse">
+            <CheckCircle className="w-4 h-4 text-emerald-400" />
+            {saveMessage}
+          </div>
+        )}
 
         {/* Metadata Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
