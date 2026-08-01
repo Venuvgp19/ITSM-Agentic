@@ -128,6 +128,30 @@ CI_CREDENTIALS = {
         "user": "root",
         "password": "root123",
         "os": "Unix / Linux"
+    },
+    "WorkerNode1HL": {
+        "ip": "192.168.100.102",
+        "user": "root",
+        "password": "root123",
+        "os": "Unix / Linux"
+    },
+    "Worker Node 1 HL": {
+        "ip": "192.168.100.102",
+        "user": "root",
+        "password": "root123",
+        "os": "Unix / Linux"
+    },
+    "workernode1hl": {
+        "ip": "192.168.100.102",
+        "user": "root",
+        "password": "root123",
+        "os": "Unix / Linux"
+    },
+    "192.168.100.102": {
+        "ip": "192.168.100.102",
+        "user": "root",
+        "password": "root123",
+        "os": "Unix / Linux"
     }
 }
 
@@ -1292,7 +1316,11 @@ CRITICAL EVALUATION RULES:
 2. USER CREATION / PROVISIONING TICKETS:
    - If the ticket requests user creation, seeing successful useradd/mkdir and valid user ID output (e.g. uid=...) IS SUCCESS. Set "is_healthy" to true.
 
-3. GENERAL TECHNICAL TICKETS:
+3. MEMORY AND CPU UTILIZATION ALERTS:
+   - If the incident is a Memory or CPU pressure/utilization alert (e.g., 'Memory 100%', 'CPU Pressure', 'High RAM Usage', 'OOM Pressure', 'CPU Utilization'), the Resolver Agent CAN RESOLVE IT automatically if the overall Memory or CPU utilization is under 90% (e.g. Memory free >= 10% or used < 90%, CPU idle >= 10% or load < 90%). Set "is_healthy" to true.
+   - If overall Memory or CPU utilization is >= 90%, set "is_healthy" to false.
+
+4. GENERAL TECHNICAL TICKETS:
    - If commands executed cleanly and target services/host are operational, set "is_healthy" to true.
 
 Respond ONLY in valid JSON format:
