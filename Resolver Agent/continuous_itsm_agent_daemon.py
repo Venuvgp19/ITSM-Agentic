@@ -842,7 +842,6 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     is_mem_alert = any(k in full_text for k in ["memory", "ram", "oom", "heap", "swap", "memory pressure", "memory 100", "out of memory", "memory utilization", "kernel heap"])
 
     if is_cpu_alert or is_mem_alert:
-        # Priority order: combined → CPU → Memory → any pressure triage SOP
         def _pick_triage_sop(arts, is_cpu, is_mem):
             combined = next((a for a in arts if "combined" in a.get("title","").lower() and "pressure" in a.get("title","").lower()), None)
             cpu_sop  = next((a for a in arts if "cpu pressure triage" in a.get("title","").lower()), None)
@@ -852,7 +851,16 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
             if is_mem and not is_cpu and mem_sop: return mem_sop
             return combined or cpu_sop or mem_sop  # fallback
 
+        # First try the passed-in slice, then fall back to a fresh API fetch
+        # to guarantee KB0000032-34 are always found regardless of what was pre-loaded.
         triage_sop = _pick_triage_sop(kb_articles, is_cpu_alert, is_mem_alert)
+        if not triage_sop:
+            try:
+                all_articles = requests.get("http://localhost:4000/api/v1/knowledge/articles", timeout=5).json()
+                triage_sop = _pick_triage_sop(all_articles, is_cpu_alert, is_mem_alert)
+            except Exception:
+                pass
+
         if triage_sop:
             logger.info(f"🎯 Embedding-Free Intent Match: CPU/Memory Pressure Alert detected → Matched Triage SOP [{triage_sop.get('number')}] '{triage_sop.get('title')}' (Score: 0.9900)")
             return [{
