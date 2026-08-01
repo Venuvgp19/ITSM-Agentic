@@ -29,6 +29,40 @@ logging.basicConfig(
 logger = logging.getLogger("SelfLearningUnixResolverAgent")
 
 # ----------------------------------------------------
+# Singleton Guard: Prevent Multiple Daemon Instances
+# ----------------------------------------------------
+LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "daemon.lock")
+
+def acquire_lock():
+    """Write current PID to lock file. Exit if another instance is running."""
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r") as f:
+                old_pid = int(f.read().strip())
+            # Check if that PID is still alive
+            import psutil
+            if psutil.pid_exists(old_pid):
+                logger.error(f"❌ Another daemon instance is already running (PID {old_pid}). Exiting to prevent duplicate execution.")
+                sys.exit(1)
+            else:
+                logger.warning(f"⚠️ Stale lock file found (PID {old_pid} no longer running). Overwriting lock.")
+        except Exception:
+            logger.warning("⚠️ Could not read lock file. Overwriting.")
+    with open(LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    logger.info(f"🔐 Daemon lock acquired (PID {os.getpid()}).")
+
+def release_lock():
+    """Remove lock file on clean exit."""
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+            logger.info("🔓 Daemon lock released.")
+    except Exception:
+        pass
+
+
+# ----------------------------------------------------
 # Configuration
 # ----------------------------------------------------
 ITSM_BASE_URL = "http://localhost:4000/api/v1"
@@ -1454,6 +1488,10 @@ Respond ONLY in valid JSON format:
     logger.info(f"🔒 Incident [{number}] is now RESOLVED — locked from re-processing this session.")
 
 def start_continuous_monitoring():
+    acquire_lock()
+    import atexit
+    atexit.register(release_lock)
+
     logger.info("=" * 75)
     logger.info("🚀 Starting Continuous ITSM Agent Daemon (Gemini 3.1 Pro Preview)")
     logger.info("   Mode: SELF-LEARNING SOP GENERATION & DUAL-STAGE REMEDIATION")
@@ -1544,6 +1582,7 @@ def start_continuous_monitoring():
 
         except KeyboardInterrupt:
             logger.info("🛑 Stopping Continuous ITSM Agent Daemon.")
+            release_lock()
             break
         except Exception as e:
             logger.error(f"Unexpected error in daemon loop: {e}")
