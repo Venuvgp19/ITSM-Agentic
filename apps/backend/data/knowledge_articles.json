@@ -20,7 +20,7 @@
     "sourceIncidentIds": [
       "INC0001036"
     ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "author": "\ud83e\udd16 Gemini 3.1 Pro Knowledge Synthesis Agent",
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -47,7 +47,7 @@
     "sourceIncidentIds": [
       "INC0001034"
     ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "author": "\ud83e\udd16 Gemini 3.1 Pro Knowledge Synthesis Agent",
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -74,7 +74,7 @@
     "sourceIncidentIds": [
       "INC0001036"
     ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "author": "\ud83e\udd16 Gemini 3.1 Pro Knowledge Synthesis Agent",
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -102,7 +102,7 @@
     "sourceIncidentIds": [
       "INC0001036"
     ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "author": "\ud83e\udd16 Gemini 3.1 Pro Knowledge Synthesis Agent",
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -141,206 +141,11 @@
       "INC0000008",
       "INC0000007"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
     "createdAt": "2026-07-31T03:24:06.604Z"
-  },
-  {
-    "id": "KB0000025",
-    "number": "KB0000025",
-    "title": "Kubernetes Node & Kubelet Recovery SOP",
-    "category": "Security - TLS & Firewall Rule",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
-    "symptoms": [
-      "Kubernetes worker node status transitions to 'NotReady'.",
-      "Kubelet service fails to start or reports connection refused to API server.",
-      "Container runtime endpoints timed out in logs."
-    ],
-    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
-    "resolutionSteps": [
-      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
-      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
-      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
-      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
-      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
-    ],
-    "workNotesAnalyzedCount": 17,
-    "sourceIncidentIds": [
-      "INC0000126",
-      "INC0000125",
-      "INC0000124",
-      "INC0000123",
-      "INC0000122",
-      "INC0000121",
-      "INC0000120",
-      "INC0000119",
-      "INC0000118",
-      "INC0000117"
-    ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
-    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:23:27.369Z"
-  },
-  {
-    "id": "KB0000024",
-    "number": "KB0000024",
-    "title": "Kubernetes Node & Kubelet Recovery SOP",
-    "category": "Server - Kernel & OS Patch",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
-    "symptoms": [
-      "Kubernetes worker node status transitions to 'NotReady'.",
-      "Kubelet service fails to start or reports connection refused to API server.",
-      "Container runtime endpoints timed out in logs."
-    ],
-    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
-    "resolutionSteps": [
-      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
-      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
-      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
-      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
-      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
-    ],
-    "workNotesAnalyzedCount": 17,
-    "sourceIncidentIds": [
-      "INC0000236",
-      "INC0000235",
-      "INC0000234",
-      "INC0000233",
-      "INC0000232",
-      "INC0000231",
-      "INC0000230",
-      "INC0000229",
-      "INC0000228",
-      "INC0000227"
-    ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
-    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:22:38.932Z"
-  },
-  {
-    "id": "KB0000023",
-    "number": "KB0000023",
-    "title": "Kubernetes Node & Kubelet Recovery SOP",
-    "category": "DB - Connection Pool & Vacuum",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
-    "symptoms": [
-      "Kubernetes worker node status transitions to 'NotReady'.",
-      "Kubelet service fails to start or reports connection refused to API server.",
-      "Container runtime endpoints timed out in logs."
-    ],
-    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
-    "resolutionSteps": [
-      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
-      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
-      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
-      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
-      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
-    ],
-    "workNotesAnalyzedCount": 15,
-    "sourceIncidentIds": [
-      "INC0000346",
-      "INC0000345",
-      "INC0000344",
-      "INC0000343",
-      "INC0000342",
-      "INC0000341",
-      "INC0000340",
-      "INC0000339",
-      "INC0000338",
-      "INC0000337"
-    ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
-    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:22:04.342Z"
-  },
-  {
-    "id": "KB0000022",
-    "number": "KB0000022",
-    "title": "Kubernetes Node & Kubelet Recovery SOP",
-    "category": "Server - Kernel & OS Patch",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
-    "symptoms": [
-      "Kubernetes worker node status transitions to 'NotReady'.",
-      "Kubelet service fails to start or reports connection refused to API server.",
-      "Container runtime endpoints timed out in logs."
-    ],
-    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
-    "resolutionSteps": [
-      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
-      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
-      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
-      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
-      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
-    ],
-    "workNotesAnalyzedCount": 17,
-    "sourceIncidentIds": [
-      "INC0000456",
-      "INC0000455",
-      "INC0000454",
-      "INC0000453",
-      "INC0000452",
-      "INC0000451",
-      "INC0000450",
-      "INC0000449",
-      "INC0000448",
-      "INC0000447"
-    ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
-    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:21:34.363Z"
-  },
-  {
-    "id": "KB0000021",
-    "number": "KB0000021",
-    "title": "Kubernetes Node & Kubelet Recovery SOP",
-    "category": "Security - TLS & Firewall Rule",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
-    "symptoms": [
-      "Kubernetes worker node status transitions to 'NotReady'.",
-      "Kubelet service fails to start or reports connection refused to API server.",
-      "Container runtime endpoints timed out in logs."
-    ],
-    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
-    "resolutionSteps": [
-      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
-      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
-      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
-      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
-      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
-    ],
-    "workNotesAnalyzedCount": 15,
-    "sourceIncidentIds": [
-      "INC0000566",
-      "INC0000565",
-      "INC0000564",
-      "INC0000563",
-      "INC0000562",
-      "INC0000561",
-      "INC0000560",
-      "INC0000559",
-      "INC0000558",
-      "INC0000557"
-    ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
-    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:20:45.436Z"
   },
   {
     "id": "KB0000020",
@@ -364,128 +169,11 @@
     "sourceIncidentIds": [
       "INC0001036"
     ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "author": "\ud83e\udd16 Gemini 3.1 Pro Knowledge Synthesis Agent",
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
     "createdAt": "2026-07-31T03:20:20.235Z"
-  },
-  {
-    "id": "KB0000019",
-    "number": "KB0000019",
-    "title": "Kubernetes Node & Kubelet Recovery SOP",
-    "category": "Server - Kernel & OS Patch",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
-    "symptoms": [
-      "Kubernetes worker node status transitions to 'NotReady'.",
-      "Kubelet service fails to start or reports connection refused to API server.",
-      "Container runtime endpoints timed out in logs."
-    ],
-    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
-    "resolutionSteps": [
-      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
-      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
-      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
-      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
-      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
-    ],
-    "workNotesAnalyzedCount": 17,
-    "sourceIncidentIds": [
-      "INC0000676",
-      "INC0000675",
-      "INC0000674",
-      "INC0000673",
-      "INC0000672",
-      "INC0000671",
-      "INC0000670",
-      "INC0000669",
-      "INC0000668",
-      "INC0000667"
-    ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
-    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:20:10.726Z"
-  },
-  {
-    "id": "KB0000018",
-    "number": "KB0000018",
-    "title": "Kubernetes Node & Kubelet Recovery SOP",
-    "category": "Server - Kernel & OS Patch",
-    "configurationItem": "postgres-prod-01",
-    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
-    "symptoms": [
-      "Kubernetes worker node status transitions to 'NotReady'.",
-      "Kubelet service fails to start or reports connection refused to API server.",
-      "Container runtime endpoints timed out in logs."
-    ],
-    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
-    "resolutionSteps": [
-      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
-      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
-      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
-      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
-      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
-    ],
-    "workNotesAnalyzedCount": 34,
-    "sourceIncidentIds": [
-      "INC0000786",
-      "INC0000785",
-      "INC0000784",
-      "INC0000783",
-      "INC0000782",
-      "INC0000781",
-      "INC0000780",
-      "INC0000779",
-      "INC0000778",
-      "INC0000777"
-    ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
-    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:19:17.651Z"
-  },
-  {
-    "id": "KB0000016",
-    "number": "KB0000016",
-    "title": "Kubernetes Node & Kubelet Recovery SOP",
-    "category": "Pending Triage",
-    "configurationItem": "router-border-nyc-01",
-    "summary": "Guidance for resolving Kubelet daemon failures, node NotReady states, and container runtime communication issues.",
-    "symptoms": [
-      "Kubernetes worker node status transitions to 'NotReady'.",
-      "Kubelet service fails to start or reports connection refused to API server.",
-      "Container runtime endpoints timed out in logs."
-    ],
-    "rootCause": "Kubelet certificate expiration, swap space enabled blocking kubelet startup, or containerd service crash.",
-    "resolutionSteps": [
-      "ssh root@192.168.100.101 \"Inspect kubelet status: 'systemctl status kubelet'\"",
-      "ssh root@192.168.100.101 \"Check containerd state and restart if dead: 'systemctl restart containerd'\"",
-      "ssh root@192.168.100.101 \"Disable swap space if enabled: 'swapoff -a'\"",
-      "ssh root@192.168.100.101 \"View kubelet logs for exact API server handshake failures: 'journalctl -u kubelet -n 50 --no-pager'\"",
-      "ssh root@192.168.100.101 \"Restart kubelet daemon: 'systemctl restart kubelet' and verify node status with 'kubectl get nodes'\""
-    ],
-    "workNotesAnalyzedCount": 27,
-    "sourceIncidentIds": [
-      "INC0000896",
-      "INC0000895",
-      "INC0000894",
-      "INC0000893",
-      "INC0000892",
-      "INC0000891",
-      "INC0000890",
-      "INC0000889",
-      "INC0000888",
-      "INC0000887"
-    ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
-    "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
-    "viewCount": 1,
-    "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:18:26.173Z"
   },
   {
     "id": "KB0000016",
@@ -508,7 +196,7 @@
     "sourceIncidentIds": [
       "INC0001034"
     ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "author": "\ud83e\udd16 Gemini 3.1 Pro Knowledge Synthesis Agent",
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -545,7 +233,7 @@
       "INC0000898",
       "INC0000897"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -582,7 +270,7 @@
       "INC0000908",
       "INC0000907"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -619,7 +307,7 @@
       "INC0000918",
       "INC0000917"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -656,7 +344,7 @@
       "INC0000928",
       "INC0000927"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -693,7 +381,7 @@
       "INC0000938",
       "INC0000937"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -730,7 +418,7 @@
       "INC0000948",
       "INC0000947"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -767,7 +455,7 @@
       "INC0000958",
       "INC0000957"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -804,7 +492,7 @@
       "INC0000968",
       "INC0000967"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -841,7 +529,7 @@
       "INC0000978",
       "INC0000977"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -868,7 +556,7 @@
     "sourceIncidentIds": [
       "INC0001034"
     ],
-    "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+    "author": "\ud83e\udd16 Gemini 3.1 Pro Knowledge Synthesis Agent",
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -905,7 +593,7 @@
       "INC0000988",
       "INC0000987"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -942,7 +630,7 @@
       "INC0000998",
       "INC0000997"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -979,7 +667,7 @@
       "INC0001008",
       "INC0001007"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -1019,7 +707,7 @@
       "INC0001018",
       "INC0001017"
     ],
-    "author": "🤖 NVIDIA Nemotron 3 550B Knowledge Agent",
+    "author": "\ud83e\udd16 NVIDIA Nemotron 3 550B Knowledge Agent",
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
@@ -1056,7 +744,7 @@
       "INC0001030",
       "INC0001027"
     ],
-    "author": "🤖 Unix Auto-Resolver Agent",
+    "author": "\ud83e\udd16 Unix Auto-Resolver Agent",
     "modelUsed": "nvidia/nemotron-3-ultra-550b-a55b",
     "viewCount": 1,
     "helpfulCount": 0,

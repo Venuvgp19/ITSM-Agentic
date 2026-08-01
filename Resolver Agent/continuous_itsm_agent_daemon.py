@@ -493,8 +493,20 @@ def post_timeline_update(incident_id, incident_number, incident_title, ci_name, 
 def save_new_kb_article_to_storage(new_article_data):
     """
     Persists a dynamically generated SOP Knowledge Base Article directly into the Single Master Database via NestJS API.
+    Only called AFTER the Resolver Agent successfully resolves the incident!
     """
     try:
+        target_title = str(new_article_data.get("title", "")).strip().lower()
+        if target_title:
+            try:
+                existing_kbs = requests.get("http://localhost:4000/api/v1/knowledge/articles", timeout=5).json()
+                for kb in existing_kbs:
+                    if str(kb.get("title", "")).strip().lower() == target_title:
+                        logger.info(f"ℹ️ KB Article '{kb.get('number')}' already exists in KB database with title '{kb.get('title')}'. Skipping duplicate creation.")
+                        return kb
+            except Exception:
+                pass
+
         payload = {
             "title": new_article_data.get("title", "Troubleshooting & SOP: New Issue"),
             "category": new_article_data.get("category", "Unix - OS & Services"),
