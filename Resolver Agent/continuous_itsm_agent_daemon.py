@@ -141,10 +141,12 @@ llm_client = OpenAI(
     http_client=custom_httpx_client
 )
 
-# Sets to prevent duplicate processing loop
+# Sets to prevent duplicate processing loop and guarantee SINGLE action per incident
 processed_new_incidents = set()
 processed_in_progress_incidents = set()
 submitted_approval_incidents = set()
+locked_incident_sessions = set()
+resolved_incident_sessions = set()
 
 # Cosine Similarity & Keyword Vector space model for RAG
 KEYWORDS = [
@@ -848,7 +850,8 @@ CRITICAL L2 OPERATIONAL RULES:
      Step 4: Delete user account and home directory: "userdel -r -f <username> 2>/dev/null || true"
      Step 5: Validate deletion proof: "id <username> 2>/dev/null && echo 'User still exists' || echo 'User successfully deleted'"
 
-3. TECHNICAL REALISM FOR OTHER INCIDENTS (Disk Space, CPU, Memory, NTP, Services, etcd):
+3. TECHNICAL REALISM FOR OTHER INCIDENTS (Disk Space, /etc/fstab, CPU, Memory, NTP, Services, etcd):
+   - For /etc/fstab modifications: NEVER blindly append with 'echo ... >> /etc/fstab'. ALWAYS check first: "grep -qs '<mount_point>' /etc/fstab || echo '<UUID> <mount_point> ext4 defaults 0 2' >> /etc/fstab && systemctl daemon-reload"
    - Tailor commands specifically to the technology (e.g., systemctl restart <service>, journalctl --vacuum-time=2d, df -h, crictl/docker, lvextend, ionice).
    - Do NOT use generic vague phrases. Provide concrete, idempotent shell commands.
 
@@ -1075,7 +1078,22 @@ def solve_in_progress_incident(token, incident, kb_articles):
     number = incident.get("number", inc_id)
     short_desc = incident.get("shortDescription", "")
     desc = incident.get("description", "")
-    
+
+    # Check if an APPROVED approval request exists for this incident FIRST
+    approvals = fetch_agent_approvals(token)
+    approved_appr = next((a for a in approvals if a.get("incidentId") == inc_id and a.get("status") == "APPROVED"), None)
+
+    if approved_appr:
+        if inc_id in locked_incident_sessions:
+            logger.info(f"🔓 Un-locking Incident [{number}] — Human approval granted! Proceeding with execution.")
+            locked_incident_sessions.remove(inc_id)
+    elif inc_id in locked_incident_sessions:
+        logger.info(f"🔒 Incident [{number}] is locked from re-processing in this session. Skipping duplicate execution.")
+        return
+    elif inc_id in resolved_incident_sessions:
+        logger.info(f"🔒 Incident [{number}] is already RESOLVED — locked from re-processing this session.")
+        return
+
     ci_info, ci_name = resolve_ci_credentials(incident)
     if not ci_info:
         dept = incident.get("department", "Unix")
@@ -1095,6 +1113,7 @@ def solve_in_progress_incident(token, incident, kb_articles):
         post_timeline_update(inc_id, number, short_desc, "Unspecified CI", "ESCALATED", "🖥️ Target CI Validation", "FAILED", f"Target host/CI is unspecified. Escalated to {team_member}.")
         add_work_note(token, inc_id, clarify_note)
         update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member)
+        locked_incident_sessions.add(inc_id)
         return
 
     logger.info(f"🚀 Remediation Agent Executing IN_PROGRESS Incident: [{number}] '{short_desc}' | Resolved CI: {ci_name}")
@@ -1110,10 +1129,6 @@ def solve_in_progress_incident(token, incident, kb_articles):
     logger.info(f"🔎 Detected Target Host OS for [{ci_name}]: '{target_os}'")
 
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🖥️ Target CI Validation", "SUCCESS", f"Detected OS: {target_os}. Validation complete.")
-
-    # Check if an APPROVED approval request already exists for this incident FIRST
-    approvals = fetch_agent_approvals(token)
-    approved_appr = next((a for a in approvals if a.get("incidentId") == inc_id and a.get("status") == "APPROVED"), None)
 
     if approved_appr:
         logger.info(f"🟢 Execution approved! Found existing APPROVED approval ({approved_appr.get('id')}) for [{number}]. Executing approved commands...")
@@ -1200,6 +1215,7 @@ def solve_in_progress_incident(token, incident, kb_articles):
                 )
                 add_work_note(token, inc_id, notice_note, author="🧠 AI Knowledge Synthesizer")
                 update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
+                locked_incident_sessions.add(inc_id)
                 return
                 
             elif my_approval:
@@ -1208,6 +1224,7 @@ def solve_in_progress_incident(token, incident, kb_articles):
                     post_timeline_update(inc_id, number, short_desc, ci_name, "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", "SOP pending review. Awaiting operator approval.")
                     logger.info(f"⏳ Ticket [{number}] is PENDING human operator review in Control Tower (http://localhost:5173). Paused awaiting 'Approve & Execute'...")
                     update_incident_status(token, inc_id, "ON_HOLD")
+                    locked_incident_sessions.add(inc_id)
                     return
                 elif status == "REJECTED":
                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "🔐 Human-in-the-Loop Gate", "FAILED", f"SOP execution rejected: {my_approval.get('rejectionReason')}")
@@ -1222,13 +1239,16 @@ def solve_in_progress_incident(token, incident, kb_articles):
                     )
                     add_work_note(token, inc_id, reject_note)
                     update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
+                    locked_incident_sessions.add(inc_id)
                     return
             elif status == "APPROVED":
                 post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔐 Human-in-the-Loop Gate", "SUCCESS", f"SOP approved by operator ({my_approval.get('approver', 'Human Admin')}). Proceeding to execute.")
                 logger.info(f"🟢 Execution approved! Human operator approved synthesized SOP for [{number}]. Proceeding...")
                 sop_commands = my_approval.get("proposedCommands", sop_commands)
 
-    # 4. Execute SSH Commands on Worker
+    # 4. Execute SSH Commands on Worker (Ensure SINGLE execution attempt per incident session)
+    processed_in_progress_incidents.add(inc_id)
+
     cmd_str = " && ".join(sop_commands) if isinstance(sop_commands, list) else str(sop_commands)
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 SSH SOP Execution", "RUNNING", f"Executing commands: {cmd_str}")
     success, exec_log = execute_ssh_sop(ip, user, password, sop_commands)
@@ -1366,6 +1386,10 @@ Respond ONLY in valid JSON format:
                 }
                 logger.info(f"💾 Saving approved and verified new SOP to knowledge base...")
                 save_new_kb_article_to_storage(new_sop_data_to_store)
+
+    resolved_incident_sessions.add(inc_id)
+    locked_incident_sessions.add(inc_id)
+    logger.info(f"🔒 Incident [{number}] is now RESOLVED — locked from re-processing this session.")
 
 def start_continuous_monitoring():
     logger.info("=" * 75)
