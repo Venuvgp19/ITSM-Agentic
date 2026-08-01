@@ -1144,6 +1144,10 @@ def solve_in_progress_incident(token, incident, kb_articles):
 
     if approved_appr:
         logger.info(f"🟢 Execution approved! Found existing APPROVED approval ({approved_appr.get('id')}) for [{number}]. Executing approved commands...")
+        try:
+            requests.post(f"http://localhost:4000/api/v1/agent/approvals/{approved_appr.get('id')}/consume", timeout=3)
+        except Exception:
+            pass
         post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔐 Human-in-the-Loop Gate", "SUCCESS", f"SOP approved by operator ({approved_appr.get('approvedBy', 'Human Admin')}). Proceeding to execute.")
         sop_commands = approved_appr.get("proposedCommands", [])
         is_new_use_case = True
@@ -1346,6 +1350,9 @@ Respond ONLY in valid JSON format:
         )
         add_work_note(token, inc_id, escalation_note)
         update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member)
+        locked_incident_sessions.add(inc_id)
+        resolved_incident_sessions.add(inc_id)
+        logger.info(f"🔒 Incident [{number}] is now ESCALATED — locked from re-processing this session.")
         return
 
     # 7. Format & Post Live Terminal Proof Work Note (Only on success)

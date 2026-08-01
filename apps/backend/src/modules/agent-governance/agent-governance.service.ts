@@ -42,7 +42,7 @@ export interface AgentApproval {
   department: string;
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   confidenceScore: number;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXECUTED';
   requestedAt: string;
   summary: string;
   proposedCommands: string[];
@@ -252,6 +252,18 @@ export class AgentGovernanceService {
     this.updateIncidentToRejected(appr.incidentId, rejectorName, appr.rejectionReason || 'Rejected by human operator policy.');
 
     return { approval: appr, historyEntry: null as any };
+  }
+
+  markApprovalConsumed(id: string) {
+    const approvals = this.getUnifiedApprovals();
+    const approvalIndex = approvals.findIndex((a) => a.id.toUpperCase() === id.toUpperCase());
+    if (approvalIndex !== -1) {
+      approvals[approvalIndex].status = 'EXECUTED';
+      this.approvals = approvals;
+      this.saveApprovals();
+      return approvals[approvalIndex];
+    }
+    return null;
   }
 
   // --- HISTORY METRICS & AUDIT ---

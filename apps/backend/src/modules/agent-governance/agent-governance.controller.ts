@@ -55,6 +55,13 @@ export class AgentGovernanceController {
   }
 
   @Public()
+  @Post('approvals/:id/consume')
+  @ApiOperation({ summary: 'Mark an approval request as EXECUTED to prevent re-execution' })
+  consumeRequest(@Param('id') id: string) {
+    return this.governanceService.markApprovalConsumed(id);
+  }
+
+  @Public()
   @Get('history')
   @ApiOperation({ summary: 'Get full historical log stream of agent operations over time' })
   getHistory() {
