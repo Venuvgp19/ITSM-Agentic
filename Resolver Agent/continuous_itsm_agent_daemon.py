@@ -1430,14 +1430,16 @@ def start_continuous_monitoring():
                     escalated_incident_ids.remove(inc_id)
                     logger.info(f"🔓 Un-locking Incident [{inc.get('number', inc_id)}] — Human approval granted! Proceeding with execution.")
 
-                # Only pick TRUE IN_PROGRESS tickets for SSH remediation.
-                # Skip any incident already escalated/failed in this daemon session.
-                if state == "IN_PROGRESS" and inc_id not in escalated_incident_ids:
+                # Pick ticket for SSH remediation if:
+                # 1. Ticket state is IN_PROGRESS, OR
+                # 2. Ticket state is ON_HOLD AND has an APPROVED approval waiting for execution.
+                is_approved_on_hold = (state == "ON_HOLD" and inc_id in approved_inc_ids)
+                if (state == "IN_PROGRESS" or is_approved_on_hold) and inc_id not in escalated_incident_ids and inc_id not in resolved_incident_sessions:
                     in_progress_tickets.append(inc)
 
-            # Resolver Agent processes IN_PROGRESS tickets for SSH remediation & live proof
+            # Resolver Agent processes active tickets for SSH remediation & live proof
             if in_progress_tickets:
-                logger.info(f"⚡ Resolver Agent: Discovered {len(in_progress_tickets)} IN_PROGRESS incident(s) for SSH SOP remediation!")
+                logger.info(f"⚡ Resolver Agent: Discovered {len(in_progress_tickets)} incident(s) (IN_PROGRESS/APPROVED ON_HOLD) for SSH SOP remediation!")
                 for inc in in_progress_tickets[:5]:
                     inc_id = inc.get("id")
                     number = inc.get("number", inc_id)

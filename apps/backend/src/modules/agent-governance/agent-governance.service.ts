@@ -460,13 +460,13 @@ export class AgentGovernanceService {
       const cleanId = incidentId.toUpperCase();
       const inc = incidents.find((i: any) => i.id.toUpperCase() === cleanId || (i.number && i.number.toUpperCase() === cleanId));
       if (inc) {
-        inc.state = 'IN_PROGRESS';
+        inc.state = 'ON_HOLD';
         if (!inc.activities) inc.activities = [];
         inc.activities.unshift({
           id: `act_${Date.now()}`,
           incidentId: inc.id,
           author: `🛡️ Human in the Loop (${approverName})`,
-          comment: `SOP Approved by Human Operator (${approverName}). Status updated to IN_PROGRESS. Auto-Resolver Agent is executing SSH commands on target host.`,
+          comment: `SOP Approved by Human Operator (${approverName}). Incident state remains ON_HOLD while Auto-Resolver Agent executes SSH commands on target host.`,
           isWorkNote: true,
           timestamp: new Date().toLocaleTimeString(),
         });
