@@ -1487,7 +1487,19 @@ def start_continuous_monitoring():
                 inc_id = inc.get("id")
                 state = str(inc.get("state", "")).upper().strip()
 
-                # If ticket is IN_PROGRESS and has an APPROVED approval, un-lock it so it executes
+                # If ticket state is IN_PROGRESS (e.g. manually saved to IN_PROGRESS by human operator),
+                # remove any previous session locks so the Resolver Agent can immediately process it!
+                if state == "IN_PROGRESS":
+                    if inc_id in escalated_incident_ids:
+                        escalated_incident_ids.remove(inc_id)
+                    if inc_id in resolved_incident_sessions:
+                        resolved_incident_sessions.remove(inc_id)
+                    if inc_id in locked_incident_sessions:
+                        locked_incident_sessions.remove(inc_id)
+                    if inc_id in processed_in_progress_incidents:
+                        processed_in_progress_incidents.remove(inc_id)
+
+                # If ticket state is ON_HOLD and has an APPROVED approval, un-lock it so it executes
                 if inc_id in approved_inc_ids and inc_id in escalated_incident_ids:
                     escalated_incident_ids.remove(inc_id)
                     logger.info(f"🔓 Un-locking Incident [{inc.get('number', inc_id)}] — Human approval granted! Proceeding with execution.")
