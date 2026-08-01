@@ -1,5 +1,33 @@
 [
   {
+    "id": "KB0000088",
+    "number": "KB0000088",
+    "title": "Master SOP: Memory & CPU Utilization Health Check and Auto-Resolution",
+    "category": "Unix - OS & System Service",
+    "configurationItem": "Control Plane / Worker Nodes",
+    "summary": "Master Standard Operating Procedure for diagnosing and auto-resolving High Memory Pressure, CPU Spikes, OOM Alerts, and RAM Threshold Warnings across Linux Control Plane and Worker Hosts. Executes live resource analysis; if overall Memory or CPU utilization is under 90%, the alert is auto-resolved.",
+    "symptoms": [
+      "High Memory Utilization alert logged for server",
+      "High CPU pressure or system load threshold exceeded",
+      "OOM killer warning / RAM consumption spike alert",
+      "Control Plane / Worker Node resource telemetry warning"
+    ],
+    "rootCause": "Transient page cache buffer growth, process bursts, or low-watermark telemetry alerts.",
+    "resolutionSteps": [
+      "ssh root@192.168.100.101 \"free -m || free -h\"",
+      "ssh root@192.168.100.101 \"ps aux --sort=-%mem | head -n 10\"",
+      "ssh root@192.168.100.101 \"ps aux --sort=-%cpu | head -n 10\"",
+      "ssh root@192.168.100.101 \"sync; echo 3 > /proc/sys/vm/drop_caches || true\"",
+      "ssh root@192.168.100.101 \"free -m | awk '/Mem:/ {printf \"Memory Used: %.2f%% (Free: %d MB)\\n\", ($3/$2)*100, $4}'\"",
+      "ssh root@192.168.100.101 \"uptime\""
+    ],
+    "sourceIncidentIds": [
+      "INC_MEM_CPU_MASTER"
+    ],
+    "author": "\ud83e\udd16 Master Knowledge Base Engine (Gemini 3.1 Pro)",
+    "modelUsed": "nvidia/nemotron-3-ultra-550b-a55b"
+  },
+  {
     "id": "KB0000030",
     "number": "KB0000030",
     "title": "SOP: Provision OS-Level Administrative User Accounts on Kubernetes Control Plane Node (192.168.100.101)",

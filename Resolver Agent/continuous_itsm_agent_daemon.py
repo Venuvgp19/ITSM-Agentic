@@ -797,6 +797,21 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     best_match = None
     best_score = 0.0
     
+    # 0. EXPLICIT MEMORY & CPU INTENT MATCH
+    # Matches any Memory or CPU alert directly to the Master Memory & CPU SOP
+    full_text = f"{short_desc} {desc}".lower()
+    if any(k in full_text for k in ["memory", "cpu", "oom", "ram"]):
+        for art in kb_articles:
+            art_title = art.get("title", "").lower()
+            if "master sop: memory & cpu" in art_title or "high cpu & swap memory" in art_title or "memory & cpu" in art_title:
+                logger.info(f"🎯 Embedding-Free Intent Match: Memory/CPU Alert detected -> Matched Master Memory & CPU SOP [{art.get('number')}] '{art.get('title')}' (Score: 0.9800)")
+                return [{
+                    "number": art.get("number"),
+                    "title": art.get("title"),
+                    "score": 0.9800,
+                    "article": art
+                }]
+
     for art in kb_articles:
         art_title = art.get("title", "").lower()
         art_desc = (art.get("summary", "") + " " + art.get("category", "")).lower()
