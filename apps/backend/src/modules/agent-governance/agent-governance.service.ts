@@ -269,12 +269,10 @@ export class AgentGovernanceService {
   // --- HISTORY METRICS & AUDIT ---
 
   getHistory(): AgentHistoryEntry[] {
-    const fileHistory = loadJsonFile<AgentHistoryEntry[]>(HISTORY_FILE_PATH, []);
     const singleDbHistory = this.singleDb.agentHistory || [];
     
-    const combined = [...singleDbHistory, ...fileHistory];
     const uniqueMap = new Map<string, AgentHistoryEntry>();
-    combined.forEach(item => {
+    singleDbHistory.forEach(item => {
       if (item && item.id && item.status !== 'REJECTED') {
         uniqueMap.set(item.id.toUpperCase(), item);
       }
