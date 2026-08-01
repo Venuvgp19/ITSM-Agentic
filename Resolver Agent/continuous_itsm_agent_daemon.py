@@ -793,6 +793,7 @@ def format_execution_proof_work_note(ticket_number, short_desc, ci_name, ip, kb_
         f"╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁╁"
     )
 
+
 def search_kb_without_embeddings(short_desc, desc, kb_articles):
     """
     Direct RAG matching algorithm without external embedding APIs.
@@ -831,20 +832,35 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     best_match = None
     best_score = 0.0
     
-    # 0. EXPLICIT MEMORY & CPU INTENT MATCH
-    # Matches any Memory or CPU alert directly to the Master Memory & CPU SOP
+    # 0. EXPLICIT MEMORY & CPU INTENT MATCH → Route to new Triage SOP articles
+    # Matches CPU/Memory pressure alerts to the correct SOP based on alert type:
+    #   CPU-only  → SOP: CPU Pressure Triage & Resolution
+    #   Mem-only  → SOP: Memory Pressure Triage & Resolution
+    #   Both      → SOP: CPU & Memory Pressure Combined Triage
     full_text = f"{short_desc} {desc}".lower()
-    if any(k in full_text for k in ["memory", "cpu", "oom", "ram"]):
-        for art in kb_articles:
-            art_title = art.get("title", "").lower()
-            if "master sop: memory & cpu" in art_title or "high cpu & swap memory" in art_title or "memory & cpu" in art_title:
-                logger.info(f"🎯 Embedding-Free Intent Match: Memory/CPU Alert detected -> Matched Master Memory & CPU SOP [{art.get('number')}] '{art.get('title')}' (Score: 0.9800)")
-                return [{
-                    "number": art.get("number"),
-                    "title": art.get("title"),
-                    "score": 0.9800,
-                    "article": art
-                }]
+    is_cpu_alert = any(k in full_text for k in ["cpu", "load average", "cpu spikes", "cpu 100", "cpu pressure", "cpu saturation", "cpu utilization", "high load"])
+    is_mem_alert = any(k in full_text for k in ["memory", "ram", "oom", "heap", "swap", "memory pressure", "memory 100", "out of memory", "memory utilization", "kernel heap"])
+
+    if is_cpu_alert or is_mem_alert:
+        # Priority order: combined → CPU → Memory → any pressure triage SOP
+        def _pick_triage_sop(arts, is_cpu, is_mem):
+            combined = next((a for a in arts if "combined" in a.get("title","").lower() and "pressure" in a.get("title","").lower()), None)
+            cpu_sop  = next((a for a in arts if "cpu pressure triage" in a.get("title","").lower()), None)
+            mem_sop  = next((a for a in arts if "memory pressure triage" in a.get("title","").lower()), None)
+            if is_cpu and is_mem and combined:   return combined
+            if is_cpu and not is_mem and cpu_sop: return cpu_sop
+            if is_mem and not is_cpu and mem_sop: return mem_sop
+            return combined or cpu_sop or mem_sop  # fallback
+
+        triage_sop = _pick_triage_sop(kb_articles, is_cpu_alert, is_mem_alert)
+        if triage_sop:
+            logger.info(f"🎯 Embedding-Free Intent Match: CPU/Memory Pressure Alert detected → Matched Triage SOP [{triage_sop.get('number')}] '{triage_sop.get('title')}' (Score: 0.9900)")
+            return [{
+                "number": triage_sop.get("number"),
+                "title":  triage_sop.get("title"),
+                "score":  0.9900,
+                "article": triage_sop
+            }]
 
     for art in kb_articles:
         art_title = art.get("title", "").lower()
@@ -1365,9 +1381,15 @@ CRITICAL EVALUATION RULES:
 2. USER CREATION / PROVISIONING TICKETS:
    - If the ticket requests user creation, seeing successful useradd/mkdir and valid user ID output (e.g. uid=...) IS SUCCESS. Set "is_healthy" to true.
 
-3. MEMORY AND CPU UTILIZATION ALERTS:
-   - If the incident is a Memory or CPU pressure/utilization alert (e.g., 'Memory 100%', 'CPU Pressure', 'High RAM Usage', 'OOM Pressure', 'CPU Utilization'), the Resolver Agent CAN RESOLVE IT automatically if the overall Memory or CPU utilization is under 90% (e.g. Memory free >= 10% or used < 90%, CPU idle >= 10% or load < 90%). Set "is_healthy" to true.
-   - If overall Memory or CPU utilization is >= 90%, set "is_healthy" to false.
+3. MEMORY AND CPU UTILIZATION ALERTS (SOP-DRIVEN TRIAGE):
+   - The SOP for CPU/Memory alerts runs `ps -eo pcpu,pid,user,args|sort -nr|head` (CPU) and `ps -eo pmem,pid,user,args|sort -nr|head` (Memory) to identify the top resource consumers.
+   - Examine the ps output in the SSH execution log and classify each top consuming process:
+     * OS-LEVEL (safe, no application impact): kernel threads (names in [brackets]), kworker, kthreadd, ksoftirqd, kswapd, khugepaged, rcu_, migration, watchdog, systemd, sshd, cron/crond, auditd, rsyslogd, NetworkManager, tuned, polkitd, chronyd, ntpd, dbus-daemon, udevd.
+     * APPLICATION-LEVEL (requires Admin): java, python, python3, node, nginx, apache/httpd, tomcat, mysql, postgres, mongodb, redis, rabbitmq, kafka, elasticsearch, kibana, grafana, prometheus, kubelet, etcd, kube-apiserver, kube-controller-manager, kube-scheduler, containerd, docker, coredns, any custom binary not listed above.
+   - VERDICT RULE:
+     * If ALL top consumers (top 5 by CPU/Memory) are OS-level → "is_healthy": true (auto-resolve; OS processes do not affect applications)
+     * If ANY top consumer is application-level → "is_healthy": false (escalate to Admin; application processes need investigation)
+   - In the proof_summary, always list the top 3-5 processes found and their classification (OS or APP).
 
 4. GENERAL TECHNICAL TICKETS:
    - If commands executed cleanly and target services/host are operational, set "is_healthy" to true.
