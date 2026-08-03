@@ -57,6 +57,6 @@ export class KnowledgeController {
   @Post('articles')
   @ApiOperation({ summary: 'Create a new Knowledge Base Article' })
   async createArticle(@Body() dto: any) {
-    return this.knowledgeService.createArticle('tenant_acme_01', dto);
+    return this.knowledgeService.createArticle(dto);
   }
 }

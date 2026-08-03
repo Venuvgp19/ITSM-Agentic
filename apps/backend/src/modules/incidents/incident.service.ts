@@ -205,4 +205,26 @@ export class IncidentService {
 
     return newAct;
   }
+
+  async deleteActivity(tenantId: string, incidentId: string, activityId: string) {
+    const cleanId = (incidentId || '');
+    const existing = await this.prisma.incident.findFirst({
+      where: { tenantId, OR: [{ id: cleanId.toLowerCase() }, { number: cleanId.toUpperCase() }] },
+    });
+
+    if (!existing) throw new NotFoundException(`Incident ${incidentId} not found`);
+
+    let activities = Array.isArray(existing.activitiesJson) ? existing.activitiesJson as any[] : [];
+    const idx = activities.findIndex((a: any) => a.id === activityId);
+    if (idx === -1) throw new NotFoundException(`Activity ${activityId} not found in incident ${incidentId}`);
+
+    activities.splice(idx, 1);
+
+    await this.prisma.incident.update({
+      where: { id: existing.id },
+      data: { activitiesJson: activities },
+    });
+
+    return { deleted: true, activityId };
+  }
 }

@@ -287,6 +287,19 @@ export class AgentGovernanceService {
     return records.map(r => this.mapHistoryToDTO(r));
   }
 
+  async deleteHistoryEntry(id: string) {
+    const record = await this.prisma.agentHistory.findFirst({
+      where: { id, type: 'LOG' },
+    });
+
+    if (!record) {
+      return { deleted: false, error: `History entry ${id} not found` };
+    }
+
+    await this.prisma.agentHistory.delete({ where: { id } });
+    return { deleted: true, id };
+  }
+
   async clearAllApprovals() {
     await this.prisma.agentApproval.deleteMany({});
     await this.prisma.agentHistory.deleteMany({ where: { type: 'LOG' } });

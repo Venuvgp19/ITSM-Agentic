@@ -70,8 +70,8 @@ export default function DashboardPage() {
   // Top recent incidents sorted descending
   const recentIncidents = [...incidents]
     .sort((a, b) => {
-      const numA = parseInt((a.id || a.number || '').replace(/\D/g, ''), 10) || 0;
-      const numB = parseInt((b.id || b.number || '').replace(/\D/g, ''), 10) || 0;
+      const numA = parseInt((a.number || a.id || '').replace(/\D/g, ''), 10) || 0;
+      const numB = parseInt((b.number || b.id || '').replace(/\D/g, ''), 10) || 0;
       return numB - numA;
     })
     .slice(0, 6);
@@ -160,7 +160,7 @@ export default function DashboardPage() {
                   <tr key={inc.id || inc.number} className="hover:bg-slate-800/40 transition">
                     <td className="py-3 px-3 font-mono font-bold text-brand-400">
                       <Link href={`/incidents/${inc.id || inc.number}`} className="hover:underline">
-                        {inc.id || inc.number}
+                        {inc.number || inc.id}
                       </Link>
                     </td>
                     <td className="py-3 px-3 font-medium text-slate-200">{inc.shortDescription || inc.title}</td>

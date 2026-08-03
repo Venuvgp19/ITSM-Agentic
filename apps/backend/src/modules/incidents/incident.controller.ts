@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Delete, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { IncidentService } from './incident.service';
 import { CreateIncidentDto, UpdateIncidentDto, AddActivityDto } from './dto/incident.dto';
@@ -67,5 +67,16 @@ export class IncidentController {
     @Body() dto: AddActivityDto,
   ) {
     return this.incidentService.addActivity(tenantId || 'tenant_acme_01', id, authorId || 'monitoring-bot-id', dto);
+  }
+
+  @Public()
+  @Delete(':id/activities/:activityId')
+  @ApiOperation({ summary: 'Delete a work note from incident activity timeline' })
+  async deleteActivity(
+    @CurrentUser('tenantId') tenantId: string,
+    @Param('id') id: string,
+    @Param('activityId') activityId: string,
+  ) {
+    return this.incidentService.deleteActivity(tenantId || 'tenant_acme_01', id, activityId);
   }
 }

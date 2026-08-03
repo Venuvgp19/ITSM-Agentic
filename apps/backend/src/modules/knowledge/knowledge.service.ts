@@ -381,7 +381,11 @@ ${workNotesText}`;
               };
             }
 
-            await this.prisma.knowledgeArticle.create({ data: articleData });
+            await this.prisma.knowledgeArticle.upsert({
+              where: { number: kbNumber },
+              create: { ...articleData, number: kbNumber },
+              update: articleData,
+            });
           } catch (err: any) {
             this.logger.error(`Error in continuous background synthesis: ${err.message}`);
           }
@@ -404,11 +408,13 @@ ${workNotesText}`;
     return this.synthesizeAllIncidentsInBatches(tenantId);
   }
 
-  async createArticle(tenantId: string, dto: any) {
+  async createArticle(dto: any) {
+    const tenantId = dto.tenantId || 'tenant_acme_01';
     const totalKb = await this.prisma.knowledgeArticle.count({ where: { tenantId } });
-    const newId = `KB${String(totalKb + 1).padStart(7, '0')}`;
-    const record = await this.prisma.knowledgeArticle.create({
-      data: {
+    const newId = dto.number || `KB${String(totalKb + 1).padStart(7, '0')}`;
+    const record = await this.prisma.knowledgeArticle.upsert({
+      where: { number: newId },
+      create: {
         tenantId,
         number: newId,
         title: dto.title || 'Troubleshooting & SOP: New Issue',
@@ -424,6 +430,19 @@ ${workNotesText}`;
         modelUsed: dto.modelUsed || 'Gemini 3.5 Flash',
         viewsCount: 1,
         helpfulCount: 0,
+      },
+      update: {
+        title: dto.title || 'Troubleshooting & SOP: New Issue',
+        category: dto.category || 'Unix - OS & Services',
+        configurationItem: dto.configurationItem || 'Unspecified CI',
+        summary: dto.summary || 'Dynamically synthesized SOP article.',
+        symptoms: dto.symptoms || ['Telemetry alert reported for new issue.'],
+        rootCause: dto.rootCause || 'Root cause identified in new use case diagnostic.',
+        resolutionSteps: dto.resolutionSteps || [],
+        workNotesAnalyzedCount: 1,
+        sourceIncidentIds: dto.sourceIncidentIds || [],
+        author: dto.author || '🤖 Gemini 3.1 Pro Knowledge Synthesis Agent',
+        modelUsed: dto.modelUsed || 'Gemini 3.5 Flash',
       }
     });
     return this.mapKBToDTO(record);

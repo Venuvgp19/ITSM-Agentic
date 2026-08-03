@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Delete } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AgentGovernanceService, AgentApproval, AgentHistoryEntry } from './agent-governance.service';
 import { Public } from '../../common/decorators/public.decorator';
@@ -66,6 +66,13 @@ export class AgentGovernanceController {
   @ApiOperation({ summary: 'Get full historical log stream of agent operations over time' })
   getHistory() {
     return this.governanceService.getHistory();
+  }
+
+  @Public()
+  @Delete('history/:id')
+  @ApiOperation({ summary: 'Delete a single historical activity entry by ID' })
+  deleteHistoryEntry(@Param('id') id: string) {
+    return this.governanceService.deleteHistoryEntry(id);
   }
 
   @Public()

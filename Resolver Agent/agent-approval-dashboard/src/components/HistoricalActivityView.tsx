@@ -16,7 +16,8 @@ import {
   Radio,
   Workflow,
   BrainCircuit,
-  Lightbulb
+  Lightbulb,
+  Trash2,
 } from 'lucide-react';
 
 export interface RouterAgentOutput {
@@ -108,6 +109,17 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
 
     return matchesStatus && matchesSearch;
   });
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await fetch(`http://localhost:4000/api/v1/agent/history/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        window.location.reload();
+      }
+    } catch (e) {
+      console.error('Failed to delete history entry:', e);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -286,6 +298,13 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                       >
                         {isExpanded ? 'Hide Trace' : 'View Trace'}
                         {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        className="px-3 py-2 bg-slate-900 hover:bg-red-950 text-slate-400 hover:text-red-400 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 border border-slate-700 hover:border-red-800"
+                        title="Delete history entry"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>

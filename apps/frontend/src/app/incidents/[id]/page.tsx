@@ -16,6 +16,7 @@ import {
   CheckCircle,
   Lock,
   Tag,
+  Trash2,
 } from 'lucide-react';
 
 const sampleTitles = [
@@ -175,6 +176,15 @@ export default function IncidentDetailPage() {
 
     setActivities([newAct, ...activities]);
     setCommentText('');
+  };
+
+  const handleDeleteActivity = async (activityId: string) => {
+    try {
+      const res = await fetch(`/api/v1/incidents/${idParam}/activities/${activityId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setActivities(activities.filter((a) => a.id !== activityId));
+      }
+    } catch {}
   };
 
   if (isLoading || !incident) {
@@ -374,6 +384,13 @@ export default function IncidentDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Description & Resolution / Work Status */}
         <div className="lg:col-span-1 space-y-6">
+          <div className="glass-panel p-5 space-y-3">
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-slate-800 pb-2">
+              Incident Description
+            </h3>
+            <p className="text-sm text-slate-300 leading-relaxed">{incident.description || 'No description provided.'}</p>
+          </div>
+
           {state === 'RESOLVED' || state === 'CLOSED' ? (
             <div className="glass-panel p-5 space-y-3">
               <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-slate-800 pb-2">
@@ -399,7 +416,6 @@ export default function IncidentDetailPage() {
                 <div className="font-bold flex items-center gap-1.5 text-blue-400">
                   <Clock className="w-4 h-4" /> Work In Progress
                 </div>
-                <p className="leading-relaxed">{incident.description || 'Assigned team is performing active diagnostics and troubleshooting.'}</p>
                 <div className="text-[10px] text-blue-400/80 font-mono">Assigned Member: {incident.assignedTo}</div>
               </div>
             </div>
@@ -508,7 +524,16 @@ export default function IncidentDetailPage() {
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-slate-400 font-mono">{act.timestamp}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400 font-mono">{act.timestamp}</span>
+                    <button
+                      onClick={() => handleDeleteActivity(act.id)}
+                      className="text-slate-500 hover:text-red-400 transition p-1 rounded hover:bg-red-500/10"
+                      title="Delete work note"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
 
                 <p className="text-xs text-slate-200 leading-relaxed font-sans whitespace-pre-wrap">{act.comment}</p>

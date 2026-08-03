@@ -227,6 +227,24 @@ CI_CREDENTIALS = {
         "user": "root",
         "password": "root123",
         "os": "Unix / Linux"
+    },
+    "Venuvgp19": {
+        "ip": "192.168.100.99",
+        "user": "Administrator",
+        "password": "admin123",
+        "os": "Windows 11"
+    },
+    "192.168.100.99": {
+        "ip": "192.168.100.99",
+        "user": "Administrator",
+        "password": "admin123",
+        "os": "Windows 11"
+    },
+    "192.168.100.42": {
+        "ip": "192.168.100.42",
+        "user": "Administrator",
+        "password": "admin123",
+        "os": "Windows 11"
     }
 }
 
@@ -737,9 +755,25 @@ def execute_ssh_sop(ip, user, password, commands):
 
             logger.info(f"Executing SOP payload command on {ip}: '{cmd_to_run}'")
             stdin, stdout, stderr = ssh.exec_command(cmd_to_run)
-            stdout.channel.settimeout(120.0)
-            out = stdout.read().decode('utf-8', 'ignore')
-            err = stderr.read().decode('utf-8', 'ignore')
+
+            is_backgrounded = cmd_to_run.rstrip().endswith('&')
+
+            if is_backgrounded:
+                stdout.channel.settimeout(10.0)
+                try:
+                    out = stdout.channel.recv(4096).decode('utf-8', 'ignore')
+                except Exception:
+                    out = ""
+                try:
+                    err = stderr.channel.recv(4096).decode('utf-8', 'ignore')
+                except Exception:
+                    err = ""
+                logger.info(f"Backgrounded command detected — skipping blocking read. Output: {out.strip()}")
+            else:
+                stdout.channel.settimeout(120.0)
+                out = stdout.read().decode('utf-8', 'ignore')
+                err = stderr.read().decode('utf-8', 'ignore')
+
             execution_log += f"=== [CMD: {cmd_to_run}] ===\nSTDOUT:\n{out}\nSTDERR:\n{err}\n\n"
         
         ssh.close()
@@ -852,8 +886,12 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     is_user_creation = any(p in full_text for p in user_creation_patterns) or bool(re.search(r"create\s+user\s+account", full_text))
     
     if is_user_creation:
-        # Find canonical User Creation KB (KB0000001 or any user creation SOP in KB)
-        user_kb = next((a for a in kb_articles if "user" in a.get("title", "").lower() or "user" in a.get("summary", "").lower() or "KB0000001" in a.get("number", "")), None)
+        # Find canonical User Creation KB (KB0000001) — prioritize by number first
+        user_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000001"), None)
+        if not user_kb:
+            user_kb = next((a for a in kb_articles if "user" in a.get("title", "").lower() and "creation" in a.get("title", "").lower()), None)
+        if not user_kb:
+            user_kb = next((a for a in kb_articles if "user" in a.get("summary", "").lower() or "user" in a.get("title", "").lower()), None)
         if not user_kb and kb_articles:
             user_kb = kb_articles[0]
             
@@ -865,6 +903,79 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
                 "score": 0.9800,
                 "article": user_kb
             }]
+
+    # 1b. Intent Detection for User Deletion / Offboarding
+    user_delete_patterns = [
+        "delete user", "remove user", "offboard", "deprovision", "disable account",
+        "user leaving", "employee leaving", "terminate account", "account deletion",
+        "remove account", "delete account", "user offboard"
+    ]
+    is_user_delete = any(p in full_text for p in user_delete_patterns)
+    if is_user_delete:
+        delete_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000014"), None)
+        if not delete_kb:
+            delete_kb = next((a for a in kb_articles if "deletion" in a.get("title", "").lower() or "offboard" in a.get("title", "").lower()), None)
+        if delete_kb:
+            logger.info(f"🎯 Embedding-Free Intent Match: User Deletion detected -> Matched SOP [{delete_kb.get('number')}] '{delete_kb.get('title')}' (Score: 0.9750)")
+            return [{"number": delete_kb.get("number"), "title": delete_kb.get("title"), "score": 0.9750, "article": delete_kb}]
+
+    # 1c. Intent Detection for Password Reset
+    password_reset_patterns = [
+        "reset password", "password reset", "forgot password", "change password",
+        "password expired", "unlock password", "password locked", "set password"
+    ]
+    is_password_reset = any(p in full_text for p in password_reset_patterns)
+    if is_password_reset:
+        pwd_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000017"), None)
+        if not pwd_kb:
+            pwd_kb = next((a for a in kb_articles if "password" in a.get("title", "").lower() and "reset" in a.get("title", "").lower()), None)
+        if pwd_kb:
+            logger.info(f"🎯 Embedding-Free Intent Match: Password Reset detected -> Matched SOP [{pwd_kb.get('number')}] '{pwd_kb.get('title')}' (Score: 0.9750)")
+            return [{"number": pwd_kb.get("number"), "title": pwd_kb.get("title"), "score": 0.9750, "article": pwd_kb}]
+
+    # 1d. Intent Detection for Account Lock/Unlock
+    lock_patterns = [
+        "lock account", "unlock account", "lock user", "unlock user",
+        "disable login", "enable login", "brute force", "account lock",
+        "lockout", "unlock access", "lock access"
+    ]
+    is_lock = any(p in full_text for p in lock_patterns)
+    if is_lock:
+        lock_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000015"), None)
+        if not lock_kb:
+            lock_kb = next((a for a in kb_articles if "lock" in a.get("title", "").lower() and "unlock" in a.get("title", "").lower()), None)
+        if lock_kb:
+            logger.info(f"🎯 Embedding-Free Intent Match: Account Lock/Unlock detected -> Matched SOP [{lock_kb.get('number')}] '{lock_kb.get('title')}' (Score: 0.9750)")
+            return [{"number": lock_kb.get("number"), "title": lock_kb.get("title"), "score": 0.9750, "article": lock_kb}]
+
+    # 1e. Intent Detection for User Modification (shell, groups, etc.)
+    modify_patterns = [
+        "change shell", "modify user", "add to group", "remove from group",
+        "update user", "user shell", "change group", "grant group",
+        "chsh", "usermod", "change home", "move home"
+    ]
+    is_modify = any(p in full_text for p in modify_patterns)
+    if is_modify:
+        modify_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000018"), None)
+        if not modify_kb:
+            modify_kb = next((a for a in kb_articles if "modification" in a.get("title", "").lower() or "modify" in a.get("title", "").lower()), None)
+        if modify_kb:
+            logger.info(f"🎯 Embedding-Free Intent Match: User Modification detected -> Matched SOP [{modify_kb.get('number')}] '{modify_kb.get('title')}' (Score: 0.9750)")
+            return [{"number": modify_kb.get("number"), "title": modify_kb.get("title"), "score": 0.9750, "article": modify_kb}]
+
+    # 1f. Intent Detection for User Creation + Specific Directory Access (write/read to /etc, /var, etc.)
+    # This is a SUBSET of user creation — route to KB0000001 but flag for ACL treatment
+    dir_access_patterns = [
+        "write access to", "read access to", "access to /etc", "access to /var",
+        "write to /etc", "read to /etc", "modify /etc", "access to directory",
+        "write permission", "read permission", "directory access"
+    ]
+    is_dir_access = any(p in full_text for p in dir_access_patterns)
+    if is_dir_access and is_user_creation:
+        user_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000001"), None)
+        if user_kb:
+            logger.info(f"🎯 Embedding-Free Intent Match: User Creation + Directory Access detected -> Matched SOP [{user_kb.get('number')}] '{user_kb.get('title')}' (Score: 0.9850) [ACL MODE]")
+            return [{"number": user_kb.get("number"), "title": user_kb.get("title"), "score": 0.9850, "article": user_kb, "acl_mode": True}]
 
     # 2. Intent Detection for NexaCore Application / Port 8080 Issues
     nexacore_patterns = [
@@ -878,13 +989,13 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
 
     if is_nexacore:
         nexacore_kb = next(
-            (a for a in kb_articles if "KB0000015" in a.get("number", "")),
+            (a for a in kb_articles if "KB0000003" in a.get("number", "")),
             None
         )
         if not nexacore_kb:
             try:
                 all_articles = requests.get("http://localhost:4000/api/v1/knowledge/articles", timeout=5).json()
-                nexacore_kb = next((a for a in all_articles if "KB0000015" in a.get("number", "")), None)
+                nexacore_kb = next((a for a in all_articles if "KB0000003" in a.get("number", "")), None)
             except Exception:
                 pass
         if nexacore_kb:
@@ -978,6 +1089,102 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
         }]
         
     return []
+
+def _enforce_sop_safety_rules(sop_commands, short_desc, desc, kb_number):
+    """
+    Code-level safety enforcement on SOP commands after LLM parameterization.
+    Prevents LLM hallucinations and enforces mandatory business rules.
+    """
+    full_text = f"{short_desc} {desc}".lower()
+    commands = list(sop_commands) if isinstance(sop_commands, list) else []
+
+    if not commands:
+        return commands
+
+    # --- ALL USER MANAGEMENT SOPs: Validate username is not a placeholder ---
+    user_mgmt_kbs = ["KB0000001", "KB0000014", "KB0000015", "KB0000017", "KB0000018"]
+    if kb_number in user_mgmt_kbs:
+        first_cmd = commands[0] if commands else ""
+        if "{username}" in first_cmd:
+            logger.warning(f"⚠️ Safety Rule: {{username}} placeholder still present in {kb_number} after LLM parameterization. Aborting.")
+            commands.insert(0, "echo 'GATE_ERROR: No username provided in incident ticket. Cannot proceed.' && exit 1")
+            return commands
+
+    # --- USER CREATION SOP (KB0000001) RULES ---
+    if kb_number == "KB0000001":
+        sudo_keywords = ["sudo", "sudoers", "root access", "admin access", "privilege", "wheel", "nopasswd"]
+        wants_sudo = any(k in full_text for k in sudo_keywords)
+
+        # Detect if ticket asks for SPECIFIC DIRECTORY ACCESS (not full sudo)
+        dir_access_patterns = ["write access to", "read access to", "access to /etc", "access to /var",
+                               "write to /etc", "write permission", "read permission", "directory access",
+                               "access to directory", "modify /etc"]
+        wants_dir_access = any(p in full_text for p in dir_access_patterns)
+
+        if wants_dir_access and not wants_sudo:
+            # Replace sudo command with ACL-based directory access
+            before = len(commands)
+            new_commands = []
+            for c in commands:
+                if "sudoers" in c.lower() or "visudo" in c.lower():
+                    # Extract the target directory from the ticket text
+                    import re as _re
+                    dir_match = _re.search(r'(?:to|on|for)\s+(/\S+)', full_text)
+                    target_dir = dir_match.group(1) if dir_match else "/etc"
+                    acl_cmd = f'setfacl -R -m u:{username}:rwx {target_dir} 2>&1 && echo ACL_SET_OK || echo ACL_SET_FAILED'
+                    new_commands.append(acl_cmd)
+                    logger.info(f"🔒 Safety Rule: Directory access requested, not full sudo. Replacing sudoers with ACL command for {target_dir}.")
+                else:
+                    new_commands.append(c)
+            commands = new_commands
+        elif not wants_sudo and not wants_dir_access:
+            # No sudo requested at all — remove sudoers commands
+            before = len(commands)
+            commands = [c for c in commands if "sudoers" not in c.lower() and "visudo" not in c.lower()]
+            removed = before - len(commands)
+            if removed > 0:
+                logger.info(f"🔒 Safety Rule: No sudo requested — removed {removed} sudoers command(s) from KB0000001.")
+
+    # --- USER DELETION SOP (KB0000014) RULES ---
+    if kb_number == "KB0000014":
+        destructive_keywords = ["force", "confirm", "yes"]
+        wants_force = any(k in full_text for k in destructive_keywords)
+        if not wants_sudo:
+            logger.info("ℹ️ Safety Rule: User deletion SOP — preserving archive step regardless of confirmation intent.")
+
+    # --- PASSWORD RESET SOP (KB0000017) RULES ---
+    if kb_number == "KB0000017":
+        force_change_keywords = ["force", "expire", "first login", "must change"]
+        wants_force = any(k in full_text for k in force_change_keywords)
+        if not wants_force:
+            before = len(commands)
+            commands = [c for c in commands if "chage" not in c.lower()]
+            removed = before - len(commands)
+            if removed > 0:
+                logger.info(f"🔒 Safety Rule: No force-change requested — removed {removed} chage command(s) from KB0000013.")
+
+    # --- LOCK/UNLOCK SOP (KB0000015) RULES ---
+    if kb_number == "KB0000015":
+        lock_keywords = ["lock", "disable", "freeze", "brute", "lockout"]
+        unlock_keywords = ["unlock", "enable", "restore", "re-enable"]
+        wants_lock = any(k in full_text for k in lock_keywords)
+        wants_unlock = any(k in full_text for k in unlock_keywords)
+        if wants_unlock:
+            commands = [c for c in commands if "{lock_unlock_command}" not in c or "passwd -u" in c or "usermod -U" in c]
+        elif wants_lock:
+            commands = [c for c in commands if "{lock_unlock_command}" not in c or "passwd -l" in c or "usermod -L" in c]
+
+    # --- MODIFY USER SOP (KB0000018) RULES ---
+    if kb_number == "KB0000018":
+        shell_keywords = ["shell", "chsh", "bash", "zsh", "sh"]
+        group_keywords = ["group", "add to", "remove from", "wheel", "sudo"]
+        wants_shell = any(k in full_text for k in shell_keywords)
+        wants_group = any(k in full_text for k in group_keywords)
+        if not wants_shell and not wants_group:
+            logger.info("ℹ️ Safety Rule: No specific modification type detected in ticket. LLM should infer from context.")
+
+    return commands
+
 
 def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articles, incident_id, target_os="Linux/Unix"):
     # 1. Embedding-Free RAG Query
@@ -1134,6 +1341,37 @@ Incident Details:
 Review the matched SOP and parameterize or verify the commands for execution on the target host.
 Ensure all commands comply with the DIRECT COMMAND EXECUTION RULE (do NOT prefix commands with ssh).
 
+CRITICAL: For ALL commands, replace {{ip}} with the target IP address. The FIRST command is a validation gate — do NOT modify it, just replace {{ip}} and {{username}}.
+
+For USER CREATION SOP (KB0000001), extract:
+- {{username}}: Extract the username to create
+- {{full_name}}: Extract or infer the full name. If not specified, capitalize the username.
+- {{password}}: Extract if specified, otherwise use "ChangeMe@2026"
+- {{sudo_command}}: If sudo access is explicitly mentioned (e.g. "sudo access", "root access", "admin access"), replace with: "echo '{{username}} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-{{username}} && chmod 440 /etc/sudoers.d/99-{{username}} && visudo -c -f /etc/sudoers.d/99-{{username}} 2>&1 && echo SUDO_OK || echo SUDO_FAILED"
+- {{sudo_command}}: If the ticket asks for write/read access to a SPECIFIC DIRECTORY (e.g. "write access to /etc", "read access to /var"), replace with: "setfacl -R -m u:{{username}}:rwx {{target_directory}} 2>&1 && echo ACL_SET_OK || echo ACL_SET_FAILED" — extract the target directory from the ticket description. Do NOT use sudo in this case.
+- {{sudo_command}}: If sudo is NOT mentioned and NO directory access is requested, replace with: "echo SUDO_NOT_REQUESTED"
+
+For PASSWORD RESET SOP (KB0000017), extract:
+- {{username}}: Extract the username whose password needs resetting
+- {{password}}: Extract the new password. If not specified, use "Reset@2026"
+
+For USER DELETION SOP (KB0000014), extract:
+- {{username}}: Extract the username to delete
+
+For LOCK/UNLOCK SOP (KB0000015), extract:
+- {{username}}: Extract the username to lock or unlock
+- {{lock_unlock_command}}: If the ticket says "lock" or "disable", replace with: "passwd -l {{username}} 2>&1 && echo ACCOUNT_LOCKED_OK || echo LOCK_FAILED"
+- {{lock_unlock_command}}: If the ticket says "unlock" or "enable", replace with: "passwd -u {{username}} 2>&1 && echo ACCOUNT_UNLOCKED_OK || echo UNLOCK_FAILED"
+
+For MODIFY USER SOP (KB0000018), extract:
+- {{username}}: Extract the username to modify
+- {{modify_command}}: Based on the request, construct the appropriate usermod command. Examples:
+  - Change shell: "chsh -s /bin/zsh {{username}} 2>&1 && echo SHELL_CHANGED_OK"
+  - Add to group: "usermod -aG {{group_name}} {{username}} 2>&1 && echo GROUP_ADDED_OK"
+  - Remove from group: "gpasswd -d {{username}} {{group_name}} 2>&1 && echo GROUP_REMOVED_OK"
+
+For NexaCore/Application SOPs (KB0000003), the IP and port are already in the commands — just verify they match the target.
+
 Respond ONLY in JSON:
 {{
   "sop_commands": ["cmd1", "cmd2", ...],
@@ -1157,6 +1395,8 @@ Respond ONLY in JSON:
             
         sop_commands = plan.get("sop_commands", kb_steps_list)
         reasoning = plan.get("reasoning", f"SOP {top_match['number']} parameterized.")
+        
+        sop_commands = _enforce_sop_safety_rules(sop_commands, short_desc, desc, top_match.get("number", ""))
         
         return False, top_match['number'], top_match['title'], reasoning, sop_commands, None
 
@@ -1460,7 +1700,9 @@ CRITICAL EVALUATION RULES:
    - If the ticket requests user deletion (e.g., 'Delete User Account', 'Remove User', 'userdel'), seeing 'no such user' or 'id: <username>: no such user' or 'No such file or directory' for home folder IS THE EXACT EXPECTED SUCCESS PROOF OF DELETION. Do NOT treat 'no such user' as a failure for user deletion! Set "is_healthy" to true.
 
 2. USER CREATION / PROVISIONING TICKETS:
-   - If the ticket requests user creation, seeing successful useradd/mkdir and valid user ID output (e.g. uid=...) IS SUCCESS. Set "is_healthy" to true.
+   - If the ticket requests user creation, seeing successful useradd/mkdir and valid user ID output (e.g. uid=...) OR seeing "USER_CREATED_OK", "USER_VERIFIED", "VALIDATION_COMPLETE" in stdout IS SUCCESS. Set "is_healthy" to true.
+   - If you see "USER_EXISTS" or "PASSWD_ENTRY_FOUND" for the target username, the user already exists — this is NOT an error. Set "is_healthy" to true (idempotent success).
+   - If you see "USER_CREATE_FAILED" or "USER_VERIFICATION_FAILED", set "is_healthy" to false.
 
 3. MEMORY AND CPU UTILIZATION ALERTS (SOP-DRIVEN TRIAGE):
    - The SOP for CPU/Memory alerts runs `ps -eo pcpu,pid,user,args|sort -nr|head` (CPU) and `ps -eo pmem,pid,user,args|sort -nr|head` (Memory) to identify the top resource consumers.
