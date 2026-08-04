@@ -13,3 +13,11 @@ coverage/
 *.tsbuildinfo
 __pycache__/
 eval_log_output.txt
+*.pyc
+*.pptx
+~$*
+login.json
+query
+stop
+daemon.lock
+*.tmp

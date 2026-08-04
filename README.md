@@ -1,206 +1,90 @@
-# 🚀 Enterprise ITSM Platform & Autonomous Multi-Agent Resolver System
+# Enterprise ITSM Platform & Autonomous Multi-Agent Resolver System
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://mit-license.org)
-[![Node.js Version](https://img.shields.io/badge/Node.js-v22.x-green.svg)](https://nodejs.org)
-[![Python Version](https://img.shields.io/badge/Python-v3.10+-blue.svg)](https://python.org)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-v15.0+-blue.svg)](https://postgresql.org)
-[![Architecture](https://img.shields.io/badge/Architecture-Autonomous--Multi--Agent-purple.svg)](#-autonomous-4-agent-pipeline)
+An end-to-end, enterprise-grade **IT Service Management (ITSM) Platform** with an **Autonomous Multi-Agent AI Engine** capable of automated ticket routing, non-interactive SSH remote remediation, live host health verification, master SOP synthesis, state machine loop protection, and strict Human-in-the-Loop (HITL) governance.
 
-An end-to-end, enterprise-grade **IT Service Management (ITSM) Platform** equipped with an **Autonomous Multi-Agent AI Engine** capable of automated ticket routing, non-interactive SSH remote remediation, live host health verification, master SOP synthesis, state machine loop protection, and strict Human-in-the-Loop (HITL) governance.
+## Architecture Overview
 
----
-
-## 📐 Autonomous Agent Pipeline & Governance Architecture
-
-```mermaid
-flowchart TD
-    A[🎫 Incoming Incident / Alert] --> B[🚦 Router Agent]
-    B -->|Predict Dept, Urgency & CI| C[📥 Set State: IN_PROGRESS]
-    C --> D[🛠️ Resolver Agent Queue Scan]
-    
-    D --> E{Existing SOP in KB? similarity >= 0.75}
-    E -->|RAG Hit| F[🔑 Connect Host via SSH]
-    E -->|RAG Miss| G[🧠 Knowledge Synthesizer LLM]
-    
-    G --> H[🛡️ HITL Approval Request]
-    H -->|Human Approves in Control Tower| I[Mark APPROVED]
-    H -->|Human Rejects| J[Mark ON_HOLD & Assign Specialist]
-    
-    I --> F
-    F --> K[Execute Commands on Target Host]
-    K --> L[🏥 LLM Verification Engine]
-    
-    L -->|Verified Healthy| M[🎉 RESOLVED & Save SOP to KB]
-    L -->|Verification Failed| N[⚠️ ON_HOLD & Lock Session]
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Human-in-the-Loop (HITL)                     │
+│                   Control Tower (Vite + React :5173)                │
+└──────────┬──────────────────────────┬───────────────────────────────┘
+           │ Approve / Reject         │ Monitor / Audit
+           ▼                          ▼
+┌──────────────────────┐  ┌──────────────────────────────────────────┐
+│   NestJS Backend     │  │         Auto-Resolver Daemon             │
+│   REST API (:4000)   │◄─┤   Python + Paramiko SSH (Background)    │
+│   Auth, CRUD, KB,    │  │   Router → Resolver → Synthesizer       │
+│   Agent Governance   │  │   Vector Search RAG → SSH Execution      │
+└──────────┬───────────┘  └──────────┬───────────────────────────────┘
+           │                          │
+           ▼                          ▼
+┌──────────────────────┐  ┌──────────────────────────────────────────┐
+│   PostgreSQL (:5432) │  │      Vector DB (SQLite)                  │
+│   1000+ incidents    │  │      17 KB embeddings                    │
+│   17 KB articles     │  │      Synced from API every 5 cycles      │
+│   Approvals, CI, etc │  │      RAG similarity threshold: 0.5      │
+└──────────────────────┘  └──────────────────────────────────────────┘
 ```
 
-### 🤖 Core Agent Roles
+### 4-Agent Pipeline
 
-| Agent | Engine | Responsibilities |
-|:---|:---|:---|
-| **🚦 Router Agent** | NVIDIA Nemotron 3 550B | Parse symptoms, predict departments/CIs, set SLA priority, transition to `IN_PROGRESS` |
-| **🛠️ Resolver Agent** | Python Daemon + Paramiko SSH | OS fingerprinting, non-interactive SSH execution, live health verification |
-| **🧠 Knowledge Synthesizer** | NVIDIA Nemotron 3 550B / DeepSeek | Root-cause analysis, synthesize SOPs on RAG miss, auto-persist runbooks |
-| **🛡️ HITL Control Tower** | Vite + React + NestJS | Risk evaluation, interactive approval cards, session locks |
-
----
-
-## 🌐 Services & Port Mapping
-
-| Service | Port | URL | Description |
-|:---|:---|:---|:---|
-| **PostgreSQL** | `5432` | `localhost:5432` | Primary database (1000+ incidents, KB articles, governance logs) |
-| **NestJS Backend** | `4000` | `http://localhost:4000/api/v1` | Core REST API + Swagger docs |
-| **Next.js Frontend** | `3000` | `http://localhost:3000` | Incident, Problem, Change, CMDB portal |
-| **Control Tower** | `5173` | `http://localhost:5173` | HITL approval queue, history audit, vector map |
-| **Auto-Resolver Daemon** | — | Python process | Autonomous SSH remediation agent |
+| Agent | Engine | Role |
+|-------|--------|------|
+| **Router Agent** | genailab-maas-gpt-4o (DB config) | Parse symptoms, predict dept/CI/urgency, set SLA |
+| **Resolver Agent** | Python daemon + Paramiko SSH | OS fingerprinting, SSH execution, health verification |
+| **Knowledge Synthesizer** | azure/genailab-maas-gpt-4.1-mini | Root-cause analysis, SOP synthesis on RAG miss |
+| **HITL Control Tower** | Vite + React | Risk evaluation, approval cards, session locks |
 
 ---
 
-## 🖥️ Infrastructure & Configuration Items
+## Services & Ports
+
+| Service | Port | URL |
+|---------|------|-----|
+| PostgreSQL 18 | `5432` | `localhost:5432` |
+| NestJS Backend | `4000` | `http://localhost:4000/api/v1` |
+| Next.js Frontend | `3000` | `http://localhost:3000` |
+| Control Tower | `5173` | `http://localhost:5173` |
+| Auto-Resolver Daemon | — | Background Python process |
+
+---
+
+## Infrastructure
 
 ### Registered CIs
 
-| CI Name | Class | OS | IP Address | Status |
-|:---|:---|:---|:---|:---|
-| **Control Plane** | Linux Server | Ubuntu | `192.168.100.101` | OPERATIONAL |
-| **WorkerNode1HL** | Linux Server | Ubuntu | `192.168.100.102` | OPERATIONAL |
-| **Venuvgp19** | Windows Workstation | Windows 11 | `192.168.100.99` / `192.168.100.42` | OPERATIONAL |
+| CI Name | IP | SSH User | OS |
+|---------|-----|----------|-----|
+| Control Plane | `192.168.100.101` | root / root123 | Linux |
+| WorkerNode1HL | `192.168.100.102` | root / root123 | Linux |
+| Worker1OL | `192.168.56.10` | root / root123 | Linux |
 
-### Daemon CI Credentials
+### AI Model Configuration (DB-persisted)
 
-| CI Key | IP | SSH User | OS |
-|:---|:---|:---|:---|
-| `Control Plane` / `192.168.100.101` | 192.168.100.101 | root / root123 | Unix / Linux |
-| `WorkerNode1HL` / `192.168.100.102` | 192.168.100.102 | root / root123 | Unix / Linux |
-| `Venuvgp19` / `192.168.100.99` | 192.168.100.99 | Administrator / admin123 | Windows 11 |
-| `192.168.100.42` | 192.168.100.42 | Administrator / admin123 | Windows 11 |
+| Role | Model | Provider |
+|------|-------|----------|
+| Router | `genailab-maas-gpt-4o` | genailab (primary) |
+| Resolver | `azure/genailab-maas-gpt-4.1-mini` | genailab |
+| Synthesizer | `azure_ai/genailab-maas-Llama-4-Maverick-17B-128E-Instruct-FP8` | genailab |
+| Governance | `genailab-maas-gpt-4o` | genailab |
+| Embeddings | `azure/genailab-maas-text-embedding-3-large` | genailab |
+| LLM Fallback | `nvidia/llama-3.3-nemotron-super-49b-v1` | NVIDIA |
 
----
+### Auth Credentials
 
-## 📚 Knowledge Base Articles (SOPs)
-
-| KB Number | Title | Category | Score |
-|:---|:---|:---|:---|
-| **KB0000001** | Master User Account Creation & Provisioning SOP | User Management | 0.9850 |
-| **KB0000003** | NexaCore Application Restart SOP (Port 8080) | Application Recovery | 0.9500 |
-| **KB0000014** | User Account Offboarding & Deletion SOP | User Management | 0.9750 |
-| **KB0000015** | User Account Lock & Unlock SOP | User Management | 0.9750 |
-| **KB0000017** | User Password Reset SOP | User Management | 0.9750 |
-| **KB0000018** | User Account Modification (Shell/Groups) SOP | User Management | 0.9750 |
-| **KB0000019** | NexaCore Application Recovery - Detailed | Application Recovery | 0.9500 |
-| **KB0000020** | NexaCore Application Recovery - Generic | Application Recovery | 0.9500 |
-| **KB0000021** | Disk Cleanup SOP | Infrastructure | 0.9000 |
-| **KB0000022** | Service Restart SOP | Infrastructure | 0.9000 |
-| **KB0000023** | DNS Resolution SOP | Infrastructure | 0.9000 |
-| **KB0000024** | SSL Certificate Renewal SOP | Security | 0.9000 |
-| **KB0000025** | NTP Sync SOP | Infrastructure | 0.9000 |
-| **KB0000026** | Memory Cleanup SOP | Infrastructure | 0.9000 |
-| **KB0000027** | Log Rotation SOP | Infrastructure | 0.9000 |
-| **KB0000028** | User Account Modification - Generic | User Management | 0.9000 |
+| Field | Value |
+|-------|-------|
+| Login URL | `POST /api/v1/auth/login` |
+| Email | `admin@acme.com` |
+| Password | `Admin123!` |
 
 ---
 
-## 🔒 Daemon Safety Rules
-
-### User Creation (KB0000001)
-- **Username validation gate**: First command must be `id -u {username}` — aborts if username already exists
-- **Sudo stripping**: If ticket does NOT request sudo → sudoers commands are removed
-- **ACL mode**: If ticket requests "write access to /etc" (not full sudo) → replaced with `setfacl -R -m u:{username}:rwx {target_dir}`
-- **Force-change stripping**: If ticket does NOT request force password change → `passwd -e` is removed
-
-### User Deletion (KB0000014)
-- Archive before delete: `tar czf /tmp/{username}_home.tar.gz /home/{username}`
-- Kill processes before delete: `pkill -u {username}`
-
-### Password Reset (KB0000017)
-- Force-change: If "force" or "expire" mentioned → `passwd -e {username}` appended
-- Default: just `echo {username}:{password} | chpasswd`
-
-### Lock/Unlock (KB0000015)
-- Lock keywords: "lock", "disable", "brute force" → `passwd -l {username}`
-- Unlock keywords: "unlock", "enable" → `passwd -u {username}`
-
-### Modify User (KB0000018)
-- Shell change: `chsh -s {shell} {username}`
-- Group add: `usermod -aG {group} {username}`
-- Group remove: `gpasswd -d {username} {group}`
-
----
-
-## 🗄️ Database Schema
-
-### Core Tables
-
-| Table | Records | Description |
-|:---|:---|:---|
-| `Incident` | 1000+ | All incident tickets with state machine |
-| `KnowledgeArticle` | 18+ | SOPs, runbooks, diagnostic procedures |
-| `AgentApproval` | 100+ | HITL approval requests and decisions |
-| `AgentHistory` | 100+ | Agent execution audit trail |
-| `ConfigurationItem` | 3+ | CIs (servers, workstations) |
-| `Problem` | — | Problem management records |
-| `ChangeRequest` | — | Change management records |
-| `User` | — | Platform users |
-| `Tenant` | 1 | Multi-tenant isolation |
-
-### Incident Activity Timeline
-Each incident has an `activitiesJson` array containing:
-```json
-{
-  "id": "act_1785620050168",
-  "author": "🤖 Unix Auto-Resolver Agent",
-  "comment": "SOP executed successfully...",
-  "isWorkNote": true,
-  "timestamp": "12:34:56 PM"
-}
-```
-
----
-
-## 🔌 API Endpoints
-
-### Incidents
-| Method | Endpoint | Description |
-|:---|:---|:---|
-| `GET` | `/api/v1/incidents` | List all incidents |
-| `GET` | `/api/v1/incidents/:id` | Get incident details |
-| `POST` | `/api/v1/incidents` | Create new incident |
-| `PATCH` | `/api/v1/incidents/:id` | Update incident state/priority |
-| `POST` | `/api/v1/incidents/:id/activities` | Add work note |
-| `DELETE` | `/api/v1/incidents/:id/activities/:activityId` | Delete work note |
-
-### Agent Governance
-| Method | Endpoint | Description |
-|:---|:---|:---|
-| `GET` | `/api/v1/agent/approvals` | List approval requests |
-| `POST` | `/api/v1/agent/approvals` | Create approval request |
-| `POST` | `/api/v1/agent/approvals/:id/approve` | Approve SOP |
-| `POST` | `/api/v1/agent/approvals/:id/reject` | Reject SOP |
-| `GET` | `/api/v1/agent/history` | Agent execution history |
-| `DELETE` | `/api/v1/agent/history/:id` | Delete history entry |
-| `POST` | `/api/v1/agent/reset-locks` | Reset stuck locks |
-
-### Knowledge Base
-| Method | Endpoint | Description |
-|:---|:---|:---|
-| `GET` | `/api/v1/knowledge/articles` | List KB articles |
-| `POST` | `/api/v1/knowledge/articles` | Create KB article |
-| `PUT` | `/api/v1/knowledge/articles/:id` | Update KB article |
-| `DELETE` | `/api/v1/knowledge/articles/:id` | Delete KB article |
-
-### CMDB
-| Method | Endpoint | Description |
-|:---|:---|:---|
-| `GET` | `/api/v1/cmdb/ci` | List all CIs |
-| `POST` | `/api/v1/cmdb/ci` | Register new CI |
-| `GET` | `/api/v1/cmdb/ci/:id` | Get CI details |
-
----
-
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Clone & Install
+
 ```bash
 git clone https://github.com/Venuvgp19/ITSM-Agentic.git
 cd ITSM-Agentic
@@ -208,52 +92,387 @@ npm install
 cd "Resolver Agent" && pip install -r requirements.txt && cd ..
 ```
 
-### 2. Start PostgreSQL (Portable)
+### 2. Database Setup
+
 ```powershell
-& "$env:USERPROFILE\pgsql\pgsql\bin\postgres.exe" -D "$env:USERPROFILE\pgsql\pgsql\data"
+# PostgreSQL must be running on port 5432
+# Create database and user
+$env:PGPASSWORD='itsm_password'
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U postgres -c "CREATE USER itsm_user WITH PASSWORD 'itsm_password';"
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U postgres -c "CREATE DATABASE itsm_db OWNER itsm_user;"
+
+# Restore from dump
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U itsm_user -d itsm_db -f packages/db/prisma/seed-data.sql
 ```
 
-### 3. Restore Database from Dump
-```bash
-psql -h 127.0.0.1 -U itsm_user -d itsm_db -f packages/db/prisma/seed-data.sql
-```
+### 3. Start Backend
 
-### 4. Start All Services
 ```powershell
-# Backend
-npm run dev:backend
-
-# Frontend
-cd apps/frontend && npm run dev
-
-# Control Tower
-cd "Resolver Agent/agent-approval-dashboard" && npx vite --port 5173
-
-# Auto-Resolver Daemon
-cd "Resolver Agent" && python continuous_itsm_agent_daemon.py
+# Must start via Start-Process (PowerShell & operator doesn't work)
+Start-Process cmd.exe "/c cd apps\backend && npm run start:dev" -WindowStyle Minimized
 ```
 
-### 5. Verify
-```bash
+### 4. Start Frontend
+
+```powershell
+Start-Process cmd.exe "/c cd apps\frontend && npm run dev" -WindowStyle Minimized
+```
+
+### 5. Start Control Tower
+
+```powershell
+Start-Process cmd.exe "/c cd "Resolver Agent\agent-approval-dashboard" && npx vite --port 5173" -WindowStyle Minimized
+```
+
+### 6. Start Auto-Resolver Daemon
+
+```powershell
+Start-Process cmd.exe "/c cd "Resolver Agent" && python continuous_itsm_agent_daemon.py" -WindowStyle Minimized
+```
+
+### 7. Verify All Services
+
+```powershell
 # Check all ports
 @(5432, 4000, 3000, 5173) | ForEach-Object {
     $l = Get-NetTCPConnection -LocalPort $_ -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Listen' } | Select-Object -First 1
     if ($l) { "Port $_ : OK" } else { "Port $_ : DOWN" }
 }
+
+# Check backend health
+Invoke-RestMethod -Uri "http://localhost:4000/api/v1/knowledge/articles" -Headers @{Authorization = "Bearer <token>"}
 ```
 
 ---
 
-## 🛡️ Safety Directives
+## All Relevant Commands
 
-- **State Machine**: `NEW` → `IN_PROGRESS` → `PENDING_APPROVAL` → `APPROVED` → `RESOLVED` / `ON_HOLD`
-- **Session Locking**: Escalated incidents get in-memory session locks preventing daemon re-polling
-- **Database Integrity**: Backend preserves all tables/schemas on restart — no destructive resets
-- **HITL Gate**: HIGH risk commands require human approval in Control Tower before execution
-- **SOP Parameterization**: LLM replaces `{ip}`, `{username}`, `{password}` placeholders with ticket-specific values
+### Service Management
+
+```powershell
+# --- Start Services ---
+Start-Process cmd.exe "/c cd apps\backend && npm run start:dev" -WindowStyle Minimized
+Start-Process cmd.exe "/c cd apps\frontend && npm run dev" -WindowStyle Minimized
+Start-Process cmd.exe "/c cd "Resolver Agent\agent-approval-dashboard" && npx vite --port 5173" -WindowStyle Minimized
+Start-Process cmd.exe "/c cd "Resolver Agent" && python continuous_itsm_agent_daemon.py" -WindowStyle Minimized
+
+# --- Kill a Service (find PID first) ---
+Get-Process node | Where-Object {$_.MainWindowTitle -match "backend"} | Stop-Process -Force
+Get-Process python | Where-Object {$_.MainWindowTitle -match "daemon"} | Stop-Process -Force
+
+# --- Restart Backend (wait 3s for TIME_WAIT) ---
+Stop-Process -Name node -Force -ErrorAction SilentlyContinue; Start-Sleep 3; Start-Process cmd.exe "/c cd apps\backend && npm run start:dev" -WindowStyle Minimized
+```
+
+### Database Operations
+
+```powershell
+# --- Connect to PostgreSQL ---
+$env:PGPASSWORD='itsm_password'
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U itsm_user -d itsm_db
+
+# --- Restore Database ---
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5432 -U itsm_user -d itsm_db -f packages/db/prisma/seed-data.sql
+
+# --- Dump Database ---
+& "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -h 127.0.0.1 -p 5432 -U itsm_user -d itsm_db --no-owner --no-privileges > packages/db/prisma/seed-data.sql
+
+# --- Useful Queries ---
+# List all tables
+\dt
+
+# Count incidents
+SELECT COUNT(*) FROM "Incident";
+
+# List KB articles
+SELECT number, title FROM "KnowledgeArticle" ORDER BY number;
+
+# Check agent config
+SELECT * FROM "AgentConfig";
+
+# Find incidents by state
+SELECT number, state, priority FROM "Incident" WHERE state = 'NEW' LIMIT 10;
+```
+
+### API Authentication
+
+```powershell
+# --- Get JWT Token ---
+$body = @{email = "admin@acme.com"; password = "Admin123!"} | ConvertTo-Json
+$res = Invoke-RestMethod -Uri "http://localhost:4000/api/v1/auth/login" -Method POST -Body $body -ContentType "application/json"
+$token = $res.accessToken
+$headers = @{Authorization = "Bearer $token"}
+
+# --- Use Token for API Calls ---
+Invoke-RestMethod -Uri "http://localhost:4000/api/v1/incidents" -Headers $headers
+Invoke-RestMethod -Uri "http://localhost:4000/api/v1/knowledge/articles" -Headers $headers
+Invoke-RestMethod -Uri "http://localhost:4000/api/v1/cmdb/ci" -Headers $headers
+```
+
+### Create Ticket via API (triggers full agent pipeline)
+
+```powershell
+$body = @{
+    title = "Create user john on WorkerNode1HL"
+    description = "Create user account john on WorkerNode1HL with sudo access"
+    category = "User Management"
+    priority = "HIGH"
+} | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:4000/api/v1/incidents" -Method POST -Body $body -ContentType "application/json" -Headers $headers
+```
+
+### Daemon Operations
+
+```powershell
+# --- Check daemon logs ---
+Get-Content "$env:TEMP\opencode\daemon.log" -Tail 50
+
+# --- Check backend logs ---
+Get-Content "C:\Users\GENAIMXQROUSR12\ITSM-Agentic\apps\backend\backend.log" -Tail 50
+
+# --- Check daemon PID ---
+Get-Content "Resolver Agent\daemon.lock"
+
+# --- Force kill daemon ---
+Remove-Item "Resolver Agent\daemon.lock" -Force
+Get-Process python | Stop-Process -Force -ErrorAction SilentlyContinue
+```
+
+### Vector DB Operations
+
+```powershell
+# --- Query vector DB (Python) ---
+python -c "
+import sqlite3
+conn = sqlite3.connect('Resolver Agent/vector_db.db')
+for row in conn.execute('SELECT number, title FROM kb_embeddings ORDER BY number'):
+    print(f'{row[0]}: {row[1][:70]}')
+conn.close()
+"
+
+# --- Sync vector DB from API ---
+python -c "
+import sqlite3, requests
+token = '<JWT_TOKEN>'
+headers = {'Authorization': f'Bearer {token}'}
+res = requests.get('http://localhost:4000/api/v1/knowledge/articles', headers=headers)
+articles = res.json()
+conn = sqlite3.connect('Resolver Agent/vector_db.db')
+existing = {r[0] for r in conn.execute('SELECT number FROM kb_embeddings').fetchall()}
+for a in articles:
+    if a['number'] not in existing:
+        conn.execute('INSERT INTO kb_embeddings (id, number, title, embedding) VALUES (?, ?, ?, ?)',
+                     (a['id'], a['number'], a['title'], '[]'))
+conn.commit()
+conn.close()
+print(f'Synced {len(articles)} articles')
+"
+```
+
+### PuTTY / SSH Operations
+
+```powershell
+# --- Remote command execution ---
+& "C:\Program Files\PuTTY\plink.exe" -ssh root@192.168.100.102 -pw root123 "hostname && uptime"
+
+# --- File transfer ---
+& "C:\Program Files\PuTTY\pscp.exe" -pw root123 localfile.txt root@192.168.100.102:/tmp/
+```
 
 ---
 
-## 📄 License
+## Knowledge Base Articles (17 SOPs)
 
-Distributed under the MIT License. See `LICENSE` for details.
+| KB Number | Title | Category |
+|-----------|-------|----------|
+| KB0000001 | Master User Account Creation & Provisioning | User Management |
+| KB0000002 | Core Router High Latency Troubleshooting | Application - Code & SSO Fix |
+| KB0000003 | NexaCore Application Recovery & Self-Healing | Application / Web Services |
+| KB0000005 | Okta MFA Webhook Delivery Timeout | User Error - Training Provided |
+| KB0000006 | SSSD LDAP Provider Connection Refusal | Server - Kernel & OS Patch |
+| KB0000007 | Email Gateway Outbound Mail Queue Backlog | Application - Code & SSO Fix |
+| KB0000008 | PostgreSQL Primary Node Replication Lag | Network - BGP & Interface Reset |
+| KB0000009 | Kubernetes Node & Kubelet Recovery | User Error - Training Provided |
+| KB0000010 | IPsec X.509 Certificate Renewal | Server - Kernel & OS Patch |
+| KB0000011 | AWS East Region DB Connection Timeout | Application - Code & SSO Fix |
+| KB0000012 | Printer Spooler Offline - London HQ | Network - BGP & Interface Reset |
+| KB0000013 | Active Directory LDAP Sync Failure | User Error - Training Provided |
+| KB0000014 | User Account Offboarding & Deletion | User Management |
+| KB0000015 | User Account Lock & Unlock | User Management |
+| KB0000016 | Kubernetes Ingress Controller High CPU | Network - BGP & Interface Reset |
+| KB0000017 | User Password Reset | User Management |
+| KB0000018 | SAP ERP Financials SSO Auth Failure | Network - BGP & Interface Reset |
+
+---
+
+## API Endpoints
+
+### Incidents
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/incidents` | List all incidents |
+| `GET` | `/api/v1/incidents/:id` | Get incident by ID |
+| `POST` | `/api/v1/incidents` | Create new incident |
+| `PATCH` | `/api/v1/incidents/:id` | Update incident |
+| `POST` | `/api/v1/incidents/:id/activities` | Add work note |
+| `DELETE` | `/api/v1/incidents/:id/activities/:activityId` | Delete work note |
+
+### Knowledge Base
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/knowledge/articles` | List all KB articles |
+| `GET` | `/api/v1/knowledge/articles/:number` | Get by number (e.g. KB0000001) |
+| `POST` | `/api/v1/knowledge/articles` | Create KB article |
+| `PUT` | `/api/v1/knowledge/articles/:id` | Update KB article |
+| `DELETE` | `/api/v1/knowledge/articles/:id` | Delete KB article |
+
+### Agent Governance
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/agent/approvals` | List approval requests |
+| `POST` | `/api/v1/agent/approvals` | Create approval |
+| `POST` | `/api/v1/agent/approvals/:id/approve` | Approve SOP |
+| `POST` | `/api/v1/agent/approvals/:id/reject` | Reject SOP |
+| `GET` | `/api/v1/agent/history` | Agent execution history |
+| `DELETE` | `/api/v1/agent/history/:id` | Delete history entry |
+| `POST` | `/api/v1/agent/reset-locks` | Reset stuck session locks |
+
+### CMDB
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/cmdb/ci` | List all CIs |
+| `POST` | `/api/v1/cmdb/ci` | Register new CI |
+| `GET` | `/api/v1/cmdb/ci/:id` | Get CI details |
+
+### Authentication
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/auth/login` | Login, returns JWT |
+| `POST` | `/api/v1/auth/register` | Register new user |
+
+---
+
+## Daemon Safety Rules
+
+### User Creation (KB0000001)
+- Username validation: first command must be `id -u {username}` — aborts if exists
+- Sudo stripping: sudoers commands removed if not requested
+- ACL mode: write access to /etc replaced with `setfacl`
+- Force-change stripping: `passwd -e` removed if not requested
+
+### User Deletion (KB0000014)
+- Archive before delete: `tar czf /tmp/{username}_home.tar.gz /home/{username}`
+- Kill processes: `pkill -u {username}`
+
+### Password Reset (KB0000017)
+- Force-change: `passwd -e {username}` appended if "force" or "expire" mentioned
+- Default: `echo {username}:{password} | chpasswd`
+
+### Lock/Unlock (KB0000015)
+- Lock: "lock", "disable", "brute force" → `passwd -l {username}`
+- Unlock: "unlock", "enable" → `passwd -u {username}`
+
+---
+
+## State Machine
+
+```
+NEW → IN_PROGRESS → PENDING_APPROVAL → APPROVED → RESOLVED
+                                           ↓
+                                        ON_HOLD (rejected / verification failed)
+```
+
+- Session locking: escalated incidents get in-memory locks preventing daemon re-polling
+- HITL gate: HIGH risk commands require human approval in Control Tower
+- SOP parameterization: LLM replaces `{ip}`, `{username}`, `{password}` placeholders
+
+---
+
+## Project Structure
+
+```
+ITSM-Agentic/
+├── apps/
+│   ├── backend/              # NestJS REST API (port 4000)
+│   │   └── src/modules/
+│   │       ├── incidents/    # Incident CRUD + state machine
+│   │       ├── knowledge/    # KB articles + Knowledge Consolidator
+│   │       ├── ai-router/    # Router Agent + LLM service
+│   │       ├── agent-governance/  # Approval workflow + DB config
+│   │       └── cmdb/         # Configuration Items
+│   └── frontend/             # Next.js UI (port 3000)
+├── Resolver Agent/
+│   ├── agent-approval-dashboard/  # Control Tower (Vite, port 5173)
+│   │   └── src/components/
+│   │       ├── VectorSpace3D.tsx   # 3D KB visualization
+│   │       ├── PendingApprovalsView.tsx
+│   │       └── IncidentAnalysisView.tsx
+│   ├── continuous_itsm_agent_daemon.py  # Auto-Resolver daemon
+│   ├── agent_unix_resolver.py     # SSH execution module
+│   ├── vector_db.db               # RAG vector embeddings (SQLite)
+│   └── requirements.txt           # Python dependencies
+├── packages/
+│   └── db/
+│       └── prisma/
+│           ├── schema.prisma      # Database schema
+│           └── seed-data.sql      # Full DB dump (1000+ incidents)
+├── docker-compose.yml
+├── package.json                    # Root workspace config
+└── README.md
+```
+
+---
+
+## Database Schema (Core Tables)
+
+| Table | Records | Description |
+|-------|---------|-------------|
+| `Incident` | 1000+ | Incident tickets with state machine |
+| `KnowledgeArticle` | 17 | SOPs, runbooks, diagnostic procedures |
+| `AgentApproval` | 100+ | HITL approval requests and decisions |
+| `AgentHistory` | 100+ | Agent execution audit trail |
+| `AgentConfig` | 1 | AI model configuration (persisted in DB) |
+| `ConfigurationItem` | 3+ | Servers, workstations |
+| `Problem` | — | Problem management records |
+| `ChangeRequest` | — | Change management records |
+| `User` | — | Platform users |
+| `Tenant` | 1 | Multi-tenant isolation |
+
+---
+
+## Troubleshooting
+
+### Backend won't start (port in use)
+```powershell
+# Wait for TIME_WAIT sockets to clear
+Start-Sleep 3
+# Or kill existing node processes
+Get-Process node | Stop-Process -Force
+```
+
+### Daemon won't start (lock file)
+```powershell
+# Remove stale lock file
+Remove-Item "Resolver Agent\daemon.lock" -Force
+```
+
+### Vector DB out of sync with API
+```powershell
+# Check counts
+python -c "import sqlite3; print(sqlite3.connect('Resolver Agent/vector_db.db').execute('SELECT COUNT(*) FROM kb_embeddings').fetchone()[0])"
+# Re-sync via daemon (runs every 5 cycles) or manually via API
+```
+
+### PostgreSQL connection refused
+```powershell
+# Check if PostgreSQL is running
+Get-Service | Where-Object {$_.Name -match "postgres"}
+# Check port
+Get-NetTCPConnection -LocalPort 5432 -ErrorAction SilentlyContinue
+```
+
+---
+
+## License
+
+MIT License. See `LICENSE` for details.
