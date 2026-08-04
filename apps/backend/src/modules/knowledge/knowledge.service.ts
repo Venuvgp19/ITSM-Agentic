@@ -210,32 +210,104 @@ export class KnowledgeService {
   }
 
   private categorizeKB(article: any): string {
-    const text = `${article.title || ''} ${article.summary || ''} ${(article.symptoms || []).join(' ')}`.toLowerCase();
+    const title = (article.title || '').toLowerCase();
+    const summary = (article.summary || '').toLowerCase();
+    const ci = (article.configurationItem || '').toLowerCase();
+    const text = `${title} ${summary}`;
     
-    // Category patterns - order matters (most specific first)
+    // Very specific patterns - must match title/summary keywords exactly
     const categories: [RegExp, string][] = [
-      [/user\s*(account)?\s*(creation|create|provision|add)/i, 'User Account Creation & Provisioning'],
-      [/user\s*(account)?\s*(delet|offboard|remov)/i, 'User Account Deletion & Offboarding'],
-      [/user\s*(account)?\s*(lock|unlock|disable|enable)/i, 'User Account Lock & Unlock'],
-      [/user\s*(account)?\s*(password|reset)/i, 'User Password Reset'],
-      [/user\s*(account)?\s*(modif|shell|group|sudo)/i, 'User Account Modification'],
-      [/dashboard|webapp|port\s*8080/i, 'ITSM Dashboard Service Recovery'],
-      [/kubernetes|k8s|kubelet|ingress/i, 'Kubernetes Service Recovery'],
-      [/ssh|sshd|openssh/i, 'SSH Service Recovery'],
-      [/database|postgres|mysql|replication/i, 'Database Service Recovery'],
-      [/network|router|latency|firewall/i, 'Network Infrastructure Recovery'],
-      [/cpu|memory|utilization|performance/i, 'System Performance Optimization'],
-      [/disk|storage|space|volume/i, 'Disk Space Management'],
-      [/service|daemon|systemd| systemctl/i, 'Linux Service Management'],
-      [/security|certificate|ssl|tls/i, 'Security & Certificate Management'],
-      [/erp|sap|application/i, 'Enterprise Application Recovery'],
+      // User management - exact patterns
+      [/(create|provision|add)\s+(user|account|id)\s+(on|for|called)/i, 'User Account Creation & Provisioning'],
+      [/user\s+(delet|offboard|remov)\s+(on|from|account)/i, 'User Account Deletion & Offboarding'],
+      [/(lock|unlock)\s+(account|user)\s+(on|linux)/i, 'User Account Lock & Unlock'],
+      [/(password|passwd)\s+(reset|change)\s+(on|linux)/i, 'User Password Reset'],
+      
+      // Dashboard - exact match
+      [/dashboard.*(worker1ol|192\.168\.56\.10)/i, 'ITSM Dashboard Recovery (Worker1OL)'],
+      
+      // Kubernetes - exact patterns
+      [/kubernetes.*(ingress|controller|high\s*cpu)/i, 'Kubernetes Ingress Recovery'],
+      [/kube.*(node|kubelet|notready)/i, 'Kubernetes Node Recovery'],
+      
+      // SSH - exact
+      [/(sshd|ssh\s+service).*(not\s+working|fail|down)/i, 'SSH Service Failure'],
+      
+      // Database - exact patterns
+      [/postgres.*(replication|lag|primary)/i, 'PostgreSQL Replication Recovery'],
+      [/(database|db).*(connection|timeout)/i, 'Database Connection Recovery'],
+      
+      // Network - exact patterns
+      [/router.*(latency|high|slow)/i, 'Network Latency Recovery'],
+      [/(vpn|ipsec|certificate).*(expir|renew)/i, 'VPN Certificate Recovery'],
+      
+      // Application - exact patterns
+      [/(erp|sap).*(sso|auth|failure)/i, 'SAP ERP SSO Recovery'],
+      [/(okta|mfa).*(webhook|timeout|fail)/i, 'Okta MFA Recovery'],
+      [/(active\s*directory|ldap).*(sync|fail)/i, 'Active Directory LDAP Recovery'],
+      [/(email|mail).*(gateway|queue|backlog)/i, 'Email Gateway Recovery'],
+      
+      // Printer - exact
+      [/(printer|spooler).*(offline|fail)/i, 'Printer Spooler Recovery'],
+      
+      // Server - exact patterns
+      [/(kernel|os).*(patch|panic)/i, 'Unix Kernel Panic Recovery'],
+      [/(sssd|ldap).*(connection|refuse)/i, 'SSSD LDAP Connection Recovery'],
+      
+      // Generic fallback - very broad
+      [/(cpu|memory).*(high|utilization)/i, 'System Performance Issue'],
+      [/(disk|storage).*(space|full)/i, 'Disk Space Issue'],
     ];
     
     for (const [pattern, category] of categories) {
-      if (pattern.test(text)) return category;
+      if (pattern.test(title) || pattern.test(text)) return category;
     }
     
+    // Use existing category if no pattern matches
     return article.category || 'General IT Operations';
+  }
+
+  private detectIntent(article: any): string {
+    const text = `${article.title || ''} ${article.summary || ''} ${(article.resolutionSteps || []).join(' ')}`.toLowerCase();
+    
+    // Intent patterns - these are MUTUALLY EXCLUSIVE
+    const intents: [RegExp, string][] = [
+      // Creation/Provisioning
+      [/(create|provision|add|setup|new)\s+(user|account|id)/i, 'CREATE'],
+      [/useradd|adduser|useradd\s+-m/i, 'CREATE'],
+      
+      // Deletion/Offboarding
+      [/(delete|remove|offboard|deprovision)\s+(user|account)/i, 'DELETE'],
+      [/userdel|deluser|userdel\s+-r/i, 'DELETE'],
+      
+      // Lock/Disable
+      [/(lock|disable|freeze)\s+(account|user)/i, 'LOCK'],
+      [/passwd\s+-l|usermod\s+-L/i, 'LOCK'],
+      
+      // Unlock/Enable
+      [/(unlock|enable|restore|unfreeze)\s+(account|user)/i, 'UNLOCK'],
+      [/passwd\s+-u|usermod\s+-U/i, 'UNLOCK'],
+      
+      // Password Reset
+      [/(reset|change)\s+password/i, 'PASSWORD_RESET'],
+      [/passwd\s+(?!-)[a-z]/i, 'PASSWORD_RESET'],
+      
+      // Modification
+      [/(modify|change|update)\s+(user|shell|group|sudo)/i, 'MODIFY'],
+      [/chsh|usermod\s+-s/i, 'MODIFY'],
+      
+      // Recovery/Repair
+      [/(recover|repair|restore|fix)\s+(service|system|server)/i, 'RECOVERY'],
+      
+      // Diagnostics
+      [/(diagnose|check|inspect|verify|status)/i, 'DIAGNOSTICS'],
+    ];
+    
+    for (const [pattern, intent] of intents) {
+      if (pattern.test(text)) return intent;
+    }
+    
+    return 'GENERAL';
   }
 
   private ensureSshFirstStep(steps: string[], ci: string = '192.168.100.101'): string[] {
@@ -339,22 +411,35 @@ Respond in strict JSON format:
       const existingKb = await this.prisma.knowledgeArticle.findMany({ where: { tenantId } });
       this.logger.log(`📚 Knowledge Consolidator: Analyzing ${existingKb.length} existing KB articles...`);
 
-      // 2. Group KB articles by problem category
+      // 2. Group KB articles by problem category AND intent
       const categoryMap = new Map<string, any[]>();
       
       for (const article of existingKb) {
         const category = this.categorizeKB(article);
-        if (!categoryMap.has(category)) {
-          categoryMap.set(category, []);
+        const intent = this.detectIntent(article);
+        const key = `${category}::${intent}`;
+        if (!categoryMap.has(key)) {
+          categoryMap.set(key, []);
         }
-        categoryMap.get(category)!.push(article);
+        categoryMap.get(key)!.push(article);
       }
 
-      this.logger.log(`📋 Found ${categoryMap.size} distinct problem categories`);
+      this.logger.log(`📋 Found ${categoryMap.size} distinct problem categories with intents`);
 
       // 3. For each category with multiple articles, consolidate into Master SOP
-      for (const [category, articles] of categoryMap) {
+      for (const [key, articles] of categoryMap) {
         if (articles.length < 2) continue; // Skip single-article categories
+        
+        const [category, intent] = key.split('::');
+        
+        // SAFETY CHECK: Never consolidate articles with conflicting intents
+        const intents = articles.map(a => this.detectIntent(a));
+        const uniqueIntents = [...new Set(intents)];
+        
+        if (uniqueIntents.length > 1) {
+          this.logger.warn(`⚠️ Skipping consolidation for "${category}" - conflicting intents detected: ${uniqueIntents.join(', ')}`);
+          continue;
+        }
 
         // Check if Master SOP already exists
         const masterSop = articles.find(a => 
@@ -404,21 +489,63 @@ Respond in strict JSON format:
           }
           const kbNumber = `KB${String(nextNum).padStart(7, '0')}`;
           
-          // Use LLM to synthesize a generic SOP from all articles in this category
+          // Collect actual data from source articles
           const allSteps = articles.flatMap(a => (a.resolutionSteps as string[]) || []);
           const allSymptoms = articles.flatMap(a => (a.symptoms as string[]) || []);
           const allRootCauses = articles.map(a => a.rootCause).filter(Boolean);
+          const allSummaries = articles.map(a => a.summary).filter(Boolean);
 
-          const prompt = `Consolidate these ${articles.length} related SOP articles into ONE generic Master SOP for category: "${category}"
+          // Build detailed context for LLM
+          const articleDetails = articles.map((a, i) => `
+ARTICLE ${i+1}: ${a.number} - ${a.title}
+Category: ${a.category}
+CI: ${a.configurationItem}
+Summary: ${(a.summary || '').substring(0, 300)}
+Symptoms: ${(a.symptoms as string[] || []).join('; ').substring(0, 300)}
+Root Cause: ${(a.rootCause || '').substring(0, 300)}
+Resolution Steps: ${(a.resolutionSteps as string[] || []).join('\n  ')}
+          `).join('\n');
 
-Articles to consolidate:
-${articles.map((a, i) => `${i+1}. ${a.title}\n   Steps: ${(a.resolutionSteps as string[] || []).join('; ')}`).join('\n')}
+          const prompt = `You are an expert ITSM Knowledge Base Manager. Consolidate these ${articles.length} related SOP articles into ONE comprehensive Master SOP.
 
-Create a single, comprehensive Master SOP that covers ALL these scenarios.`;
+CATEGORY: ${category}
+
+SOURCE ARTICLES:
+${articleDetails}
+
+IMPORTANT RULES:
+1. USE THE ACTUAL RESOLUTION STEPS from the source articles - do NOT create generic placeholders
+2. MERGE similar steps, remove duplicates, but KEEP the real commands
+3. The resolution steps must be REAL, executable SSH commands
+4. Keep the best symptoms from each article
+5. Identify the REAL root cause patterns from the articles
+6. Make the summary comprehensive but specific to this category
+
+Return JSON with:
+- title: "Master SOP: ${category}"
+- summary: (comprehensive summary of what this SOP covers)
+- symptoms: (array of unique symptoms from all articles)
+- rootCause: (real root causes identified from the articles)
+- resolutionSteps: (merged, deduplicated REAL steps from source articles - SSH commands with actual parameters)`;
 
           try {
             const parsed = await this.callLlama3370b(prompt, category);
             
+            // Use actual steps from source articles as primary, LLM steps as enhancement
+            const mergedSteps = parsed.resolutionSteps && parsed.resolutionSteps.length > 3
+              ? parsed.resolutionSteps
+              : [...new Set(allSteps)].filter(s => s && s.length > 5);
+            
+            // Use actual symptoms, not generic ones
+            const mergedSymptoms = parsed.symptoms && parsed.symptoms.length > 2
+              ? parsed.symptoms
+              : [...new Set(allSymptoms)].filter(s => s && s.length > 10).slice(0, 10);
+            
+            // Use actual root causes from articles
+            const mergedRootCause = parsed.rootCause && !parsed.rootCause.includes('Improper configuration settings')
+              ? parsed.rootCause
+              : allRootCauses[0] || `Multiple failure modes across ${articles.length} incidents`;
+
             const masterArticle = {
               tenantId,
               number: kbNumber,
@@ -426,10 +553,10 @@ Create a single, comprehensive Master SOP that covers ALL these scenarios.`;
               category,
               configurationItem: articles[0]?.configurationItem || 'General',
               summary: parsed.summary || `Consolidated Master SOP for ${category} covering ${articles.length} related issues.`,
-              symptoms: [...new Set(allSymptoms)].slice(0, 10),
-              rootCause: parsed.rootCause || `Common root cause across ${articles.length} incidents: ${allRootCauses[0] || 'Multiple failure modes'}`,
+              symptoms: mergedSymptoms,
+              rootCause: mergedRootCause,
               resolutionSteps: this.ensureSshFirstStep(
-                parsed.resolutionSteps || [...new Set(allSteps)].slice(0, 15),
+                mergedSteps.slice(0, 20),
                 articles[0]?.configurationItem || '192.168.100.101'
               ),
               workNotesAnalyzedCount: articles.reduce((sum, a) => sum + (a.workNotesAnalyzedCount || 0), 0),
