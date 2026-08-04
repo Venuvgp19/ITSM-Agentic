@@ -302,7 +302,7 @@ def get_embedding(text, client=None):
         config = get_current_model_config()
         base_url = NVIDIA_BASE_URL
         api_key = NVIDIA_API_KEY
-        model = "nvidia/llama-3.2-nv-embedqa-4b-v1"
+        model = "nvidia/nv-embed-v1"
         
         if config and config.get("baseUrl"):
             b_url = config.get("baseUrl", "").lower()
@@ -313,7 +313,7 @@ def get_embedding(text, client=None):
             elif "nvidia" in b_url or "integrate.api.nvidia.com" in b_url:
                 base_url = config.get("baseUrl")
                 api_key = config.get("apiKey", NVIDIA_API_KEY)
-                model = "nvidia/llama-3.2-nv-embedqa-4b-v1"
+                model = "nvidia/nv-embed-v1"
 
         emb_client = OpenAI(api_key=api_key, base_url=base_url, http_client=custom_httpx_client)
         res = emb_client.embeddings.create(input=[clean_text], model=model)
@@ -1552,6 +1552,86 @@ def solve_in_progress_incident(token, incident, kb_articles):
 
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🖥️ Target CI Validation", "SUCCESS", f"Detected OS: {target_os}. Validation complete.")
 
+    # 2. Autonomous CPU/Memory Threshold Check (for CPU/Memory alert tickets)
+    full_text = f"{short_desc} {desc}".lower()
+    is_cpu_alert = any(k in f"{short_desc} {desc}".lower() for k in ["cpu", "load average", "cpu spikes", "cpu 100", "cpu pressure", "cpu saturation", "cpu utilization", "high load"])
+    is_mem_alert = any(k in f"{short_desc} {desc}".lower() for k in ["memory", "ram", "oom", "heap", "swap", "memory pressure", "memory 100", "out of memory", "memory utilization", "kernel heap"])
+
+    if is_cpu_alert or is_mem_alert:
+        logger.info(f"📊 CPU/Memory Alert Ticket Detected — Running Autonomous Threshold Check on {ci_name} ({ip})")
+        post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "📊 Autonomous Threshold Check", "RUNNING", f"Capturing live CPU/Memory utilization from {ci_name} ({ip})...")
+        
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            ssh.connect(ip, username=user, password=password, timeout=10)
+            
+            # Capture CPU
+            cpu_pct = 0.0
+            if is_cpu_alert:
+                stdin, stdout, stderr = ssh.exec_command("top -bn1 | grep 'Cpu(s)' | awk '{print 100 - $8}'")
+                cpu_out = stdout.read().decode('utf-8', 'ignore').strip()
+                try:
+                    cpu_pct = float(cpu_out)
+                    logger.info(f"📊 CPU Utilization: {cpu_pct:.2f}%")
+                except:
+                    cpu_pct = 0.0
+            
+            # Capture Memory
+            mem_pct = 0.0
+            if is_mem_alert:
+                stdin, stdout, stderr = ssh.exec_command("free | awk 'NR==2{printf \"%.2f\", $3*100/$2 }'")
+                mem_out = stdout.read().decode('utf-8', 'ignore').strip()
+                try:
+                    mem_pct = float(mem_out)
+                    logger.info(f"📊 Memory Utilization: {mem_pct:.2f}%")
+                except:
+                    mem_pct = 0.0
+            
+            ssh.close()
+            
+            # Autonomous Decision Logic
+            commands_to_run = []
+            decision_log = []
+            
+            if cpu_pct > 90.0:
+                logger.warning(f"🚨 CPU CRITICAL: {cpu_pct:.2f}% > 90% — Will capture top CPU processes")
+                commands_to_run.append(f'ps -eo pcpu,pid,user,args|sort -nr|head')
+                decision_log.append(f"CPU={cpu_pct:.2f}% > 90% → Capturing top CPU processes")
+            elif is_cpu_alert:
+                logger.info(f"✅ CPU OK: {cpu_pct:.2f}% <= 90% — No CPU action needed")
+                decision_log.append(f"CPU={cpu_pct:.2f}% <= 90% → No CPU action")
+            
+            if mem_pct > 90.0:
+                logger.warning(f"🚨 MEMORY CRITICAL: {mem_pct:.2f}% > 90% — Will capture top Memory processes")
+                commands_to_run.append(f'ps -eo pmem,pid,user,args|sort -nr|head')
+                decision_log.append(f"Memory={mem_pct:.2f}% > 90% → Capturing top Memory processes")
+            elif is_mem_alert:
+                logger.info(f"✅ Memory OK: {mem_pct:.2f}% <= 90% — No Memory action needed")
+                decision_log.append(f"Memory={mem_pct:.2f}% <= 90% → No Memory action")
+            
+            if not commands_to_run:
+                logger.info(f"✅ AUTO-RESOLVE: Both CPU ({cpu_pct:.2f}%) and Memory ({mem_pct:.2f}%) below 90% — Auto-resolving ticket")
+                post_timeline_update(inc_id, number, short_desc, ci_name, "SUCCESS", "📊 Autonomous Threshold Check", "SUCCESS", f"AUTO-RESOLVED: CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}% (both < 90%)")
+                add_work_note(token, inc_id, f"🤖 AUTO-RESOLVED: Resource utilization within normal thresholds (CPU: {cpu_pct:.2f}%, Memory: {mem_pct:.2f}%). No action required.", author="🤖 Unix Auto-Resolver Agent")
+                update_incident_status(token, inc_id, "RESOLVED")
+                resolved_incident_sessions.add(inc_id)
+                return
+            else:
+                # Prepend threshold check commands to existing SOP commands
+                if sop_commands:
+                    sop_commands = commands_to_run + sop_commands
+                else:
+                    sop_commands = commands_to_run
+                
+                decision_summary = "; ".join(decision_log)
+                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "📊 Autonomous Threshold Check", "SUCCESS", f"Decision: {decision_summary}")
+                logger.info(f"📋 Autonomous Decision: {decision_summary} — Prepending check commands to SOP execution")
+        
+        except Exception as e:
+            logger.error(f"Autonomous threshold check failed: {e}")
+            # Continue with normal SOP execution if threshold check fails
+    
     if approved_appr:
         logger.info(f"🟢 Execution approved! Found existing APPROVED approval ({approved_appr.get('id')}) for [{number}]. Executing approved commands...")
         try:
@@ -1873,6 +1953,13 @@ def start_continuous_monitoring():
             # Fetch active queue & KB articles
             incidents = fetch_incident_queue(token)
             kb_articles = fetch_kb_articles(token)
+
+            # Sync KB articles to Vector DB (every 5 cycles to avoid overhead)
+            if not hasattr(start_continuous_monitoring, 'sync_counter'):
+                start_continuous_monitoring.sync_counter = 0
+            start_continuous_monitoring.sync_counter += 1
+            if start_continuous_monitoring.sync_counter % 5 == 0:
+                sync_vector_db_with_kb(token, None, vector_db)
 
             in_progress_tickets = []
             approvals_list = fetch_agent_approvals(token)
