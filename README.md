@@ -2,112 +2,215 @@
 
 An end-to-end, enterprise-grade **IT Service Management (ITSM) Platform** with an **Autonomous Multi-Agent AI Engine** capable of automated ticket routing, non-interactive SSH remote remediation, live host health verification, master SOP synthesis, state machine loop protection, and strict Human-in-the-Loop (HITL) governance.
 
-## System Architecture Flowchart
+## Complete Incident Flow
 
 ```mermaid
 flowchart TD
-    subgraph External["External Systems"]
-        U[User / API Client]
-        SSH[Target Hosts<br/>WorkerNode1HL<br/>Control Plane]
+    START(["Incident Created<br/>state=NEW, department=UNASSIGNED"])
+
+    subgraph ROUTER["Router Agent — AI Router Service :4000 (polls every 10s)"]
+        R1["scanAndRouteUnassignedQueue()"]
+        R2["findUnassigned() — Prisma query<br/>department='UNASSIGNED' or null"]
+        R3["Sort by priority<br/>P1 Critical → P4 Low"]
+        R4["Take top 2 tickets"]
+        R5["routeIncident()"]
+        R6["analyzeIncidentWithNvidiaLLM()<br/>LLM predicts: department, CI,<br/>urgency, confidenceScore"]
+        R7{"confidence ≥ 85?"}
+        R8["Auto-assign + set state<br/>= IN_PROGRESS"]
+        R9["Skip — leave UNASSIGNED"]
+
+        R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7
+        R7 -->|"Yes"| R8
+        R7 -->|"No"| R9
     end
 
-    subgraph Frontend["Frontend Layer"]
-        UI["Next.js Frontend<br/>:3000"]
-        CT["Control Tower<br/>Vite + React :5173<br/>HITL Approvals / 3D Vector Map"]
+    subgraph POLL["Resolver Daemon — main loop (polls every 15s)"]
+        P1["get_auth_token()<br/>POST /api/v1/auth/login"]
+        P2["fetch_incident_queue()<br/>GET /api/v1/incidents"]
+        P3["fetch_kb_articles()<br/>GET /api/v1/knowledge/articles"]
+        P4{"sync_counter % 5 == 0?"}
+        P5["sync_vector_db_with_kb()<br/>Embed new KB articles into vector DB"]
+        P6["Classify incidents into queues:<br/>IN_PROGRESS → solve_in_progress_incident()<br/>ON_HOLD+APPROVED → also solve"]
+        P7["Process up to 5 tickets<br/>sequentially"]
+
+        P1 --> P2 --> P3 --> P4
+        P4 -->|"Yes (every ~75s)"| P5 --> P6
+        P4 -->|"No"| P6
+        P6 --> P7
     end
 
-    subgraph Backend["Backend Layer"]
-        API["NestJS Backend :4000"]
-        Auth["JWT Auth<br/>admin@acme.com"]
-        KB["Knowledge Service<br/>Consolidator + SOP Synthesis"]
-        AIR["AI Router Service<br/>genailab-maas-gpt-4o"]
-        GOV["Agent Governance<br/>DB-persisted Config"]
-        CMDB["CMDB Service<br/>Configuration Items"]
+    subgraph SOP["SOP Lookup — evaluate_and_get_sop()"]
+        S1["Build query: short_desc + description"]
+        S2["get_embedding(query)<br/>Model: azure/genailab-maas-text-embedding-3-large<br/>via genailab API"]
+        S3["vector_db.search_kb(emb, limit=3)<br/>SQLite cosine similarity search<br/>against 17 KB embeddings"]
+        S4["Top match score?"]
+        S5["search_kb_without_embeddings()<br/>Fallback: 7 hard-coded intent patterns<br/>+ Jaccard keyword matching"]
+
+        S1 --> S2 --> S3 --> S4
+        S4 -->|"No results"| S5
     end
 
-    subgraph Daemon["Auto-Resolver Daemon"]
-        D["continuous_itsm_agent_daemon.py"]
-        R["Router Agent<br/>symptom → dept/CI/urgency"]
-        RES["Resolver Agent<br/>SSH + Paramiko"]
-        SYN["Synthesizer Agent<br/>SOP on RAG miss"]
-        VDB["Vector DB<br/>SQLite embeddings<br/>similarity ≥ 0.5"]
+    subgraph RAGHIT["RAG HIT — similarity ≥ 0.5"]
+        H1["Retrieve matched KB article<br/>resolutionSteps from PostgreSQL"]
+        H2["LLM parameterization<br/>Replace {ip}, {username},<br/>{password}, {sudo_command}<br/>with ticket-specific values"]
+        H3["_enforce_sop_safety_rules()<br/>- KB0000001: strip sudoers if not requested<br/>- KB0000014: preserve archive step<br/>- KB0000017: strip chage if not requested<br/>- KB0000015: passwd -l or -u based on intent"]
+        H4["Return: is_new=False,<br/>parameterized SOP commands"]
+
+        H1 --> H2 --> H3 --> H4
     end
 
-    subgraph Database["Data Layer"]
-        PG[("PostgreSQL :5432<br/>1000+ Incidents<br/>17 KB Articles<br/>Approvals / History")]
+    subgraph RAGMISS["RAG MISS — similarity < 0.5 or no match"]
+        M1["LLM SOP Synthesis<br/>Model: azure/genailab-maas-gpt-4.1-mini<br/>System rules: no hallucinations,<br/>no fake URLs, concrete shell commands only"]
+        M2["Post-process synthesized steps<br/>- Strip numbered prefixes<br/>- Remove pure SSH connection steps<br/>- Sanitize hallucinated URLs<br/>- Remove placeholder tags"]
+        M3["Wrap commands in SSH:<br/>ssh root@{ip} '<command>'"]
+        M4["Return: is_new=True,<br/>KB_NEW, new_sop_data"]
+
+        M1 --> M2 --> M3 --> M4
     end
 
-    subgraph Pipeline["Agent Pipeline"]
-        direction LR
-        P1["🎫 New Incident"] --> P2["🚦 Router Agent"]
-        P2 --> P3{"RAG Match?"}
-        P3 -->|"Hit ≥ 0.5"| P4["🔑 SSH Execute"]
-        P3 -->|"Miss"| P5["🧠 Synthesizer"]
-        P5 --> P6["🛡️ HITL Approval"]
-        P6 -->|"Approved"| P4
-        P6 -->|"Rejected"| P7["⏸️ ON_HOLD"]
-        P4 --> P8{"Verified?"}
-        P8 -->|"Healthy"| P9["✅ RESOLVED"]
-        P8 -->|"Failed"| P7
+    subgraph HITL["HITL Governance — Control Tower :5173"]
+        H10["submit_approval_request_to_dashboard()<br/>POST /api/v1/agent/approvals<br/>riskLevel=HIGH, confidenceScore=85"]
+        H11["Incident → ON_HOLD<br/>Lock session"]
+        H12["Control Tower displays<br/>approval card with SOP steps"]
+        H13{"Human decision?"}
+        H14["APPROVED — unlock session"]
+        H15["REJECTED — escalate to<br/>DevOps Team, lock permanently"]
+
+        H10 --> H11 --> H12 --> H13
+        H13 -->|"Approve"| H14
+        H13 -->|"Reject"| H15
     end
 
-    U -->|"POST /api/v1/incidents"| API
-    U --> UI
-    UI -->|"CRUD / Auth"| API
-    CT -->|"Approve / Reject"| GOV
-    CT -->|"3D Vector Space"| VDB
+    subgraph SSH["SSH Execution — execute_ssh_sop()"]
+        E1["resolve_ci_credentials()<br/>Match CI name/IP to<br/>CI_CREDENTIALS dict"]
+        E2["detect_target_os()<br/>ssh root@ip 'uname -s'"]
+        E3["paramiko.SSHClient()<br/>connect with 3 retries<br/>timeout=3s, banner=5s"]
+        E4["For each command in SOP:<br/>exec_command(cmd)<br/>Capture stdout + stderr<br/>timeout=120s per command"]
+        E5{"Connected?"}
+        E6["Simulation mode:<br/>Generate fake stdout<br/>per command type"]
 
-    API --> PG
-    API --> Auth
-    API --> KB
-    API --> AIR
-    API --> CMDB
+        E1 --> E2 --> E3 --> E4
+        E3 -.->|"Connection failed"| E5 -->|"No"| E6
+    end
 
-    D -->|"Polls NEW incidents"| API
-    D --> R
-    R -->|"predict dept/CI/urgency"| AIR
-    R -->|"query existing SOPs"| VDB
-    D --> RES
-    RES -->|"execute commands"| SSH
-    D --> SYN
-    SYN -->|"synthesize SOP"| KB
-    SYN -->|"embed & store"| VDB
-    GOV -->|"load config from"| PG
-    KB -->|"sync to vector DB every 5 cycles"| VDB
+    subgraph VERIFY["LLM Verification — invoke_llm_with_fallback()"]
+        V1["Build eval prompt with<br/>SSH execution log"]
+        V2["LLM evaluates output<br/>Rules:<br/>- User creation: useradd/mkdir = OK<br/>- User deletion: 'no such user' = OK<br/>- CPU/Memory: classify OS vs APP processes"]
+        V3{"is_healthy?"}
+        V4["✅ RESOLVED<br/>Post execution proof work note<br/>update_incident_status('RESOLVED')"]
+        V5["save_new_kb_article_to_storage()<br/>POST /api/v1/knowledge/articles<br/>(skip for user creation — reuses KB0000001)"]
+        V6["post_history_entry_to_dashboard()<br/>Audit trail"]
+        V7["ON_HOLD — Escalate to team member<br/>Add work note with evidence"]
 
-    PG -->|"embeddings"| VDB
+        V1 --> V2 --> V3
+        V3 -->|"True"| V4 --> V5 --> V6
+        V3 -->|"False"| V7
+    end
 
-    style CT fill:#0ea5e9,color:#fff
-    style D fill:#8b5cf6,color:#fff
-    style API fill:#10b981,color:#fff
-    style PG fill:#f59e0b,color:#000
-    style VDB fill:#ec4899,color:#fff
-    style Pipeline fill:#1e293b,color:#fff
+    subgraph SYNC["Background Knowledge Sync"]
+        SY1["sync_vector_db_with_kb()<br/>Every 5 daemon cycles (~75s)"]
+        SY2["For each KB article NOT in vector DB:<br/>content = Title + Summary + Steps"]
+        SY3["get_embedding(content)<br/>azure/genailab-maas-text-embedding-3-large"]
+        SY4["INSERT INTO kb_embeddings<br/>(id, number, title, embedding)"]
+        SY5["Knowledge Consolidator<br/>(NestJS background worker)<br/>categorizeKB() + detectIntent()<br/>Consolidate into Master SOPs"]
+
+        SY1 --> SY2 --> SY3 --> SY4
+        SY5 -.->|"Groups by category+intent<br/>≥2 articles per group"| SY4
+    end
+
+    subgraph LLMCHAIN["LLM Fallback Chain"]
+        L1["1. genailab-maas-gpt-4o<br/>(primary — from DB config)"]
+        L2["2. nvidia/nemotron-3-ultra-550b-a55b"]
+        L3["3. azure_ai/genailab-maas-Llama-3.3-70B-Instruct"]
+        L4["4. azure_ai/genailab-maas-DeepSeek-R1"]
+        L5["5. gemini-2.5-pro"]
+
+        L1 -->|"HTTP 429/503 or error"| L2 --> L3 --> L4 --> L5
+    end
+
+    START --> ROUTER
+    R8 --> POLL
+    P7 --> SOP
+    SOP -->|"score ≥ 0.5"| RAGHIT
+    SOP -->|"score < 0.5"| RAGMISS
+    RAGHIT -->|"RAG hit — skip HITL"| SSH
+    RAGMISS -->|"RAG miss — new SOP"| HITL
+    H14 --> SSH
+    SSH --> VERIFY
+    VERIFY -->|"Resolved"| SYNC
+    VERIFY -->|"Failed"| DONE(["End — ON_HOLD"])
+
+    style ROUTER fill:#3b82f6,color:#fff
+    style POLL fill:#8b5cf6,color:#fff
+    style SOP fill:#f59e0b,color:#000
+    style RAGHIT fill:#10b981,color:#fff
+    style RAGMISS fill:#ef4444,color:#fff
+    style HITL fill:#0ea5e9,color:#fff
+    style SSH fill:#6366f1,color:#fff
+    style VERIFY fill:#ec4899,color:#fff
+    style SYNC fill:#14b8a6,color:#fff
+    style LLMCHAIN fill:#1e293b,color:#fff
 ```
 
-### Agent Pipeline States
+### Incident State Machine
 
 ```mermaid
 stateDiagram-v2
     [*] --> NEW: Incident Created
-    NEW --> IN_PROGRESS: Router Agent picks up
-    IN_PROGRESS --> PENDING_APPROVAL: SOP synthesized
-    PENDING_APPROVAL --> APPROVED: Human approves
-    PENDING_APPROVAL --> ON_HOLD: Human rejects
-    APPROVED --> RESOLVED: SSH verified healthy
-    APPROVED --> ON_HOLD: Verification failed
-    ON_HOLD --> IN_PROGRESS: Specialist reopens
+    NEW --> IN_PROGRESS: Router Agent (confidence ≥ 85)
+    IN_PROGRESS --> IN_PROGRESS: RAG HIT — SOP found
+    IN_PROGRESS --> ON_HOLD: RAG MISS — HITL approval needed
+    ON_HOLD --> IN_PROGRESS: Human APPROVES
+    ON_HOLD --> ON_HOLD: Human REJECTS → escalate
+    IN_PROGRESS --> RESOLVED: SSH verified healthy
+    IN_PROGRESS --> ON_HOLD: SSH verification failed
     RESOLVED --> [*]
+    ON_HOLD --> [*]: Permanently locked
+```
+
+### RAG Search Pipeline
+
+```mermaid
+flowchart LR
+    Q["Incident<br/>short_desc + desc"]
+    E["Embed<br/>text-embedding-3-large"]
+    VDB[("Vector DB<br/>SQLite<br/>17 KB embeddings")]
+    CS["Cosine<br/>Similarity"]
+    TOP["Top 3<br/>results"]
+    TH{"Score<br/>≥ 0.5?"}
+    HIT["RAG HIT<br/>Parameterize SOP<br/>with LLM"]
+    MISS["Fallback Search<br/>7 intent patterns<br/>+ Jaccard keywords"]
+    MISS2{"Keyword<br/>score ≥ 0.35?"}
+    MATCH["Keyword Match<br/>score mapped to<br/>0.78–0.98"]
+    NOSOP["RAG MISS<br/>Synthesize new SOP<br/>via LLM"]
+
+    Q --> E --> VDB --> CS --> TOP --> TH
+    TH -->|"Yes"| HIT
+    TH -->|"No / no results"| MISS --> MISS2
+    MISS2 -->|"Yes"| MATCH
+    MISS2 -->|"No"| NOSOP
 ```
 
 ### 4-Agent Roles
 
 | Agent | Engine | Role |
 |-------|--------|------|
-| **Router Agent** | genailab-maas-gpt-4o (DB config) | Parse symptoms, predict dept/CI/urgency, set SLA priority |
-| **Resolver Agent** | Python daemon + Paramiko SSH | OS fingerprinting, non-interactive SSH execution, live health verification |
-| **Knowledge Synthesizer** | azure/genailab-maas-gpt-4.1-mini | Root-cause analysis, SOP synthesis on RAG miss, embed to vector DB |
-| **HITL Control Tower** | Vite + React | Risk evaluation, interactive approval cards, 3D vector map, session locks |
+| **Router Agent** | genailab-maas-gpt-4o (DB config) | Parse symptoms, predict dept/CI/urgency, set SLA priority, auto-assign if confidence ≥ 85 |
+| **Resolver Agent** | Python daemon + Paramiko SSH | OS fingerprinting, non-interactive SSH execution (3 retries), live health verification |
+| **Knowledge Synthesizer** | azure/genailab-maas-gpt-4.1-mini | Root-cause analysis, SOP synthesis on RAG miss, embed to vector DB, parameterize placeholders |
+| **HITL Control Tower** | Vite + React :5173 | Risk evaluation, interactive approval cards, 3D vector space map, session locks |
+
+### Key Thresholds
+
+| Threshold | Value | Purpose |
+|-----------|-------|---------|
+| Vector similarity | `≥ 0.5` | RAG HIT vs MISS decision |
+| Keyword Jaccard | `≥ 0.35` | Fallback keyword match minimum |
+| AI Router confidence | `≥ 85` | Auto-assign vs leave UNASSIGNED |
+| CPU/Memory auto-resolve | `≤ 90%` | OS-level processes auto-resolve |
+| KB duplicate overlap | `> 0.5` | Prevent duplicate KB articles |
+| LLM API timeout | `60s` | All LLM calls |
+| LLM temperature | `0.2` | All LLM calls |
 
 ---
 
