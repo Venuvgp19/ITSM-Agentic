@@ -2,39 +2,112 @@
 
 An end-to-end, enterprise-grade **IT Service Management (ITSM) Platform** with an **Autonomous Multi-Agent AI Engine** capable of automated ticket routing, non-interactive SSH remote remediation, live host health verification, master SOP synthesis, state machine loop protection, and strict Human-in-the-Loop (HITL) governance.
 
-## Architecture Overview
+## System Architecture Flowchart
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Human-in-the-Loop (HITL)                     │
-│                   Control Tower (Vite + React :5173)                │
-└──────────┬──────────────────────────┬───────────────────────────────┘
-           │ Approve / Reject         │ Monitor / Audit
-           ▼                          ▼
-┌──────────────────────┐  ┌──────────────────────────────────────────┐
-│   NestJS Backend     │  │         Auto-Resolver Daemon             │
-│   REST API (:4000)   │◄─┤   Python + Paramiko SSH (Background)    │
-│   Auth, CRUD, KB,    │  │   Router → Resolver → Synthesizer       │
-│   Agent Governance   │  │   Vector Search RAG → SSH Execution      │
-└──────────┬───────────┘  └──────────┬───────────────────────────────┘
-           │                          │
-           ▼                          ▼
-┌──────────────────────┐  ┌──────────────────────────────────────────┐
-│   PostgreSQL (:5432) │  │      Vector DB (SQLite)                  │
-│   1000+ incidents    │  │      17 KB embeddings                    │
-│   17 KB articles     │  │      Synced from API every 5 cycles      │
-│   Approvals, CI, etc │  │      RAG similarity threshold: 0.5      │
-└──────────────────────┘  └──────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph External["External Systems"]
+        U[User / API Client]
+        SSH[Target Hosts<br/>WorkerNode1HL<br/>Control Plane]
+    end
+
+    subgraph Frontend["Frontend Layer"]
+        UI["Next.js Frontend<br/>:3000"]
+        CT["Control Tower<br/>Vite + React :5173<br/>HITL Approvals / 3D Vector Map"]
+    end
+
+    subgraph Backend["Backend Layer"]
+        API["NestJS Backend :4000"]
+        Auth["JWT Auth<br/>admin@acme.com"]
+        KB["Knowledge Service<br/>Consolidator + SOP Synthesis"]
+        AIR["AI Router Service<br/>genailab-maas-gpt-4o"]
+        GOV["Agent Governance<br/>DB-persisted Config"]
+        CMDB["CMDB Service<br/>Configuration Items"]
+    end
+
+    subgraph Daemon["Auto-Resolver Daemon"]
+        D["continuous_itsm_agent_daemon.py"]
+        R["Router Agent<br/>symptom → dept/CI/urgency"]
+        RES["Resolver Agent<br/>SSH + Paramiko"]
+        SYN["Synthesizer Agent<br/>SOP on RAG miss"]
+        VDB["Vector DB<br/>SQLite embeddings<br/>similarity ≥ 0.5"]
+    end
+
+    subgraph Database["Data Layer"]
+        PG[("PostgreSQL :5432<br/>1000+ Incidents<br/>17 KB Articles<br/>Approvals / History")]
+    end
+
+    subgraph Pipeline["Agent Pipeline"]
+        direction LR
+        P1["🎫 New Incident"] --> P2["🚦 Router Agent"]
+        P2 --> P3{"RAG Match?"}
+        P3 -->|"Hit ≥ 0.5"| P4["🔑 SSH Execute"]
+        P3 -->|"Miss"| P5["🧠 Synthesizer"]
+        P5 --> P6["🛡️ HITL Approval"]
+        P6 -->|"Approved"| P4
+        P6 -->|"Rejected"| P7["⏸️ ON_HOLD"]
+        P4 --> P8{"Verified?"}
+        P8 -->|"Healthy"| P9["✅ RESOLVED"]
+        P8 -->|"Failed"| P7
+    end
+
+    U -->|"POST /api/v1/incidents"| API
+    U --> UI
+    UI -->|"CRUD / Auth"| API
+    CT -->|"Approve / Reject"| GOV
+    CT -->|"3D Vector Space"| VDB
+
+    API --> PG
+    API --> Auth
+    API --> KB
+    API --> AIR
+    API --> CMDB
+
+    D -->|"Polls NEW incidents"| API
+    D --> R
+    R -->|"predict dept/CI/urgency"| AIR
+    R -->|"query existing SOPs"| VDB
+    D --> RES
+    RES -->|"execute commands"| SSH
+    D --> SYN
+    SYN -->|"synthesize SOP"| KB
+    SYN -->|"embed & store"| VDB
+    GOV -->|"load config from"| PG
+    KB -->|"sync to vector DB every 5 cycles"| VDB
+
+    PG -->|"embeddings"| VDB
+
+    style CT fill:#0ea5e9,color:#fff
+    style D fill:#8b5cf6,color:#fff
+    style API fill:#10b981,color:#fff
+    style PG fill:#f59e0b,color:#000
+    style VDB fill:#ec4899,color:#fff
+    style Pipeline fill:#1e293b,color:#fff
 ```
 
-### 4-Agent Pipeline
+### Agent Pipeline States
+
+```mermaid
+stateDiagram-v2
+    [*] --> NEW: Incident Created
+    NEW --> IN_PROGRESS: Router Agent picks up
+    IN_PROGRESS --> PENDING_APPROVAL: SOP synthesized
+    PENDING_APPROVAL --> APPROVED: Human approves
+    PENDING_APPROVAL --> ON_HOLD: Human rejects
+    APPROVED --> RESOLVED: SSH verified healthy
+    APPROVED --> ON_HOLD: Verification failed
+    ON_HOLD --> IN_PROGRESS: Specialist reopens
+    RESOLVED --> [*]
+```
+
+### 4-Agent Roles
 
 | Agent | Engine | Role |
 |-------|--------|------|
-| **Router Agent** | genailab-maas-gpt-4o (DB config) | Parse symptoms, predict dept/CI/urgency, set SLA |
-| **Resolver Agent** | Python daemon + Paramiko SSH | OS fingerprinting, SSH execution, health verification |
-| **Knowledge Synthesizer** | azure/genailab-maas-gpt-4.1-mini | Root-cause analysis, SOP synthesis on RAG miss |
-| **HITL Control Tower** | Vite + React | Risk evaluation, approval cards, session locks |
+| **Router Agent** | genailab-maas-gpt-4o (DB config) | Parse symptoms, predict dept/CI/urgency, set SLA priority |
+| **Resolver Agent** | Python daemon + Paramiko SSH | OS fingerprinting, non-interactive SSH execution, live health verification |
+| **Knowledge Synthesizer** | azure/genailab-maas-gpt-4.1-mini | Root-cause analysis, SOP synthesis on RAG miss, embed to vector DB |
+| **HITL Control Tower** | Vite + React | Risk evaluation, interactive approval cards, 3D vector map, session locks |
 
 ---
 
