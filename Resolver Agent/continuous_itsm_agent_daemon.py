@@ -309,7 +309,7 @@ def get_embedding(text, client=None):
             if "genailab" in b_url:
                 base_url = config.get("baseUrl")
                 api_key = config.get("apiKey", GENAI_API_KEY)
-                model = "azure_ai/genailab-maas-text-embedding-3-small"
+                model = "azure/genailab-maas-text-embedding-3-large"
             elif "nvidia" in b_url or "integrate.api.nvidia.com" in b_url:
                 base_url = config.get("baseUrl")
                 api_key = config.get("apiKey", NVIDIA_API_KEY)
@@ -343,6 +343,11 @@ class LocalVectorDB:
     def get_indexed_ids(self):
         cursor = self.conn.cursor()
         cursor.execute("SELECT id FROM kb_embeddings")
+        return {row[0] for row in cursor.fetchall()}
+
+    def get_indexed_numbers(self):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT number FROM kb_embeddings")
         return {row[0] for row in cursor.fetchall()}
 
     def add_kb_embedding(self, kb_id, number, title, embedding):
@@ -380,19 +385,20 @@ vector_db = LocalVectorDB(os.path.join(os.path.dirname(os.path.abspath(__file__)
 def sync_vector_db_with_kb(token, client, vdb):
     try:
         kb_articles = fetch_kb_articles(token)
-        indexed_ids = vdb.get_indexed_ids()
+        indexed_numbers = vdb.get_indexed_numbers()
         
         for art in kb_articles:
             art_id = art.get("id")
-            if art_id not in indexed_ids:
+            art_number = art.get("number")
+            if art_number not in indexed_numbers:
                 title = art.get("title", "")
                 summary = art.get("summary", "")
                 steps = json.dumps(art.get("resolutionSteps", []))
                 content_to_embed = f"Title: {title}\nSummary: {summary}\nSteps: {steps}"
                 
                 emb = get_embedding(content_to_embed, client)
-                vdb.add_kb_embedding(art_id, art.get("number"), title, emb)
-                logger.info(f"Indexed KB article {art.get('number')} in vector database.")
+                vdb.add_kb_embedding(art_id, art_number, title, emb)
+                logger.info(f"Indexed KB article {art_number} in vector database.")
     except Exception as e:
         logger.error(f"Failed to sync KB articles to Vector DB: {e}")
 
@@ -1187,8 +1193,19 @@ def _enforce_sop_safety_rules(sop_commands, short_desc, desc, kb_number):
 
 
 def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articles, incident_id, target_os="Linux/Unix"):
-    # 1. Embedding-Free RAG Query
-    rag_results = search_kb_without_embeddings(short_desc, desc, kb_articles)
+    # 1. Vector DB RAG Query (primary)
+    rag_results = []
+    try:
+        query_text = f"{short_desc} {desc}"
+        query_emb = get_embedding(query_text)
+        if query_emb:
+            rag_results = vector_db.search_kb(query_emb, limit=3)
+    except Exception as e:
+        logger.warning(f"Vector search failed, falling back to keyword search: {e}")
+    
+    # 2. Fallback to keyword search if vector search returns nothing
+    if not rag_results:
+        rag_results = search_kb_without_embeddings(short_desc, desc, kb_articles)
     
     is_new = True
     matched_kb = None
@@ -1196,16 +1213,16 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
     
     if rag_results:
         top_match = rag_results[0]
-        similarity_score = top_match["score"]
-        if similarity_score >= 0.75:
-            matched_kb = top_match.get("article")
-            if not matched_kb:
-                for art in kb_articles:
-                    if art.get("number") == top_match["number"]:
-                        matched_kb = art
-                        break
+        similarity_score = top_match.get("score", 0)
+        if similarity_score >= 0.5:
+            matched_number = top_match.get("number")
+            for art in kb_articles:
+                if art.get("number") == matched_number:
+                    matched_kb = art
+                    break
             if matched_kb is not None:
                 is_new = False
+                logger.info(f"🎯 RAG Match: Score {similarity_score:.4f} -> {matched_number} '{matched_kb.get('title', '')}'")
     
     if is_new:
         logger.info(f"✨ RAG Miss (similarity score {similarity_score:.4f} < 0.75). Handing over to Knowledge base creator LLM for SOP synthesis...")

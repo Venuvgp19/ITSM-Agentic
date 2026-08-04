@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 
 export interface SafetyCheck {
@@ -83,9 +83,13 @@ export interface AgentHistoryEntry {
 }
 
 @Injectable()
-export class AgentGovernanceService {
+export class AgentGovernanceService implements OnModuleInit {
 
   constructor(private readonly prisma: PrismaService) {}
+
+  async onModuleInit() {
+    await this.getModelConfig();
+  }
 
   private mapApprovalToDTO(record: any): AgentApproval {
     const details = record.details as any || {};
@@ -438,28 +442,72 @@ export class AgentGovernanceService {
   }
 
   private modelConfig: any = {
-    environment: 'genai_lab',
-    baseUrl: 'https://genailab.tcs.in/v1',
-    apiKey: 'sk-RRoxANx2dKdNE3N5j0mbxQ',
-    routerModel: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
-    resolverModel: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
-    synthesizerModel: 'azure_ai/genailab-maas-DeepSeek-R1',
+    environment: 'nvidia',
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    apiKey: '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',
+    routerModel: 'nvidia/nemotron-3-ultra-550b-a55b',
+    resolverModel: 'nvidia/nemotron-3-ultra-550b-a55b',
+    synthesizerModel: 'azure_ai/genailab-maas-Llama-4-Maverick-17B-128E-Instruct-FP8',
     governanceModel: 'genailab-maas-gpt-4o',
     fallbackModels: [
-      'nvidia/nemotron-3-ultra-550b-a55b',
-      'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
-      'azure_ai/genailab-maas-DeepSeek-R1',
-      'genailab-maas-gpt-4o',
-      'gemini-2.5-pro'
+      'azure/genailab-maas-gpt-4.1-mini',
+      'azure_ai/genailab-maas-Llama-4-Maverick-17B-128E-Instruct-FP8',
+      'gemini-2.5-flash',
+      'nvidia/nemotron-3-ultra-550b-a55b'
     ]
   };
 
-  getModelConfig() {
+  async getModelConfig(): Promise<any> {
+    try {
+      const record = await (this.prisma as any).agentConfig.findUnique({ where: { id: 'default' } });
+      if (record) {
+        this.modelConfig = {
+          environment: record.environment,
+          baseUrl: record.baseUrl,
+          apiKey: record.apiKey,
+          routerModel: record.routerModel,
+          resolverModel: record.resolverModel,
+          synthesizerModel: record.synthesizerModel,
+          governanceModel: record.governanceModel,
+          fallbackModels: record.fallbackModels || this.modelConfig.fallbackModels,
+        };
+      }
+    } catch (e) {
+      // Table may not exist yet, use in-memory config
+    }
     return this.modelConfig;
   }
 
-  updateModelConfig(patch: Partial<any>) {
+  async updateModelConfig(patch: Partial<any>): Promise<any> {
     this.modelConfig = { ...this.modelConfig, ...patch };
+    try {
+      await (this.prisma as any).agentConfig.upsert({
+        where: { id: 'default' },
+        create: {
+          id: 'default',
+          environment: this.modelConfig.environment,
+          baseUrl: this.modelConfig.baseUrl,
+          apiKey: this.modelConfig.apiKey,
+          routerModel: this.modelConfig.routerModel,
+          resolverModel: this.modelConfig.resolverModel,
+          synthesizerModel: this.modelConfig.synthesizerModel,
+          governanceModel: this.modelConfig.governanceModel,
+          fallbackModels: this.modelConfig.fallbackModels,
+        },
+        update: {
+          environment: this.modelConfig.environment,
+          baseUrl: this.modelConfig.baseUrl,
+          apiKey: this.modelConfig.apiKey,
+          routerModel: this.modelConfig.routerModel,
+          resolverModel: this.modelConfig.resolverModel,
+          synthesizerModel: this.modelConfig.synthesizerModel,
+          governanceModel: this.modelConfig.governanceModel,
+          fallbackModels: this.modelConfig.fallbackModels,
+        },
+      });
+    } catch (e) {
+      // Fallback to in-memory only
+    }
     return this.modelConfig;
   }
 

@@ -63,8 +63,22 @@ export class IncidentService {
   }
 
   async create(tenantId: string, callerId: string, dto: CreateIncidentDto) {
-    const totalCount = await this.prisma.incident.count({ where: { tenantId } });
-    const nextNumber = `INC${String(totalCount + 1).padStart(7, '0')}`;
+    // Find the max existing incident number to avoid duplicates
+    const lastIncident = await this.prisma.$queryRaw<{number: string}[]>`
+      SELECT number FROM "Incident" 
+      WHERE number LIKE 'INC%' AND "tenantId" = ${tenantId}
+      ORDER BY CAST(SUBSTRING(number FROM 4) AS INTEGER) DESC
+      LIMIT 1
+    `;
+    
+    let nextNum = 1;
+    if (lastIncident && lastIncident.length > 0) {
+      const match = lastIncident[0].number.match(/INC(\d+)/);
+      if (match) {
+        nextNum = parseInt(match[1], 10) + 1;
+      }
+    }
+    const nextNumber = `INC${String(nextNum).padStart(7, '0')}`;
     const priorityVal = dto.priority || (this.calculatePriority(dto.impact as Impact || Impact.DEPARTMENT, dto.urgency as Urgency || Urgency.HIGH));
 
     const record = await this.prisma.incident.create({

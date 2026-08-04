@@ -597,3 +597,16 @@ model AgentHistory {
   metadata    Json?
 }
 
+model AgentConfig {
+  id           String   @id @default("default")
+  environment  String   @default("nvidia")
+  baseUrl      String   @default("https://integrate.api.nvidia.com/v1")
+  apiKey       String
+  routerModel  String   @default("nvidia/nemotron-3-ultra-550b-a55b")
+  resolverModel String  @default("nvidia/nemotron-3-ultra-550b-a55b")
+  synthesizerModel String @default("nvidia/nemotron-3-ultra-550b-a55b")
+  governanceModel String @default("nvidia/nemotron-3-ultra-550b-a55b")
+  fallbackModels Json   @default("[\"nvidia/nemotron-3-ultra-550b-a55b\"]")
+  updatedAt    DateTime @updatedAt
+}
+

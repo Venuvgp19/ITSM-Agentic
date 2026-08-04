@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { IncidentService } from '../incidents/incident.service';
 import { LlmService } from './llm.service';
+import { AgentGovernanceService } from '../agent-governance/agent-governance.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -38,7 +39,7 @@ export class AiRouterService implements OnModuleInit {
   private config: AiRouterConfig = {
     autoAssignConfidenceThreshold: 85,
     autoWorkNoteEnabled: true,
-    modelName: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
+    modelName: 'genailab-maas-gpt-4o',
     reasoningBudget: 16384,
     continuousMonitoringEnabled: true,
     pollIntervalMs: 10000,
@@ -48,7 +49,8 @@ export class AiRouterService implements OnModuleInit {
 
   constructor(
     private readonly incidentService: IncidentService,
-    private readonly llmService: LlmService
+    private readonly llmService: LlmService,
+    private readonly governanceService: AgentGovernanceService
   ) {}
 
   onModuleInit() {
@@ -106,8 +108,9 @@ export class AiRouterService implements OnModuleInit {
     return this.config;
   }
 
-  private getDynamicModelName(): string {
-    return this.config.modelName;
+  private async getDynamicModelName(): Promise<string> {
+    const govConfig = await this.governanceService.getModelConfig();
+    return govConfig?.routerModel || this.config.modelName;
   }
 
   async analyzeIncident(tenantId: string, incidentId: string) {
@@ -125,7 +128,7 @@ export class AiRouterService implements OnModuleInit {
       priority: inc.priority,
       impact: inc.impact,
       urgency: inc.urgency,
-    }, this.getDynamicModelName());
+    }, await this.getDynamicModelName());
 
     return {
       incident: inc,

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/com
 import { ConfigService } from '@nestjs/config';
 import { IncidentService } from '../incidents/incident.service';
 import { PrismaService } from '../../database/prisma.service';
+import { AgentGovernanceService } from '../agent-governance/agent-governance.service';
 
 export interface KnowledgeArticle {
   id: string;
@@ -29,17 +30,27 @@ export class KnowledgeService {
   private isWorkerRunning = false;
   private totalIncidentsCount = 1000;
   private readonly liteLlmBaseUrl: string;
-  private readonly liteLlmApiKey: string;
-  private readonly llamaModel: string;
+  private liteLlmApiKey: string;
+  private llamaModel: string;
 
   constructor(
     private readonly incidentService: IncidentService,
     private readonly prisma: PrismaService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly governanceService: AgentGovernanceService
   ) {
     this.liteLlmBaseUrl = this.configService?.get<string>('LITELLM_BASE_URL') || 'https://genailab.tcs.in/v1';
-    this.liteLlmApiKey = 'sk-RRoxANx2dKdNE3N5j0mbxQ';
-    this.llamaModel = this.configService?.get<string>('LITELLM_LLAMA_MODEL') || 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct';
+    this.liteLlmApiKey = 'sk-taPdt4_aNdzmFCX3nP0GiA';
+    this.llamaModel = this.configService?.get<string>('LITELLM_LLAMA_MODEL') || 'azure/genailab-maas-gpt-4.1-mini';
+
+    // Load from DB on startup
+    this.governanceService.getModelConfig().then(cfg => {
+      if (cfg) {
+        this.liteLlmApiKey = cfg.apiKey || this.liteLlmApiKey;
+        this.llamaModel = cfg.synthesizerModel || cfg.routerModel || this.llamaModel;
+        this.logger.log(`KnowledgeService loaded config from DB: model=${this.llamaModel}`);
+      }
+    });
 
     // Start continuous background processing after 5 seconds
     setTimeout(() => {
@@ -198,6 +209,35 @@ export class KnowledgeService {
     return { baseUrl, apiKey, model };
   }
 
+  private categorizeKB(article: any): string {
+    const text = `${article.title || ''} ${article.summary || ''} ${(article.symptoms || []).join(' ')}`.toLowerCase();
+    
+    // Category patterns - order matters (most specific first)
+    const categories: [RegExp, string][] = [
+      [/user\s*(account)?\s*(creation|create|provision|add)/i, 'User Account Creation & Provisioning'],
+      [/user\s*(account)?\s*(delet|offboard|remov)/i, 'User Account Deletion & Offboarding'],
+      [/user\s*(account)?\s*(lock|unlock|disable|enable)/i, 'User Account Lock & Unlock'],
+      [/user\s*(account)?\s*(password|reset)/i, 'User Password Reset'],
+      [/user\s*(account)?\s*(modif|shell|group|sudo)/i, 'User Account Modification'],
+      [/dashboard|webapp|port\s*8080/i, 'ITSM Dashboard Service Recovery'],
+      [/kubernetes|k8s|kubelet|ingress/i, 'Kubernetes Service Recovery'],
+      [/ssh|sshd|openssh/i, 'SSH Service Recovery'],
+      [/database|postgres|mysql|replication/i, 'Database Service Recovery'],
+      [/network|router|latency|firewall/i, 'Network Infrastructure Recovery'],
+      [/cpu|memory|utilization|performance/i, 'System Performance Optimization'],
+      [/disk|storage|space|volume/i, 'Disk Space Management'],
+      [/service|daemon|systemd| systemctl/i, 'Linux Service Management'],
+      [/security|certificate|ssl|tls/i, 'Security & Certificate Management'],
+      [/erp|sap|application/i, 'Enterprise Application Recovery'],
+    ];
+    
+    for (const [pattern, category] of categories) {
+      if (pattern.test(text)) return category;
+    }
+    
+    return article.category || 'General IT Operations';
+  }
+
   private ensureSshFirstStep(steps: string[], ci: string = '192.168.100.101'): string[] {
     if (!Array.isArray(steps) || steps.length === 0) {
       return [`ssh root@${ci}`];
@@ -295,105 +335,120 @@ Respond in strict JSON format:
     this.isWorkerRunning = true;
 
     try {
-      const allIncidents = await this.incidentService.findAll(tenantId);
-      this.totalIncidentsCount = allIncidents.length || 1000;
+      // 1. Get all existing KB articles
+      const existingKb = await this.prisma.knowledgeArticle.findMany({ where: { tenantId } });
+      this.logger.log(`📚 Knowledge Consolidator: Analyzing ${existingKb.length} existing KB articles...`);
 
-      const unanalyzed = allIncidents.filter((inc) => !this.analyzedIncidentIds.has(inc.id || inc.number));
-      this.logger.log(`🤖 Continuous Worker: Found ${unanalyzed.length} unanalyzed incidents out of ${this.totalIncidentsCount}.`);
-
-      const CHUNK_SIZE = 10;
-      for (let i = 0; i < unanalyzed.length; i += CHUNK_SIZE) {
-        const batch = unanalyzed.slice(i, i + CHUNK_SIZE);
-        const batchSampleTitle = batch[0]?.shortDescription || 'Enterprise IT Issue';
-        const ci = batch[0]?.configurationItem || 'General Infrastructure';
-        const resolutionCode = batch[0]?.resolutionCode || 'General Triage';
-
-        for (const inc of batch) {
-          this.analyzedIncidentIds.add(inc.id || inc.number);
+      // 2. Group KB articles by problem category
+      const categoryMap = new Map<string, any[]>();
+      
+      for (const article of existingKb) {
+        const category = this.categorizeKB(article);
+        if (!categoryMap.has(category)) {
+          categoryMap.set(category, []);
         }
+        categoryMap.get(category)!.push(article);
+      }
 
-        const isSolved = await this.isProblemAlreadySolved(tenantId, batchSampleTitle);
-        if (!isSolved) {
-          const totalKb = await this.prisma.knowledgeArticle.count({ where: { tenantId } });
-          const kbNumber = `KB${String(totalKb + 1).padStart(7, '0')}`;
+      this.logger.log(`📋 Found ${categoryMap.size} distinct problem categories`);
+
+      // 3. For each category with multiple articles, consolidate into Master SOP
+      for (const [category, articles] of categoryMap) {
+        if (articles.length < 2) continue; // Skip single-article categories
+
+        // Check if Master SOP already exists
+        const masterSop = articles.find(a => 
+          a.title?.toLowerCase().includes('master sop') ||
+          a.title?.toLowerCase().includes('generic sop')
+        );
+
+        if (masterSop) {
+          // Update existing Master SOP with new resolution steps from other articles
+          const newSteps = articles
+            .filter(a => a.id !== masterSop.id)
+            .flatMap(a => (a.resolutionSteps as string[]) || [])
+            .filter((step, idx, arr) => arr.indexOf(step) === idx); // deduplicate
+
+          if (newSteps.length > 0) {
+            const mergedSteps = [
+              ...(masterSop.resolutionSteps as string[] || []),
+              ...newSteps
+            ].filter((step, idx, arr) => arr.indexOf(step) === idx);
+
+            await this.prisma.knowledgeArticle.update({
+              where: { id: masterSop.id },
+              data: {
+                resolutionSteps: mergedSteps,
+                sourceIncidentIds: articles.map(a => a.number),
+                workNotesAnalyzedCount: articles.reduce((sum, a) => sum + (a.workNotesAnalyzedCount || 0), 0),
+              }
+            });
+            this.logger.log(`🔄 Updated Master SOP ${masterSop.number} with ${newSteps.length} new steps from ${articles.length} articles`);
+          }
+        } else {
+          // Create new Master SOP by consolidating articles
+          // Find max existing KB number to avoid duplicates
+          const lastKb = await this.prisma.$queryRaw<{number: string}[]>`
+            SELECT number FROM "KnowledgeArticle" 
+            WHERE number LIKE 'KB%'
+            ORDER BY CAST(SUBSTRING(number FROM 3) AS INTEGER) DESC
+            LIMIT 1
+          `;
           
-          const workNotesText = batch
-            .flatMap((inc) => (inc.activities || []).map((a: any) => `[${inc.id} - ${inc.shortDescription}] WorkNote: ${a.comment}`))
-            .slice(0, 5)
-            .join('\n');
+          let nextNum = 1;
+          if (lastKb && lastKb.length > 0) {
+            const match = lastKb[0].number.match(/KB(\d+)/);
+            if (match) {
+              nextNum = parseInt(match[1], 10) + 1;
+            }
+          }
+          const kbNumber = `KB${String(nextNum).padStart(7, '0')}`;
+          
+          // Use LLM to synthesize a generic SOP from all articles in this category
+          const allSteps = articles.flatMap(a => (a.resolutionSteps as string[]) || []);
+          const allSymptoms = articles.flatMap(a => (a.symptoms as string[]) || []);
+          const allRootCauses = articles.map(a => a.rootCause).filter(Boolean);
 
-          const prompt = `Synthesize UNIQUE SOP Knowledge Article for Problem: "${batchSampleTitle}" (CI: ${ci}, Category: ${resolutionCode}).
-Analyzed Batch Work Notes (${batch.length} tickets):
-${workNotesText}`;
+          const prompt = `Consolidate these ${articles.length} related SOP articles into ONE generic Master SOP for category: "${category}"
+
+Articles to consolidate:
+${articles.map((a, i) => `${i+1}. ${a.title}\n   Steps: ${(a.resolutionSteps as string[] || []).join('; ')}`).join('\n')}
+
+Create a single, comprehensive Master SOP that covers ALL these scenarios.`;
 
           try {
-            let matchedApproval: any = null;
-            const approvals = await this.prisma.agentApproval.findMany({
-              where: { status: 'APPROVED' },
-            });
+            const parsed = await this.callLlama3370b(prompt, category);
             
-            for (const inc of batch) {
-              const found = approvals.find((a) => a.entityId === inc.id || a.entityId === inc.number);
-              if (found) {
-                matchedApproval = found;
-                break;
-              }
-            }
-
-            let articleData: any = {
+            const masterArticle = {
               tenantId,
               number: kbNumber,
-              category: resolutionCode,
-              configurationItem: ci,
-              workNotesAnalyzedCount: batch.flatMap((b) => b.activities || []).length,
-              sourceIncidentIds: batch.map((b) => b.id || b.number),
-              viewsCount: 1,
+              title: `Master SOP: ${category}`,
+              category,
+              configurationItem: articles[0]?.configurationItem || 'General',
+              summary: parsed.summary || `Consolidated Master SOP for ${category} covering ${articles.length} related issues.`,
+              symptoms: [...new Set(allSymptoms)].slice(0, 10),
+              rootCause: parsed.rootCause || `Common root cause across ${articles.length} incidents: ${allRootCauses[0] || 'Multiple failure modes'}`,
+              resolutionSteps: this.ensureSshFirstStep(
+                parsed.resolutionSteps || [...new Set(allSteps)].slice(0, 15),
+                articles[0]?.configurationItem || '192.168.100.101'
+              ),
+              workNotesAnalyzedCount: articles.reduce((sum, a) => sum + (a.workNotesAnalyzedCount || 0), 0),
+              sourceIncidentIds: articles.map(a => a.number),
+              viewsCount: 0,
               helpfulCount: 0,
+              author: '🤖 Knowledge Consolidator Agent',
+              modelUsed: this.llamaModel,
             };
 
-            if (matchedApproval) {
-              const details = matchedApproval.details as any || {};
-              const steps = Array.isArray(details.proposedCommands)
-                ? details.proposedCommands.map((cmd: string, idx: number) => `${idx + 1}. ${cmd}`)
-                : [`1. Inspect configuration item status on ${ci}.`];
-
-              articleData = {
-                ...articleData,
-                title: details.kbTitle || `Troubleshooting & SOP: ${batchSampleTitle.replace(/\(#\d+\)/, '').trim()}`,
-                summary: details.summary || `Executive Standard Operating Procedure (SOP) for ${batchSampleTitle}.`,
-                symptoms: [`Alerts triggered for ${batchSampleTitle}`, 'System degradation reported.'],
-                rootCause: details.aiReasoning || `Diagnostic root cause identified across ${batch.length} analyzed incidents.`,
-                resolutionSteps: this.ensureSshFirstStep(steps, ci),
-                author: details.agentName || '🤖 Unix Auto-Resolver Agent',
-                modelUsed: details.model || 'nvidia/nemotron-3-ultra-550b-a55b',
-              };
-            } else {
-              const parsed = await this.callLlama3370b(prompt, batchSampleTitle);
-              articleData = {
-                ...articleData,
-                title: parsed.title || `Troubleshooting & SOP: ${batchSampleTitle.replace(/\(#\d+\)/, '').trim()}`,
-                summary: parsed.summary || `Executive Standard Operating Procedure (SOP) for ${batchSampleTitle}.`,
-                symptoms: parsed.symptoms || [`Alerts triggered for ${batchSampleTitle}`, 'System degradation reported.'],
-                rootCause: parsed.rootCause || `Diagnostic root cause identified.`,
-                resolutionSteps: this.ensureSshFirstStep(parsed.resolutionSteps || [`1. Inspect ${ci}.`], ci),
-                author: '🤖 NVIDIA Nemotron 3 550B Knowledge Agent',
-                modelUsed: 'NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)',
-              };
-            }
-
-            await this.prisma.knowledgeArticle.upsert({
-              where: { number: kbNumber },
-              create: { ...articleData, number: kbNumber },
-              update: articleData,
-            });
+            await this.prisma.knowledgeArticle.create({ data: masterArticle });
+            this.logger.log(`✅ Created Master SOP ${kbNumber} for "${category}" consolidating ${articles.length} articles`);
           } catch (err: any) {
-            this.logger.error(`Error in continuous background synthesis: ${err.message}`);
+            this.logger.error(`Error creating Master SOP for ${category}: ${err.message}`);
           }
         }
-        await new Promise((r) => setTimeout(r, 1500));
       }
     } catch (err: any) {
-      this.logger.error(`Error in continuous worker execution: ${err.message}`);
+      this.logger.error(`Error in knowledge consolidation: ${err.message}`);
     } finally {
       this.isWorkerRunning = false;
     }
