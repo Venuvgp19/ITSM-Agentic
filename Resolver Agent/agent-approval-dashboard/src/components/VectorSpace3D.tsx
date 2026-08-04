@@ -83,14 +83,16 @@ export function VectorSpace3D() {
       let zOffset = 0;
 
       const cat = (art.category || '').toLowerCase();
-      if (cat.includes('unix') || cat.includes('server')) {
+      if (cat.includes('server') || cat.includes('kernel') || cat.includes('patch')) {
         xOffset = -60; yOffset = -40; zOffset = -20;
       } else if (cat.includes('db') || cat.includes('vacuum') || cat.includes('postgres')) {
         xOffset = 60; yOffset = 40; zOffset = -30;
       } else if (cat.includes('network') || cat.includes('router') || cat.includes('bgp')) {
         xOffset = -40; yOffset = 50; zOffset = 60;
-      } else if (cat.includes('security') || cat.includes('tls') || cat.includes('firewall')) {
+      } else if (cat.includes('user management') || cat.includes('user error')) {
         xOffset = 50; yOffset = -50; zOffset = 40;
+      } else if (cat.includes('application')) {
+        xOffset = -50; yOffset = -60; zOffset = 50;
       }
 
       // Hash title for high-frequency deterministic offsets
@@ -109,10 +111,12 @@ export function VectorSpace3D() {
         y,
         z,
         article: art,
-        color: cat.includes('unix') ? '#818cf8' : // Indigo
-               cat.includes('db') ? '#34d399' : // Emerald
-               cat.includes('network') ? '#60a5fa' : // Blue
-               cat.includes('security') ? '#fb7185' : // Rose
+        color: cat.includes('server') || cat.includes('kernel') ? '#818cf8' : // Indigo
+               cat.includes('db') || cat.includes('postgres') ? '#34d399' : // Emerald
+               cat.includes('network') || cat.includes('bgp') ? '#60a5fa' : // Blue
+               cat.includes('user management') ? '#fb923c' : // Orange
+               cat.includes('user error') ? '#a78bfa' : // Purple
+               cat.includes('application') ? '#fbbf24' : // Amber
                '#cbd5e1' // Slate
       };
     });
@@ -409,19 +413,27 @@ export function VectorSpace3D() {
             <span className="font-bold text-slate-400 uppercase block mb-1">Vector Clusters</span>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
-              <span className="text-slate-300">Unix System</span>
+              <span className="text-slate-300">Server / Kernel</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-              <span className="text-slate-300">Database DBA</span>
+              <span className="text-slate-300">Database</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
-              <span className="text-slate-300">Network Ops</span>
+              <span className="text-slate-300">Network / BGP</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-              <span className="text-slate-300">Security SecOps</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-orange-400" />
+              <span className="text-slate-300">User Management</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-400" />
+              <span className="text-slate-300">User Error</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+              <span className="text-slate-300">Application</span>
             </div>
           </div>
 
