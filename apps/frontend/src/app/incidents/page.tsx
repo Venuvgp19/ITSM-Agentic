@@ -18,6 +18,15 @@ import {
   Server,
   Database,
   Lock,
+  BarChart3,
+  TrendingUp,
+  PieChart,
+  Activity,
+  Cpu,
+  Layers,
+  Sparkles,
+  Brain,
+  DollarSign,
 } from 'lucide-react';
 
 const sampleTitles = [
@@ -107,6 +116,7 @@ export default function IncidentsPage() {
   const [page, setPage] = useState(1);
   const pageSize = 25;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'matrix' | 'analysis'>('matrix');
 
   // Full 12-Field Form State (Allows setting Department to UNASSIGNED)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -374,85 +384,93 @@ export default function IncidentsPage() {
         </div>
       </div>
 
-      {/* Incidents Table */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
-        <table className="w-full text-left text-xs text-slate-300">
-          <thead className="bg-slate-950 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-800">
-            <tr>
-              <th className="px-6 py-4">Incident Number</th>
-              <th className="px-6 py-4">Priority / State</th>
-              <th className="px-6 py-4">Short Description & Details</th>
-              <th className="px-6 py-4">Database Department / Group</th>
-              <th className="px-6 py-4">Assigned Technician</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/60">
-            {paginatedIncidents.map(item => (
-              <tr
-                key={item.id}
-                onClick={() => router.push(`/incidents/${item.id}`)}
-                className="hover:bg-slate-800/40 cursor-pointer transition-colors"
-              >
-                <td className="px-6 py-4 font-mono font-bold text-brand-400">
-                  {item.number}
-                </td>
-                <td className="px-6 py-4 space-y-1">
-                  <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded ${
-                    item.priority === 'P1' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                    item.priority === 'P2' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                    'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                  }`}>
-                    {item.priority}
-                  </span>
-                  <div className="text-[10px] text-slate-400">{item.state}</div>
-                </td>
-                <td className="px-6 py-4 max-w-md">
-                  <div className="font-semibold text-slate-100">{item.title}</div>
-                  <div className="text-slate-400 text-[11px] truncate">{item.resolutionNotes || 'Pending triage notes'}</div>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`px-2.5 py-1 rounded text-[10px] font-bold ${
-                    item.department.includes('UNASSIGNED') ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  }`}>
-                    {item.department}
-                  </span>
-                </td>
-                <td className="px-6 py-4 font-semibold text-slate-200">
-                  {item.assignedTo}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination Controls */}
-      <div className="flex items-center justify-between border-t border-slate-800 pt-4 text-xs text-slate-400">
-        <span>
-          Showing {filteredIncidents.length > 0 ? (page - 1) * pageSize + 1 : 0} -{' '}
-          {Math.min(page * pageSize, filteredIncidents.length)} of {filteredIncidents.length} database incidents
-        </span>
-
-        <div className="flex items-center gap-2">
-          <button
-            disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-            className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 disabled:opacity-50 transition"
-          >
-            <ChevronLeft className="w-4 h-4 text-slate-300" />
-          </button>
-          <span className="font-mono font-bold text-slate-200 px-2">
-            Page {page} of {Math.max(1, totalPages)}
-          </span>
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage(page + 1)}
-            className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 disabled:opacity-50 transition"
-          >
-            <ChevronRight className="w-4 h-4 text-slate-300" />
-          </button>
+          {/* Incidents Table */}
+      {isLoading ? (
+        <div className="p-12 text-center text-slate-400 font-semibold bg-slate-900/40 rounded-xl border border-slate-800">
+          Loading 1,000+ Incidents from PostgreSQL Database...
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-950 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-800">
+                <tr>
+                  <th className="px-6 py-4">Incident Number</th>
+                  <th className="px-6 py-4">Priority / State</th>
+                  <th className="px-6 py-4">Short Description & Details</th>
+                  <th className="px-6 py-4">Database Department / Group</th>
+                  <th className="px-6 py-4">Assigned Technician</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {paginatedIncidents.map(item => (
+                  <tr
+                    key={item.id}
+                    onClick={() => router.push(`/incidents/${item.id}`)}
+                    className="hover:bg-slate-800/40 cursor-pointer transition-colors"
+                  >
+                    <td className="px-6 py-4 font-mono font-bold text-brand-400">
+                      {item.number}
+                    </td>
+                    <td className="px-6 py-4 space-y-1">
+                      <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded ${
+                        item.priority === 'P1' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                        item.priority === 'P2' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                        'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                      }`}>
+                        {item.priority}
+                      </span>
+                      <div className="text-[10px] text-slate-400">{item.state}</div>
+                    </td>
+                    <td className="px-6 py-4 max-w-md">
+                      <div className="font-semibold text-slate-100">{item.title}</div>
+                      <div className="text-slate-400 text-[11px] truncate">{item.resolutionNotes || 'Pending triage notes'}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded text-[10px] font-bold ${
+                        item.department.includes('UNASSIGNED') ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      }`}>
+                        {item.department}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-slate-200">
+                      {item.assignedTo}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between border-t border-slate-800 pt-4 text-xs text-slate-400">
+            <span>
+              Showing {filteredIncidents.length > 0 ? (page - 1) * pageSize + 1 : 0} -{' '}
+              {Math.min(page * pageSize, filteredIncidents.length)} of {filteredIncidents.length} database incidents
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(page - 1)}
+                className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 disabled:opacity-50 transition"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="font-semibold text-slate-200 px-2">
+                Page {page} of {totalPages || 1}
+              </span>
+              <button
+                disabled={page === totalPages || totalPages === 0}
+                onClick={() => setPage(page + 1)}
+                className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 disabled:opacity-50 transition"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Comprehensive 12-Field Incident Creation Modal */}
       {isModalOpen && (

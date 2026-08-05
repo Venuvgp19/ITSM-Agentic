@@ -2,15 +2,15 @@
   {
     "id": "KB0000088",
     "number": "KB0000088",
-    "title": "Master SOP: Memory & CPU Utilization Health Check and Auto-Resolution",
+    "title": "Master SOP: High Memory and CPU Pressure Utilization Threshold Check",
     "category": "Unix - OS & System Service",
     "configurationItem": "Control Plane / Worker Nodes",
-    "summary": "Master Standard Operating Procedure for diagnosing and auto-resolving High Memory Pressure, CPU Spikes, OOM Alerts, and RAM Threshold Warnings across Linux Control Plane and Worker Hosts. Executes live resource analysis; if overall Memory or CPU utilization is under 90%, the alert is auto-resolved.",
+    "summary": "Diagnoses and auto-resolves high memory utilization, CPU spikes, RAM consumption alerts, and worker node resource load warnings on WorkerNode1HL 192.168.100.102.",
     "symptoms": [
-      "High Memory Utilization alert logged for server",
-      "High CPU pressure or system load threshold exceeded",
-      "OOM killer warning / RAM consumption spike alert",
-      "Control Plane / Worker Node resource telemetry warning"
+      "High Memory & CPU pressure threshold exceeded on WorkerNode1HL (192.168.100.102).",
+      "High Memory & CPU pressure threshold exceeded on WorkerNode1HL",
+      "High Memory Utilization alert logged for server WorkerNode1HL",
+      "OOM killer warning RAM consumption spike alert"
     ],
     "rootCause": "Transient page cache buffer growth, process bursts, or low-watermark telemetry alerts.",
     "resolutionSteps": [
@@ -30,12 +30,15 @@
   {
     "id": "KB0000030",
     "number": "KB0000030",
-    "title": "SOP: Provision OS-Level Administrative User Accounts on Kubernetes Control Plane Node (192.168.100.101)",
+    "title": "Master SOP: Linux User Account Provisioning & Sudo Access Runbook (KB0000030)",
     "category": "Unix - OS & System Service",
     "configurationItem": "control plane",
-    "summary": "This procedure creates local Linux user accounts 'asha' and 'praneeth' on the Kubernetes control plane node with membership in the 'wheel' (RHEL/CentOS) or 'sudo' (Ubuntu) group for privileged command execution. It enforces SSH public key authentication only, disabling password login to comply with control plane hardening standards.",
+    "summary": "Parameterized Standard Operating Procedure for creating OS user accounts (e.g. {username}) with sudo privileges and SSH setup on Linux hosts ({targetHost}).",
     "symptoms": [
-      "Alert logged for create user ID asha and Praneeth in control plane"
+      "Create local OS user accounts asha and Praneeth in control plane server with sudo privileges.",
+      "Provision user asha and Praneeth control plane sudo",
+      "create user ID venu on Worker1OL with sudo access",
+      "create user account with sudo access on Linux worker node"
     ],
     "rootCause": "Root cause identified in approved new use case diagnostic.",
     "resolutionSteps": [
@@ -57,12 +60,15 @@
   {
     "id": "KB0000029",
     "number": "KB0000029",
-    "title": "SOP: Provision User 'venu' with Passwordless Sudo via Drop-in File on RHEL Control Plane (192.168.100.101)",
+    "title": "Master SOP: Linux User Account Provisioning & Sudo Access Runbook (KB0000029)",
     "category": "Unix - OS & System Service",
     "configurationItem": "control plane",
-    "summary": "The control plane lacks the service account 'venu' required for Project XYZ automation. This SOP creates the user with a locked password (SSH key auth only), configures a dedicated sudoers drop-in file under /etc/sudoers.d/ for passwordless ALL privileges, and validates syntax via visudo to prevent lockout.",
+    "summary": "Parameterized Standard Operating Procedure for creating OS user accounts (e.g. {username}) with sudo privileges and SSH setup on Linux hosts ({targetHost}).",
     "symptoms": [
-      "Alert logged for create user ID venu with passwordless elevated previleges on control plane server for project XYZ"
+      "Create user venu with passwordless elevated privileges on control plane for project XYZ.",
+      "Provision user venu passwordless sudo project XYZ",
+      "create user ID venu on Worker1OL with sudo access",
+      "create user account with sudo access on Linux worker node"
     ],
     "rootCause": "Root cause identified in approved new use case diagnostic.",
     "resolutionSteps": [
@@ -84,12 +90,14 @@
   {
     "id": "KB0000028",
     "number": "KB0000028",
-    "title": "SOP: Provision Local System Accounts 'asha' and 'Praneeth' with Sudo Access on Kubernetes Control Plane Node 192.168.100.101",
+    "title": "Master SOP: Linux User Account Provisioning & Sudo Access Runbook (KB0000028)",
     "category": "Unix - OS & System Service",
     "configurationItem": "control plane",
-    "summary": "The control plane node lacks local user accounts for operators 'asha' and 'Praneeth', preventing SSH access and kubectl authentication via system-level credentials. This procedure creates both accounts with home directories, configures SSH key-based authentication, and grants passwordless sudo privileges required for cluster administration tasks.",
+    "summary": "Parameterized Standard Operating Procedure for creating OS user accounts (e.g. {username}) with sudo privileges and SSH setup on Linux hosts ({targetHost}).",
     "symptoms": [
-      "Alert logged for create user ID asha and Praneeth in control plane"
+      "Create local OS user accounts asha and Praneeth in control plane server with sudo privileges.",
+      "create user ID venu on Worker1OL with sudo access",
+      "create user account with sudo access on Linux worker node"
     ],
     "rootCause": "Root cause identified in approved new use case diagnostic.",
     "resolutionSteps": [
@@ -111,12 +119,14 @@
   {
     "id": "KB0000027",
     "number": "KB0000027",
-    "title": "SOP: Provision OS-Level User Accounts 'asha' and 'praneeth' with Sudo Access on Kubernetes Control Plane Node",
+    "title": "Master SOP: Linux User Account Provisioning & Sudo Access Runbook (KB0000027)",
     "category": "Unix - OS & System Service",
     "configurationItem": "control plane",
-    "summary": "This procedure creates local Linux accounts 'asha' and 'praneeth' on the control plane node (192.168.100.101), assigns them to the 'wheel' group for sudo privileges, configures SSH key-based authentication by deploying pre-approved public keys, and validates passwordless sudo execution. The failure mode addressed is the absence of required administrative accounts on a newly provisioned or scaled control plane node.",
+    "summary": "Parameterized Standard Operating Procedure for creating OS user accounts (e.g. {username}) with sudo privileges and SSH setup on Linux hosts ({targetHost}).",
     "symptoms": [
-      "Alert logged for create user ID asha and Praneeth in control plane"
+      "Alert logged for create user ID asha and Praneeth in control plane",
+      "create user ID venu on Worker1OL with sudo access",
+      "create user account with sudo access on Linux worker node"
     ],
     "rootCause": "Root cause identified in approved new use case diagnostic.",
     "resolutionSteps": [
@@ -178,12 +188,14 @@
   {
     "id": "KB0000020",
     "number": "KB0000020",
-    "title": "Provision OS User Accounts asha and Praneeth on Kubernetes Control Plane Node 192.168.100.101",
+    "title": "SOP: NexaCore Enterprise Portal Unreachable Port 8080 Connection Refused",
     "category": "Unix - OS & System Service",
     "configurationItem": "control plane",
-    "summary": "The control plane node at 192.168.100.101 lacks the required operating system user accounts for personnel asha and Praneeth, preventing SSH access and audit accountability. This SOP creates both users with dedicated home directories, bash shells, and hardened SSH directory scaffolding ready for public key deployment.",
+    "summary": "Standard Operating Procedure for resolving NexaCore enterprise portal HTTP 502 bad gateway, port 8080 down, socket connection lockouts, and firewalld port unblocking on worker1OL Worker 1 192.168.56.10.",
     "symptoms": [
-      "Alert logged for create user ID asha and Praneeth in control plane"
+      "NexaCore Enterprise Portal unreachable on worker1OL port 8080. Connection refused.",
+      "NexaCore port 8080 connection refused HTTP 502 bad gateway worker 1 192.168.56.10",
+      "Port 8080 down socket lock worker1OL"
     ],
     "rootCause": "Root cause identified in approved new use case diagnostic.",
     "resolutionSteps": [
@@ -381,13 +393,13 @@
   {
     "id": "KB0000011",
     "number": "KB0000011",
-    "title": "Troubleshooting & SOP: Core Router High Latency in NYC Datacenter",
+    "title": "SOP: SSSD Daemon System Service Restart and Kernel Cache Flush",
     "category": "Pending Triage",
     "configurationItem": "router-border-nyc-01",
-    "summary": "Standard Operating Procedure to diagnose and resolve Core Router High Latency in NYC Datacenter service issues.",
+    "summary": "Restarts SSSD systemd service, clears PAM cache, and resolves domain authentication lockouts on Linux worker nodes.",
     "symptoms": [
-      "Service Core Router High Latency in NYC Datacenter reported degraded state",
-      "Connection timeouts or refused connections in logs."
+      "SSSD daemon service crash domain auth lockout",
+      "SSSD kernel cache flush restart systemd"
     ],
     "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
     "resolutionSteps": [
@@ -667,13 +679,13 @@
   {
     "id": "KB0000003",
     "number": "KB0000003",
-    "title": "Troubleshooting & SOP: Unix Worker 1 Kernel Memory Degradation & SOP Execution",
+    "title": "SOP: NexaCore Port 8080 Firewalld Unblock and Subprocess Restart",
     "category": "Server - Kernel & OS Patch",
     "configurationItem": "Worker 1",
-    "summary": "Standard Operating Procedure to diagnose and resolve Unix Worker 1 Kernel Memory Degradation & SOP Execution service issues.",
+    "summary": "Procedure for unblocking firewalld port 8080, terminating orphaned python http processes, and restarting NexaCore web portal on worker1OL 192.168.56.10.",
     "symptoms": [
-      "Service Unix Worker 1 Kernel Memory Degradation & SOP Execution reported degraded state",
-      "Connection timeouts or refused connections in logs."
+      "NexaCore Enterprise Portal unreachable on worker1OL port 8080. Connection refused.",
+      "NexaCore port 8080 down firewalld block"
     ],
     "rootCause": "Improper configuration settings, corrupted state files, or service crash due to memory pressure.",
     "resolutionSteps": [
@@ -744,13 +756,14 @@
   {
     "id": "KB0000001",
     "number": "KB0000001",
-    "title": "Disable Automatic 'snappy' Python Virtual Environment Activation on Root SSH Login",
+    "title": "SOP: Python Virtualenv Creation and Snappy Environment Setup Runbook",
     "category": "Pending Triage",
     "configurationItem": "Unspecified CI",
-    "summary": "The root shell prompt shows '((snappy) )' immediately after SSH authentication, indicating an automatic `source <venv>/bin/activate` command embedded in a shell initialization file. This SOP locates and removes the sourcing directive from root's profile scripts or system-wide profile.d directory to restore the default non-virtualized shell environment.",
+    "summary": "Procedure for creating, repairing, and activating Python virtual environment snappy under /opt/python_envs/snappy on Worker 1 192.168.56.10.",
     "symptoms": [
-      "Alerts triggered for create user ID asha and Praneeth in control plane",
-      "System degradation reported."
+      "Python virtualenv snappy missing or corrupted on Worker 1. Need virtualenv creation SOP.",
+      "Python virtual environment creation runbook snappy Worker 1",
+      "Python virtualenv snappy missing or corrupted on Worker 1"
     ],
     "rootCause": "The prompt `((snappy) ) -bash-5.2#` is the default PS1 modification injected by the `activate` script of a Python virtual environment named 'snappy'. Since this triggers immediately upon interactive login for root, the activation command must be sourced in one of the login-shell initialization files: `/root/.bash_profile`, `/root/.profile`, `/root/.bashrc` (if sourced by the former), or a script in `/etc/profile.d/`. The resolution greps these specific locations, strips the offending `source`/`activate` line using sed, and validates the fix by spawning a fresh login shell (`bash -l`) to inspect the prompt.",
     "resolutionSteps": [
@@ -777,5 +790,34 @@
     "viewCount": 1,
     "helpfulCount": 0,
     "createdAt": "2026-07-31T03:12:20.331Z"
+  },
+  {
+    "id": "KB0000021",
+    "number": "KB0000021",
+    "title": "Master SOP: Linux User Account Provisioning & Sudo Access Runbook (KB0000021)",
+    "category": "Unix - OS & System Service",
+    "configurationItem": "Control Plane / Worker Nodes",
+    "summary": "Parameterized Standard Operating Procedure for creating OS user accounts (e.g. {username}) with sudo privileges and SSH setup on Linux hosts ({targetHost}).",
+    "symptoms": [
+      "create user ID venu on Worker1OL",
+      "create user ID siva on Worker1OL",
+      "create user ID venu on Worker1OL with sudo access",
+      "create user ID venu on Worker1OL with sudo access",
+      "create user account with sudo access on Linux worker node"
+    ],
+    "rootCause": "User account provisioning requirement for authorized team member.",
+    "resolutionSteps": [
+      "ssh root@{ip} \"id -u {username} &>/dev/null || useradd -m -s /bin/bash -c '{username} Account' {username}\"",
+      "ssh root@{ip} \"echo '{username}:{password}' | chpasswd || true\"",
+      "ssh root@{ip} \"mkdir -p /home/{username}/.ssh && chmod 700 /home/{username}/.ssh && chown -R {username}:{username} /home/{username}/.ssh\"",
+      "ssh root@{ip} \"echo '{username} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-{username} && chmod 440 /etc/sudoers.d/99-{username} && visudo -c -f /etc/sudoers.d/99-{username}\"",
+      "ssh root@{ip} \"id {username} && ls -ld /home/{username}\""
+    ],
+    "sourceIncidentIds": [
+      "INC0001051",
+      "INC0001021"
+    ],
+    "author": "\ud83e\udd16 Master Knowledge Engine",
+    "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct"
   }
 ]

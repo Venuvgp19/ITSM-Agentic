@@ -107,7 +107,7 @@ export function IncidentAnalysisView() {
   const [suggestions, setSuggestions] = useState<ProblemSuggestion[]>(DEFAULT_SUGGESTIONS);
   const [selectedNode, setSelectedNode] = useState<string>('PRB0000001');
   const [activeTab, setActiveTab] = useState<'graph' | 'topology' | 'whys'>('graph');
-  const [analyticsSubTab, setAnalyticsSubTab] = useState<'volume' | 'pareto' | 'mttr'>('volume');
+  const [analyticsSubTab, setAnalyticsSubTab] = useState<'volume' | 'pareto' | 'mttr' | 'rag' | 'hosts'>('volume');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   useEffect(() => {
@@ -162,7 +162,7 @@ export function IncidentAnalysisView() {
         <div className="flex items-center gap-3 mt-4 md:mt-0">
           <button 
             onClick={fetchIncidents}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-sm font-semibold transition"
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-sm font-semibold transition cursor-pointer"
           >
             <RefreshCw className={`w-4 h-4 ${analyzing ? 'animate-spin' : ''}`} />
             Re-run Cluster Analysis
@@ -185,38 +185,38 @@ export function IncidentAnalysisView() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-slate-900/60 p-5 rounded-2xl border border-slate-800/80 backdrop-blur-sm">
           <div className="flex justify-between items-center text-slate-400 text-sm font-medium">
-            <span>Incidents Scanned</span>
-            <Layers className="w-4 h-4 text-cyan-400" />
-          </div>
-          <div className="text-3xl font-extrabold text-white mt-2">1,000+</div>
-          <div className="text-xs text-emerald-400 mt-1 font-mono">100% Real-time Coverage</div>
-        </div>
-
-        <div className="bg-slate-900/60 p-5 rounded-2xl border border-slate-800/80 backdrop-blur-sm">
-          <div className="flex justify-between items-center text-slate-400 text-sm font-medium">
-            <span>Problem Patterns Found</span>
+            <span>Autonomous AI Resolutions</span>
             <Brain className="w-4 h-4 text-purple-400" />
           </div>
-          <div className="text-3xl font-extrabold text-purple-300 mt-2">{suggestions.length} Clusters</div>
-          <div className="text-xs text-purple-400 mt-1">High Severity Root Causes</div>
+          <div className="text-3xl font-extrabold text-white mt-2">817 Tickets</div>
+          <div className="text-xs text-purple-400 mt-1 font-mono">78.4% Auto-Remediated by Agent</div>
         </div>
 
         <div className="bg-slate-900/60 p-5 rounded-2xl border border-slate-800/80 backdrop-blur-sm">
           <div className="flex justify-between items-center text-slate-400 text-sm font-medium">
-            <span>SLA Cost Leakage Avoided</span>
-            <DollarSign className="w-4 h-4 text-emerald-400" />
+            <span>RAG Score Accuracy</span>
+            <Activity className="w-4 h-4 text-cyan-400" />
           </div>
-          <div className="text-3xl font-extrabold text-emerald-400 mt-2">$42,750</div>
-          <div className="text-xs text-emerald-400 mt-1">Calculated via MTTR savings</div>
+          <div className="text-3xl font-extrabold text-cyan-300 mt-2">94.6% Match</div>
+          <div className="text-xs text-cyan-400 mt-1">Avg Vector Score: 0.78 / 1.0</div>
         </div>
 
         <div className="bg-slate-900/60 p-5 rounded-2xl border border-slate-800/80 backdrop-blur-sm">
           <div className="flex justify-between items-center text-slate-400 text-sm font-medium">
-            <span>Highest Server Risk</span>
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            <span>MTTR Outage Speedup</span>
+            <TrendingUp className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-3xl font-extrabold text-amber-400 mt-2">88% Risk</div>
-          <div className="text-xs text-amber-400 mt-1 font-mono">WorkerNode1HL (18.4h MTBF)</div>
+          <div className="text-3xl font-extrabold text-emerald-400 mt-2">1.8 Mins</div>
+          <div className="text-xs text-emerald-400 mt-1 font-mono">23x Faster than Manual Triage</div>
+        </div>
+
+        <div className="bg-slate-900/60 p-5 rounded-2xl border border-slate-800/80 backdrop-blur-sm">
+          <div className="flex justify-between items-center text-slate-400 text-sm font-medium">
+            <span>LLM Compute Cost</span>
+            <DollarSign className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="text-3xl font-extrabold text-amber-400 mt-2">$0.0229</div>
+          <div className="text-xs text-amber-400 mt-1 font-mono">Per Ticket (genailab-maas-gpt-4o)</div>
         </div>
       </div>
 
@@ -226,29 +226,41 @@ export function IncidentAnalysisView() {
           <div>
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-cyan-400" />
-              📊 Operational Visual Analytics & Charts
+              📊 Operational Visual Analytics & Intelligence Charts
             </h3>
-            <p className="text-xs text-slate-400">Real-time incident trends, 92% SSH auto-fix rates, Pareto 80/20 breakdown, and MTTR cost savings</p>
+            <p className="text-xs text-slate-400">Real-time incident trends, 78.4% agent auto-fix velocity, RAG match accuracy, and CI host radar</p>
           </div>
 
-          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs gap-1 overflow-x-auto">
             <button
               onClick={() => setAnalyticsSubTab('volume')}
-              className={`px-3 py-1.5 rounded-lg transition font-medium ${analyticsSubTab === 'volume' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
+              className={`px-3 py-1.5 rounded-lg transition font-medium cursor-pointer ${analyticsSubTab === 'volume' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              Volume & Auto-Fix Rate
+              Intake & Auto-Fix Rate
             </button>
             <button
               onClick={() => setAnalyticsSubTab('pareto')}
-              className={`px-3 py-1.5 rounded-lg transition font-medium ${analyticsSubTab === 'pareto' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
+              className={`px-3 py-1.5 rounded-lg transition font-medium cursor-pointer ${analyticsSubTab === 'pareto' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              Pareto 80/20 Category Breakdown
+              Root Cause Pareto 80/20
+            </button>
+            <button
+              onClick={() => setAnalyticsSubTab('rag')}
+              className={`px-3 py-1.5 rounded-lg transition font-medium cursor-pointer ${analyticsSubTab === 'rag' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              RAG Vector Match Distribution
+            </button>
+            <button
+              onClick={() => setAnalyticsSubTab('hosts')}
+              className={`px-3 py-1.5 rounded-lg transition font-medium cursor-pointer ${analyticsSubTab === 'hosts' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              CI Target Host Heatmap
             </button>
             <button
               onClick={() => setAnalyticsSubTab('mttr')}
-              className={`px-3 py-1.5 rounded-lg transition font-medium ${analyticsSubTab === 'mttr' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
+              className={`px-3 py-1.5 rounded-lg transition font-medium cursor-pointer ${analyticsSubTab === 'mttr' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              MTTR & Cost Savings
+              MTTR & Labor Savings
             </button>
           </div>
         </div>
@@ -256,29 +268,29 @@ export function IncidentAnalysisView() {
         {/* Chart 1: Volume & Auto-Fix */}
         {analyticsSubTab === 'volume' && (
           <div className="p-6 bg-slate-950 rounded-xl border border-slate-800/80 space-y-4">
-            <h4 className="text-sm font-bold text-slate-200">Daily Incident Volume vs. 92% Automated SSH Remediation Rate</h4>
+            <h4 className="text-sm font-bold text-slate-200">Daily Incident Volume vs. 78.4% Autonomous AI Remediation Rate</h4>
             <div className="h-64 w-full flex items-end justify-between gap-4 pt-8 px-4 border-b border-l border-slate-800">
               {[
-                { day: 'Mon', total: 45, auto: 42 },
-                { day: 'Tue', total: 68, auto: 64 },
-                { day: 'Wed', total: 85, auto: 79 },
-                { day: 'Thu', total: 52, auto: 48 },
-                { day: 'Fri', total: 94, auto: 88 },
-                { day: 'Sat', total: 30, auto: 29 },
-                { day: 'Sun', total: 22, auto: 21 },
+                { day: 'Mon', total: 142, auto: 118 },
+                { day: 'Tue', total: 158, auto: 132 },
+                { day: 'Wed', total: 98, auto: 84 },
+                { day: 'Thu', total: 82, auto: 71 },
+                { day: 'Fri', total: 174, auto: 141 },
+                { day: 'Sat', total: 195, auto: 159 },
+                { day: 'Sun', total: 194, auto: 152 },
               ].map((item, idx) => (
                 <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
                   <div className="w-full flex items-end justify-center gap-1.5 h-full">
-                    <div style={{ height: `${(item.total / 100) * 100}%` }} className="w-5 bg-slate-700 rounded-t-md hover:bg-slate-600 transition" title={`Total: ${item.total}`}></div>
-                    <div style={{ height: `${(item.auto / 100) * 100}%` }} className="w-5 bg-gradient-to-t from-cyan-600 to-cyan-400 rounded-t-md hover:brightness-110 transition" title={`Auto-Remediated: ${item.auto}`}></div>
+                    <div style={{ height: `${(item.total / 200) * 100}%` }} className="w-5 bg-slate-700 rounded-t-md hover:bg-slate-600 transition" title={`Total: ${item.total}`}></div>
+                    <div style={{ height: `${(item.auto / 200) * 100}%` }} className="w-5 bg-gradient-to-t from-purple-600 to-cyan-400 rounded-t-md hover:brightness-110 transition" title={`Auto-Remediated: ${item.auto}`}></div>
                   </div>
                   <span className="text-xs text-slate-400 font-mono">{item.day}</span>
                 </div>
               ))}
             </div>
             <div className="flex gap-6 text-xs text-slate-400 justify-center">
-              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-slate-700 rounded"></span> Total Tickets</span>
-              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-cyan-400 rounded"></span> Agentic SSH Auto-Remediated (92%)</span>
+              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-slate-700 rounded"></span> Total Intake</span>
+              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-purple-500 rounded"></span> Autonomous Agent Remediated (78.4%)</span>
             </div>
           </div>
         )}
@@ -286,13 +298,14 @@ export function IncidentAnalysisView() {
         {/* Chart 2: Pareto Category Breakdown */}
         {analyticsSubTab === 'pareto' && (
           <div className="p-6 bg-slate-950 rounded-xl border border-slate-800/80 space-y-4">
-            <h4 className="text-sm font-bold text-slate-200">Pareto 80/20 Failure Category Breakdown</h4>
+            <h4 className="text-sm font-bold text-slate-200">Pareto 80/20 Root Cause Category Breakdown</h4>
             <div className="space-y-4 pt-2">
               {[
-                { cat: 'Application / Web Services (NexaCore)', pct: 45, count: '450 Tickets', color: 'bg-cyan-500' },
-                { cat: 'Network & Ingress Latency', pct: 25, count: '250 Tickets', color: 'bg-purple-500' },
-                { cat: 'Unix - Storage & Mount Lockouts', pct: 18, count: '180 Tickets', color: 'bg-amber-500' },
-                { cat: 'User Management & Auth', pct: 12, count: '120 Tickets', color: 'bg-emerald-500' },
+                { cat: 'Application & Port Self-Healing (NexaCore port 8080)', pct: 34, count: '354 Tickets', color: 'bg-purple-500' },
+                { cat: 'Server Kernel & OS Patching (SSSD / systemd / kernel dump)', pct: 24, count: '250 Tickets', color: 'bg-cyan-500' },
+                { cat: 'Database Connection Pool & Vacuuming (PostgreSQL lag)', pct: 18, count: '188 Tickets', color: 'bg-emerald-500' },
+                { cat: 'Security TLS Certificate & Firewall Ingress', pct: 14, count: '146 Tickets', color: 'bg-amber-500' },
+                { cat: 'User Account Provisioning & Password Resets (Linux PAM)', pct: 10, count: '105 Tickets', color: 'bg-rose-500' },
               ].map((item, idx) => (
                 <div key={idx} className="space-y-1">
                   <div className="flex justify-between text-xs font-semibold">
@@ -308,21 +321,84 @@ export function IncidentAnalysisView() {
           </div>
         )}
 
-        {/* Chart 3: MTTR & Cost */}
+        {/* Chart 3: RAG Vector Match Distribution */}
+        {analyticsSubTab === 'rag' && (
+          <div className="p-6 bg-slate-950 rounded-xl border border-slate-800/80 space-y-4">
+            <h4 className="text-sm font-bold text-slate-200">RAG Vector Embedding Score Distribution & Similarity Calibration</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs pt-2">
+              <div className="p-4 rounded-xl bg-purple-950/30 border border-purple-500/30 space-y-2">
+                <div className="flex justify-between font-bold text-purple-400">
+                  <span>Exact SOP Match (&gt; 0.75 Score)</span>
+                  <span>68.2% (711)</span>
+                </div>
+                <p className="text-slate-400 text-[11px]">Direct execution of verified SSH runbook parameters.</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-500/30 space-y-2">
+                <div className="flex justify-between font-bold text-cyan-400">
+                  <span>Moderate SOP Match (0.45 - 0.75)</span>
+                  <span>26.4% (275)</span>
+                </div>
+                <p className="text-slate-400 text-[11px]">Parametric adaptation with SSH command validation.</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/30 space-y-2">
+                <div className="flex justify-between font-bold text-amber-400">
+                  <span>AI Synthesized SOP (&lt; 0.45 Miss)</span>
+                  <span>5.4% (57)</span>
+                </div>
+                <p className="text-slate-400 text-[11px]">Triggers AI Knowledge Synthesizer for human approval queue.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Chart 4: Target Host CI Heatmap */}
+        {analyticsSubTab === 'hosts' && (
+          <div className="p-6 bg-slate-950 rounded-xl border border-slate-800/80 space-y-4">
+            <h4 className="text-sm font-bold text-slate-200">Target Infrastructure Host Failure & Auto-Healing Heatmap</h4>
+            <div className="space-y-3 text-xs">
+              {[
+                { ci: 'Worker 1 (192.168.56.10)', ip: '192.168.56.10', incidents: 38, autoRate: '100%', status: 'HEALTHY' },
+                { ci: 'WorkerNode1HL', ip: '192.168.100.102', incidents: 31, autoRate: '94.6%', status: 'HEALTHY' },
+                { ci: 'mainframe-host-01', ip: '192.168.100.101', incidents: 26, autoRate: '88.4%', status: 'HEALTHY' },
+                { ci: 'postgres-prod-01', ip: '10.0.4.15', incidents: 22, autoRate: '95.4%', status: 'HEALTHY' },
+                { ci: 'k8s-prod-cluster-east-1', ip: '10.0.12.80', incidents: 18, autoRate: '83.3%', status: 'MONITORING' },
+              ].map((host, idx) => (
+                <div key={idx} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-slate-100 flex items-center gap-2">
+                      {host.ci}
+                      <span className="text-[10px] font-mono text-slate-500">({host.ip})</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">Total Incidents: <span className="text-slate-200 font-mono font-bold">{host.incidents}</span></div>
+                  </div>
+                  <div className="text-right">
+                    <span className="px-2.5 py-1 rounded text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      {host.autoRate} AI Auto-Healed
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Chart 5: MTTR & Cost */}
         {analyticsSubTab === 'mttr' && (
           <div className="p-6 bg-slate-950 rounded-xl border border-slate-800/80 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="p-5 bg-slate-900/80 rounded-xl border border-slate-800 text-center">
               <Clock className="w-8 h-8 text-cyan-400 mx-auto mb-2" />
               <h5 className="text-xs text-slate-400 uppercase font-semibold">Mean Time to Resolution (MTTR)</h5>
-              <div className="text-3xl font-extrabold text-white mt-2">4.2 Hrs → 45 Secs</div>
-              <p className="text-xs text-emerald-400 mt-2 font-mono">⚡ 99.7% Reduction in Outage Duration</p>
+              <div className="text-3xl font-extrabold text-white mt-2">42 Mins → 1.8 Mins</div>
+              <p className="text-xs text-emerald-400 mt-2 font-mono">⚡ 23x Reduction in Outage Duration</p>
             </div>
 
             <div className="p-5 bg-slate-900/80 rounded-xl border border-slate-800 text-center">
               <DollarSign className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-              <h5 className="text-xs text-slate-400 uppercase font-semibold">Direct Operational Labor Cost</h5>
-              <div className="text-3xl font-extrabold text-white mt-2">$178.50 → $0.17</div>
-              <p className="text-xs text-emerald-400 mt-2 font-mono">💰 99.9% Cost Reduction per Incident</p>
+              <h5 className="text-xs text-slate-400 uppercase font-semibold">Direct Operational Compute Cost</h5>
+              <div className="text-3xl font-extrabold text-white mt-2">$42.50 → $0.0229</div>
+              <p className="text-xs text-emerald-400 mt-2 font-mono">💰 99.9% Cost Reduction per Ticket</p>
             </div>
           </div>
         )}

@@ -25,7 +25,7 @@ const navigation = [
   { name: 'CMDB & Assets', href: '/cmdb', icon: Server },
   { name: 'Service Catalog', href: '/catalog', icon: ShoppingBag },
   { name: 'Knowledge Base', href: '/knowledge', icon: FileText },
-  { name: 'Agent Governance', href: '/governance', icon: ShieldCheck },
+  { name: 'Agent Control Tower', href: '/governance', icon: ShieldCheck },
   { name: 'Workflow Studio', href: '/studio/workflow-builder', icon: Workflow },
   { name: 'Form Designer', href: '/studio/form-builder', icon: FormInput },
   { name: 'Admin & Security', href: '/admin', icon: Settings },

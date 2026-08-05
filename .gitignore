@@ -21,3 +21,4 @@ query
 stop
 daemon.lock
 *.tmp
+.~lock.*

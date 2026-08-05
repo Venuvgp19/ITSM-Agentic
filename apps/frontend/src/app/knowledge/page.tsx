@@ -257,14 +257,10 @@ export default function KnowledgePage() {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh Catalog
           </button>
 
-          <button
-            onClick={handleSynthesizeAll1000}
-            disabled={generating}
-            className="flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white font-bold text-xs shadow-lg shadow-orange-500/20 transition-all transform active:scale-95 disabled:opacity-50"
-          >
-            <Zap className={`w-4 h-4 text-amber-200 ${generating ? 'animate-spin' : ''}`} />
-            {generating ? 'Triggering Background Worker...' : 'Trigger Background Worker (All 1,000 Incidents)'}
-          </button>
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-mono text-xs font-semibold shadow-sm">
+            <Zap className="w-4 h-4 text-indigo-400 animate-pulse" />
+            Autonomous AI Daemon Active (24/7 Scanning)
+          </div>
         </div>
       </div>
 

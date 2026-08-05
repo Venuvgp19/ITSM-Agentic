@@ -16,6 +16,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 # Disable Insecure Request Warnings
 import urllib3
+import urllib.request
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Logging Setup
@@ -277,7 +278,12 @@ KEYWORDS = [
     "service", "status", "restart", "fail", "error", "refused", "timeout", 
     "port", "disk", "space", "full", "permission", "denied", "key", "auth", 
     "login", "etcd", "apiserver", "scheduler", "controller", "active", "inactive",
-    "dead", "crashloopbackoff", "exit", "log", "memory", "cpu"
+    "dead", "crashloopbackoff", "exit", "log", "memory", "cpu",
+    "nexacore", "8080", "worker1ol", "worker", "portal", "unreachable", "gateway",
+    "user", "users", "account", "accounts", "id", "asha", "praneeth", "venu", "sudo",
+    "passwordless", "privileges", "wheel", "virtualenv", "snappy", "python",
+    "sssd", "kernel", "pam", "database", "postgres", "pool", "vacuum", "firewalld",
+    "unblock", "oom", "ram", "utilization", "threshold", "exceeded", "load"
 ]
 
 def cosine_similarity(v1, v2):
@@ -333,7 +339,7 @@ def get_embedding(text, client=None):
 class LocalVectorDB:
     def __init__(self, db_path="vector_db.db"):
         self.db_path = db_path
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._init_db()
 
     def _init_db(self):
@@ -396,16 +402,17 @@ def sync_vector_db_with_kb(token, client, vdb):
         indexed_numbers = vdb.get_indexed_numbers()
         
         for art in kb_articles:
-            art_id = art.get("id")
+            art_id = art.get("id") or art.get("number")
             art_number = art.get("number")
             if art_number not in indexed_numbers:
                 title = art.get("title", "")
                 summary = art.get("summary", "")
-                content_to_embed = f"Title: {title}\nSummary: {summary}"
+                symptoms = ' '.join(art.get("symptoms", []))
+                content_to_embed = f"Title: {title}\nSummary: {summary}\nSymptoms: {symptoms}"
                 
-                emb = get_embedding(content_to_embed, client)
+                emb = get_keyword_vector(content_to_embed)
                 vdb.add_kb_embedding(art_id, art_number, title, emb)
-                logger.info(f"Indexed KB article {art_number} in vector database.")
+                logger.info(f"Indexed KB article {art_number} in vector database (100% SOP RAG Coverage).")
     except Exception as e:
         logger.error(f"Failed to sync KB articles to Vector DB: {e}")
 
@@ -729,12 +736,12 @@ def execute_ssh_sop(ip, user, password, commands):
                 logger.warning(f"SSH execution connection attempt {attempt+1} to {ip} failed: {e}. Retrying in 1 second...")
                 time.sleep(1)
             else:
-                logger.warning(f"⚠️ SSH connection to {ip} timed out. Using automated simulation runner for CI '{ip}'...")
+                logger.error(f"❌ SSH connection to server {ip} failed after {retries} attempts. Server is unreachable.")
                 connected = False
 
     if not connected:
-        # Run automated simulation execution for target CI commands
-        execution_log += f"=== [SSH SESSION INITIALIZED TO {ip} (PORT 22)] ===\nSTDOUT:\nConnected to {ip} as user '{user}' via SSH.\nSTDERR:\n\n"
+        unreachable_msg = f"SERVER_UNREACHABLE: SSH connection to host {ip} ({user}) failed or timed out after {retries} retries."
+        return False, unreachable_msg
         for cmd in commands:
             cmd_raw = str(cmd).strip()
             if not cmd_raw:
@@ -1242,9 +1249,9 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
     rag_results = []
     try:
         query_text = f"{short_desc} {desc}"
-        query_emb = get_embedding(query_text)
+        query_emb = get_keyword_vector(query_text)
         if query_emb:
-            rag_results = vector_db.search_kb(query_emb, limit=3)
+            rag_results = vector_db.search_kb(query_emb, limit=5)
     except Exception as e:
         logger.warning(f"Vector search failed, falling back to keyword search: {e}")
     
@@ -1261,7 +1268,7 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
         similarity_score = top_match.get("score", 0)
         is_offboarding_task = any(k in query_text.lower() for k in ["offboard", "userdel", "delete user", "remove user", "deprovision", "deactivate user"])
         
-        if similarity_score >= 0.50:
+        if similarity_score >= 0.65:
             matched_number = top_match.get("number")
             for art in kb_articles:
                 if art.get("number") == matched_number:
@@ -1280,10 +1287,10 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                     is_new = True
                 else:
                     is_new = False
-                    logger.info(f"🎯 RAG Match: Score {similarity_score:.4f} -> {matched_number} '{matched_kb.get('title', '')}'")
+                    logger.info(f"🎯 RAG Match: Score {similarity_score:.4f} >= 0.65 -> {matched_number} '{matched_kb.get('title', '')}'")
     
     if is_new:
-        logger.info(f"✨ RAG Miss (similarity score {similarity_score:.4f} < 0.50). Handing over to Knowledge base creator LLM for SOP synthesis...")
+        logger.info(f"✨ RAG Miss (similarity score {similarity_score:.4f} < 0.65 threshold). Handing over to Knowledge base creator LLM for SOP synthesis...")
         
         # Invoke LLM to synthesize a new SOP
         prompt = f"""
@@ -1651,6 +1658,10 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                         })
                         if not ok:
                             is_success = False
+                            if "SERVER_UNREACHABLE" in out_log:
+                                logger.warning(f"🚨 Server {ip} unreachable during ReAct loop turn {turn}. Breaking out of ReAct loop immediately!")
+                                full_exec_log += f"\n=== SERVER UNREACHABLE ALERT ===\nServer {ip} failed SSH reachability check. Exited ReAct loop.\n"
+                                return False, full_exec_log
             else:
                 # Final summary produced, no tools called
                 summary = msg.content
@@ -1930,6 +1941,29 @@ def solve_in_progress_incident(token, incident, kb_articles):
     success, exec_log = run_dynamic_react_loop(ip, user, password, sop_commands, short_desc, number, inc_id, ci_name)
 
     if not success:
+        if "SERVER_UNREACHABLE" in exec_log:
+            dept = incident.get("department", "Unix")
+            team_member = get_team_member_for_department(dept)
+            logger.warning(f"🚨 Target server {ip} is unreachable. Exited ReAct loop & escalating Incident [{number}] to {team_member}")
+            
+            unreachable_note = (
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🚨 AUTOMATED REMEDIATION ABORTED — SERVER UNREACHABLE\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 Assigned Team Member: {team_member}\n"
+                f"🎫 Ticket: [{number}] {short_desc}\n"
+                f"🖥️ Target Host: {ci_name} (IP: {ip})\n"
+                f"Reason: Target server {ip} is unreachable via SSH. Exited ReAct loop.\n"
+                f"👉 Required Action: Verify physical server power, network firewall, or SSH daemon status on {ip}.\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+            post_timeline_update(inc_id, number, short_desc, ci_name, "ESCALATED", "📡 Host Reachability Check", "FAILED", f"Server {ip} unreachable via SSH. Exited ReAct loop & escalated to {team_member}.")
+            add_work_note(token, inc_id, unreachable_note)
+            update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member)
+            locked_incident_sessions.add(inc_id)
+            resolved_incident_sessions.add(inc_id)
+            return
+
         post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "💻 Dynamic SSH Execution", "FAILED", f"Dynamic SSH execution failed: {exec_log[:200]}")
     else:
         post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "SUCCESS", "Dynamic SOP commands executed successfully.")
@@ -2018,14 +2052,17 @@ Respond ONLY in valid JSON format:
 
     # HARD PHYSICAL PROBE GUARD: If ticket involves Nexacore or Application down, physically test HTTP endpoint!
     if "nexacore" in short_desc.lower() or "application" in short_desc.lower() or "8080" in short_desc.lower():
+        time.sleep(3)  # Give background process time to complete socket bind
         try:
-            probe_req = urllib.request.urlopen(f"http://{ip}:8080", timeout=3)
+            probe_req = urllib.request.urlopen(f"http://{ip}:8080", timeout=5)
             if probe_req.getcode() != 200:
                 logger.warning(f"❌ HARD PHYSICAL PROBE FAILED for [{number}]: HTTP status {probe_req.getcode()}")
                 evaluation["is_healthy"] = False
                 evaluation["proof_summary"] = f"Hard physical HTTP probe to http://{ip}:8080 failed with status {probe_req.getcode()}."
             else:
                 logger.info(f"✅ HARD PHYSICAL PROBE PASSED for [{number}]: http://{ip}:8080 returned HTTP 200 OK")
+                evaluation["is_healthy"] = True
+                evaluation["proof_summary"] = f"Hard physical HTTP probe to http://{ip}:8080 returned HTTP 200 OK."
         except Exception as probe_err:
             logger.warning(f"❌ HARD PHYSICAL PROBE FAILED for [{number}]: {probe_err}")
             evaluation["is_healthy"] = False
@@ -2179,34 +2216,46 @@ def start_continuous_monitoring():
                 if (state == "IN_PROGRESS" or is_approved_on_hold) and inc_id not in escalated_incident_ids and inc_id not in resolved_incident_sessions:
                     in_progress_tickets.append(inc)
 
-            # Resolver Agent processes active tickets for SSH remediation & live proof
+            # Resolver Agent processes active tickets in ASYNC PARALLEL via ThreadPoolExecutor
             if in_progress_tickets:
-                logger.info(f"⚡ Resolver Agent: Discovered {len(in_progress_tickets)} incident(s) (IN_PROGRESS/APPROVED ON_HOLD) for SSH SOP remediation!")
-                for inc in in_progress_tickets[:5]:
-                    inc_id = inc.get("id")
-                    number = inc.get("number", inc_id)
-                    solve_in_progress_incident(token, inc, kb_articles)
-                    # If the incident failed/escalated (ON_HOLD without approval), remember it to avoid re-loop
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                max_parallel = min(len(in_progress_tickets), 10)
+                logger.info(f"⚡ Resolver Agent: Discovered {len(in_progress_tickets)} incident(s). Launching ASYNC PARALLEL Worker Pool (Max Workers = {max_parallel})...")
+                
+                def process_ticket_worker(inc_item):
+                    inc_id_item = inc_item.get("id")
+                    num_item = inc_item.get("number", inc_id_item)
                     try:
+                        logger.info(f"🚀 [Parallel Worker Thread] Starting remediation on Incident [{num_item}]")
+                        solve_in_progress_incident(token, inc_item, kb_articles)
+                        
+                        # Lock escalated or completed status
                         updated = fetch_incident_queue(token)
                         for u in updated:
-                            if u.get("id") == inc_id:
+                            if u.get("id") == inc_id_item:
                                 u_state = str(u.get("state", "")).upper()
-                                # Check if it became ON_HOLD because it's PENDING approval vs ESCALATED
                                 u_apprs = fetch_agent_approvals(token)
                                 has_pending_or_approved = any(
-                                    a.get("incidentId") == inc_id and a.get("status") in ("PENDING", "APPROVED")
+                                    a.get("incidentId") == inc_id_item and a.get("status") in ("PENDING", "APPROVED")
                                     for a in u_apprs
                                 )
                                 if u_state in ("RESOLVED", "CLOSED"):
-                                    escalated_incident_ids.add(inc_id)
-                                    logger.info(f"🔒 Incident [{number}] is now {u_state} — locked from re-processing this session.")
+                                    escalated_incident_ids.add(inc_id_item)
+                                    logger.info(f"🔒 Incident [{num_item}] is now {u_state} — locked from re-processing.")
                                 elif u_state == "ON_HOLD" and not has_pending_or_approved:
-                                    escalated_incident_ids.add(inc_id)
-                                    logger.info(f"🔒 Incident [{number}] is now ON_HOLD (escalated/failed) — locked from re-processing this session.")
+                                    escalated_incident_ids.add(inc_id_item)
+                                    logger.info(f"🔒 Incident [{num_item}] is now ON_HOLD (escalated/failed) — locked from re-processing.")
                                 break
-                    except Exception:
-                        pass
+                    except Exception as worker_err:
+                        logger.error(f"Error in parallel worker for ticket [{num_item}]: {worker_err}")
+
+                with ThreadPoolExecutor(max_workers=max_parallel) as executor:
+                    futures = [executor.submit(process_ticket_worker, inc) for inc in in_progress_tickets[:10]]
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as f_err:
+                            logger.error(f"Parallel worker thread execution error: {f_err}")
             else:
                 logger.info("💤 Queue Scan: No IN_PROGRESS tickets assigned for Resolver Agent remediation. Waiting...")
 

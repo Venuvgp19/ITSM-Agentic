@@ -107,11 +107,13 @@ export default function IncidentDetailPage() {
   const [isWorkNote, setIsWorkNote] = useState(true);
 
   useEffect(() => {
-    const fetchIncident = async () => {
-      setIsLoading(true);
+    let isMounted = true;
+
+    const fetchIncident = async (isInitial = false) => {
+      if (isInitial) setIsLoading(true);
       try {
         const res = await fetch(`/api/v1/incidents/${idParam}`);
-        if (res.ok) {
+        if (res.ok && isMounted) {
           const inc = await res.json();
           const mappedInc = {
             id: inc.id || inc.number || idParam.toUpperCase(),
@@ -120,7 +122,7 @@ export default function IncidentDetailPage() {
             priority: inc.priority || 'P2 - HIGH',
             state: inc.state || 'NEW',
             department: inc.department || 'UNASSIGNED (No Team)',
-            assignedTo: inc.assignedTo || 'UNASSIGNED (Unassigned)',
+            assignedTo: inc.assignedToName || inc.assignedTo || 'UNASSIGNED (Unassigned)',
             resolutionCode: inc.resolutionCode || 'Pending Triage',
             resolutionNotes: inc.resolutionNotes || '',
             caller: inc.caller || 'Monitoring Bot',
@@ -140,26 +142,33 @@ export default function IncidentDetailPage() {
               { id: 'act_2', author: mappedInc.assignedTo, isWorkNote: true, comment: `Department ${mappedInc.department} assigned. State: ${mappedInc.state}.`, timestamp: '10:22 AM' },
             ]);
           }
-          setIsLoading(false);
+          if (isInitial) setIsLoading(false);
           return;
         }
       } catch {
         // Fallback
       }
 
-      const updatedInc = getIncidentDetailById(idParam);
-      setIncident(updatedInc);
-      setState(updatedInc.state);
-      setResCode(updatedInc.resolutionCode);
-      setCiVal(updatedInc.ci);
-      setActivities([
-        { id: 'act_1', author: 'Monitoring Bot', isWorkNote: true, comment: `Automated telemetry created incident ${updatedInc.id} for target CI ${updatedInc.ci}.`, timestamp: '10:14 AM' },
-        { id: 'act_2', author: updatedInc.assignedTo, isWorkNote: true, comment: `Department ${updatedInc.department} assigned.`, timestamp: '10:22 AM' },
-      ]);
-      setIsLoading(false);
+      if (isMounted) {
+        const updatedInc = getIncidentDetailById(idParam);
+        setIncident(updatedInc);
+        setState(updatedInc.state);
+        setResCode(updatedInc.resolutionCode);
+        setCiVal(updatedInc.ci);
+        setActivities([
+          { id: 'act_1', author: 'Monitoring Bot', isWorkNote: true, comment: `Automated telemetry created incident ${updatedInc.id} for target CI ${updatedInc.ci}.`, timestamp: '10:14 AM' },
+          { id: 'act_2', author: updatedInc.assignedTo, isWorkNote: true, comment: `Department ${updatedInc.department} assigned.`, timestamp: '10:22 AM' },
+        ]);
+        if (isInitial) setIsLoading(false);
+      }
     };
 
-    fetchIncident();
+    fetchIncident(true);
+    const pollInterval = setInterval(() => fetchIncident(false), 3000);
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
   }, [idParam]);
 
   const handleAddActivity = (e: React.FormEvent) => {
