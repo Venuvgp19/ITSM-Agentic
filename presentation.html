@@ -245,6 +245,20 @@
             font-size: 0.95rem;
             font-weight: 600;
         }
+
+        /* SVG Bar Chart Styling */
+        .chart-bar-total {
+            fill: rgba(255, 255, 255, 0.15);
+            transition: all 0.3s ease;
+        }
+        .chart-bar-auto {
+            fill: url(#cyanGrad);
+            transition: all 0.3s ease;
+        }
+        .chart-bar-auto:hover {
+            fill: #00f2fe;
+            filter: drop-shadow(0 0 8px #00f2fe);
+        }
     </style>
 </head>
 <body>
@@ -337,7 +351,126 @@
             </div>
         </div>
 
-        <!-- Slide 4: System Architecture -->
+        <!-- Slide 4: NEW SLIDE - OPERATIONAL VISUAL ANALYTICS & CHARTS -->
+        <div class="slide">
+            <div>
+                <h2>📊 Operational Visual Analytics & Charts</h2>
+                <h3>Real-Time Incident Trends, Auto-Fix Rates & Pareto Distribution</h3>
+            </div>
+
+            <div class="grid-2">
+                <!-- Left: SVG Chart -->
+                <div class="card" style="background: rgba(0,0,0,0.4);">
+                    <h3>Daily Ticket Volume vs 92% SSH Auto-Remediation</h3>
+                    <div style="height: 230px; width: 100%; position: relative; margin-top: 16px;">
+                        <svg viewBox="0 0 500 200" style="width: 100%; height: 100%;">
+                            <defs>
+                                <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" stop-color="#00f2fe" stop-opacity="1"/>
+                                    <stop offset="100%" stop-color="#4facfe" stop-opacity="0.3"/>
+                                </linearGradient>
+                            </defs>
+                            
+                            <!-- Grid lines -->
+                            <line x1="40" y1="30" x2="480" y2="30" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4"/>
+                            <line x1="40" y1="80" x2="480" y2="80" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4"/>
+                            <line x1="40" y1="130" x2="480" y2="130" stroke="rgba(255,255,255,0.08)" stroke-dasharray="4"/>
+                            <line x1="40" y1="170" x2="480" y2="170" stroke="rgba(255,255,255,0.2)"/>
+
+                            <!-- Bars -->
+                            <!-- Mon -->
+                            <rect x="60" y="80" width="18" height="90" class="chart-bar-total" rx="3"/>
+                            <rect x="82" y="86" width="18" height="84" class="chart-bar-auto" rx="3"/>
+
+                            <!-- Tue -->
+                            <rect x="120" y="50" width="18" height="120" class="chart-bar-total" rx="3"/>
+                            <rect x="142" y="58" width="18" height="112" class="chart-bar-auto" rx="3"/>
+
+                            <!-- Wed -->
+                            <rect x="180" y="30" width="18" height="140" class="chart-bar-total" rx="3"/>
+                            <rect x="202" y="38" width="18" height="132" class="chart-bar-auto" rx="3"/>
+
+                            <!-- Thu -->
+                            <rect x="240" y="70" width="18" height="100" class="chart-bar-total" rx="3"/>
+                            <rect x="262" y="76" width="18" height="94" class="chart-bar-auto" rx="3"/>
+
+                            <!-- Fri -->
+                            <rect x="300" y="20" width="18" height="150" class="chart-bar-total" rx="3"/>
+                            <rect x="322" y="28" width="18" height="142" class="chart-bar-auto" rx="3"/>
+
+                            <!-- Sat -->
+                            <rect x="360" y="110" width="18" height="60" class="chart-bar-total" rx="3"/>
+                            <rect x="382" y="114" width="18" height="56" class="chart-bar-auto" rx="3"/>
+
+                            <!-- Sun -->
+                            <rect x="420" y="130" width="18" height="40" class="chart-bar-total" rx="3"/>
+                            <rect x="442" y="132" width="18" height="38" class="chart-bar-auto" rx="3"/>
+
+                            <!-- Labels -->
+                            <text x="75" y="190" fill="#94a3b8" font-size="11" text-anchor="middle">Mon</text>
+                            <text x="135" y="190" fill="#94a3b8" font-size="11" text-anchor="middle">Tue</text>
+                            <text x="195" y="190" fill="#94a3b8" font-size="11" text-anchor="middle">Wed</text>
+                            <text x="255" y="190" fill="#94a3b8" font-size="11" text-anchor="middle">Thu</text>
+                            <text x="315" y="190" fill="#94a3b8" font-size="11" text-anchor="middle">Fri</text>
+                            <text x="375" y="190" fill="#94a3b8" font-size="11" text-anchor="middle">Sat</text>
+                            <text x="435" y="190" fill="#94a3b8" font-size="11" text-anchor="middle">Sun</text>
+                        </svg>
+                    </div>
+                    <div style="display: flex; gap: 16px; justify-content: center; font-size: 0.85rem; margin-top: 8px;">
+                        <span><span style="color: rgba(255,255,255,0.4);">■</span> Total Tickets</span>
+                        <span style="color: var(--accent-cyan);">■ Agentic Auto-Remediated (92%)</span>
+                    </div>
+                </div>
+
+                <!-- Right: Pareto Category Progress Bars -->
+                <div class="card">
+                    <h3>Pareto 80/20 Failure Category Breakdown</h3>
+                    <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 20px;">
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 6px;">
+                                <span>Application & Web Services (NexaCore)</span>
+                                <span style="color: var(--accent-cyan); font-weight: 600;">45% (450 Tickets)</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.08); height: 10px; border-radius: 5px; overflow: hidden;">
+                                <div style="background: var(--accent-cyan); width: 45%; height: 100%;"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 6px;">
+                                <span>Network & Ingress Latency</span>
+                                <span style="color: var(--accent-purple); font-weight: 600;">25% (250 Tickets)</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.08); height: 10px; border-radius: 5px; overflow: hidden;">
+                                <div style="background: var(--accent-purple); width: 25%; height: 100%;"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 6px;">
+                                <span>Unix Storage & Volume Lockouts</span>
+                                <span style="color: #f59e0b; font-weight: 600;">18% (180 Tickets)</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.08); height: 10px; border-radius: 5px; overflow: hidden;">
+                                <div style="background: #f59e0b; width: 18%; height: 100%;"></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 6px;">
+                                <span>User Management & Account Auth</span>
+                                <span style="color: #10b981; font-weight: 600;">12% (120 Tickets)</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.08); height: 10px; border-radius: 5px; overflow: hidden;">
+                                <div style="background: #10b981; width: 12%; height: 100%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 5: System Architecture -->
         <div class="slide">
             <div>
                 <h2>Enterprise Microservices Architecture</h2>
@@ -361,7 +494,7 @@
             </div>
         </div>
 
-        <!-- Slide 5: Screen Shot 2 - Vector RAG Analytics -->
+        <!-- Slide 6: Screen Shot 2 - Vector RAG Analytics -->
         <div class="slide">
             <div>
                 <h2>Dense Vector RAG & Knowledge Synthesizer</h2>
@@ -385,7 +518,7 @@
             </div>
         </div>
 
-        <!-- Slide 6: Screen Shot 3 - Remediation Audit Log -->
+        <!-- Slide 7: Screen Shot 3 - Remediation Audit Log -->
         <div class="slide">
             <div>
                 <h2>Immutable Audit Logging & Compliance</h2>
@@ -409,7 +542,7 @@
             </div>
         </div>
 
-        <!-- Slide 7: Live Case Study -->
+        <!-- Slide 8: Live Case Study -->
         <div class="slide">
             <div>
                 <h2>Case Study: NexaCore Portal Healing</h2>
@@ -432,7 +565,7 @@
             </div>
         </div>
 
-        <!-- Slide 8: Financial Impact & ROI -->
+        <!-- Slide 9: Financial Impact & ROI -->
         <div class="slide">
             <div>
                 <h2>Business Value & Financial ROI</h2>
@@ -458,7 +591,7 @@
             </div>
         </div>
 
-        <!-- Slide 9: Call to Action -->
+        <!-- Slide 10: Call to Action -->
         <div class="slide">
             <div style="text-align: center; margin: auto 0;">
                 <span class="badge">Deploy Today</span>
@@ -477,7 +610,7 @@
     <!-- Controls -->
     <div class="controls">
         <button class="btn" onclick="prevSlide()">❮ Prev</button>
-        <span class="slide-counter" id="slideCounter">Slide 1 of 9</span>
+        <span class="slide-counter" id="slideCounter">Slide 1 of 10</span>
         <button class="btn" onclick="nextSlide()">Next ❯</button>
     </div>
 
