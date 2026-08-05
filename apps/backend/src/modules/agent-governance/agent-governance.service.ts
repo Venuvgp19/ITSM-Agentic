@@ -578,6 +578,12 @@ export class AgentGovernanceService implements OnModuleInit {
       if (stepIdx >= 0) {
         meta.steps[stepIdx] = newStep;
       } else {
+        // Enforce strict 100% sequential progression: mark all preceding RUNNING steps as SUCCESS
+        meta.steps.forEach((s: any) => {
+          if (s.status === 'RUNNING') {
+            s.status = 'SUCCESS';
+          }
+        });
         meta.steps.push(newStep);
       }
     }

@@ -2094,7 +2094,6 @@ Respond ONLY in valid JSON format:
 
     resolved_incident_sessions.add(inc_id)
     locked_incident_sessions.add(inc_id)
-    logger.info(f"🔒 Incident [{number}] is now RESOLVED — locked from re-processing this session.")
 
 def start_continuous_monitoring():
     acquire_lock()
