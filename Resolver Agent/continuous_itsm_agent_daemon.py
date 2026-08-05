@@ -110,7 +110,7 @@ TOKEN_USAGE_SESSION = {
 # Tracks which incident is currently being processed (set by solve_in_progress_incident)
 CURRENT_INCIDENT_TOKEN_SNAPSHOT = {}
 
-def invoke_llm_with_fallback(messages, response_format=None, call_label="LLM Call"):
+def invoke_llm_with_fallback(messages, response_format=None, call_label="LLM Call", tools=None, return_message=False):
     """
     Invokes LLM with automatic fallback to NVIDIA Nemotron 3 Ultra or high-performing MaaS models.
     Captures and accumulates token usage from every API response.
@@ -139,6 +139,8 @@ def invoke_llm_with_fallback(messages, response_format=None, call_label="LLM Cal
             kwargs = {"model": model, "messages": messages}
             if response_format and "nvidia" not in model.lower():
                 kwargs["response_format"] = response_format
+            if tools:
+                kwargs["tools"] = tools
             if "nvidia" in model.lower() or "nemotron" in model.lower():
                 kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 16384}
             res = client.chat.completions.create(**kwargs)
@@ -166,10 +168,14 @@ def invoke_llm_with_fallback(messages, response_format=None, call_label="LLM Cal
                     f"| session_total={TOKEN_USAGE_SESSION['total_tokens']:,}"
                 )
             # ─────────────────────────────────────────────────────────────
-
+            
+            if return_message:
+                return res.choices[0].message, model
             return res.choices[0].message.content, model
         except Exception as e:
             logger.warning(f"Model {model} invocation fallback trigger: {e}")
+    if return_message:
+        return None, None
     return None, None
 
 # Saved Inventory & Credentials for Configuration Items
@@ -275,6 +281,8 @@ KEYWORDS = [
 ]
 
 def cosine_similarity(v1, v2):
+    if len(v1) != len(v2):
+        return 0.0
     dot_prod = sum(a*b for a, b in zip(v1, v2))
     mag1 = sum(a*a for a in v1) ** 0.5
     mag2 = sum(b*b for b in v2) ** 0.5
@@ -393,8 +401,7 @@ def sync_vector_db_with_kb(token, client, vdb):
             if art_number not in indexed_numbers:
                 title = art.get("title", "")
                 summary = art.get("summary", "")
-                steps = json.dumps(art.get("resolutionSteps", []))
-                content_to_embed = f"Title: {title}\nSummary: {summary}\nSteps: {steps}"
+                content_to_embed = f"Title: {title}\nSummary: {summary}"
                 
                 emb = get_embedding(content_to_embed, client)
                 vdb.add_kb_embedding(art_id, art_number, title, emb)
@@ -1214,7 +1221,7 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
     if rag_results:
         top_match = rag_results[0]
         similarity_score = top_match.get("score", 0)
-        if similarity_score >= 0.5:
+        if similarity_score >= 0.50:
             matched_number = top_match.get("number")
             for art in kb_articles:
                 if art.get("number") == matched_number:
@@ -1225,7 +1232,7 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                 logger.info(f"🎯 RAG Match: Score {similarity_score:.4f} -> {matched_number} '{matched_kb.get('title', '')}'")
     
     if is_new:
-        logger.info(f"✨ RAG Miss (similarity score {similarity_score:.4f} < 0.75). Handing over to Knowledge base creator LLM for SOP synthesis...")
+        logger.info(f"✨ RAG Miss (similarity score {similarity_score:.4f} < 0.50). Handing over to Knowledge base creator LLM for SOP synthesis...")
         
         # Invoke LLM to synthesize a new SOP
         prompt = f"""
@@ -1512,6 +1519,92 @@ def prepare_new_incident_sop(token, incident, kb_articles):
     add_work_note(token, inc_id, transition_msg)
 
 
+
+def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, number, inc_id, ci_name):
+    logger.info(f"🚀 Starting Dynamic ReAct Loop for {number}")
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "execute_ssh_command",
+                "description": "Executes a single SSH command on the target host and returns the stdout/stderr.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The exact shell command to execute."
+                        }
+                    },
+                    "required": ["command"]
+                }
+            }
+        }
+    ]
+
+    messages = [
+        {"role": "system", "content": "You are a dynamic IT Agent. You must resolve the incident by following the provided SOP guide. Use the `execute_ssh_command` tool to run commands one by one. Check the output of each command. If it succeeds, proceed to the next logical step. If the output indicates the goal is already achieved, you can SKIP unnecessary steps (e.g. jumping to step 7 after step 4). When fully resolved, reply with a final summary and stop calling tools. YOU MUST ONLY USE NATIVE SHELL COMMANDS. DO NOT prepend 'ssh root@ip' to your commands."},
+        {"role": "user", "content": f"Target Host: {ip}\nIncident: {short_desc}\n\nSOP Guide Commands:\n" + json.dumps(guide_commands)}
+    ]
+
+    full_exec_log = ""
+    is_success = True
+    
+    max_turns = 10
+    turn = 0
+    
+    while turn < max_turns:
+        turn += 1
+        logger.info(f"🔄 ReAct Loop Turn {turn} for {number}...")
+        
+        try:
+            msg, used_model = invoke_llm_with_fallback(
+                messages=messages, 
+                tools=tools, 
+                return_message=True, 
+                call_label=f"ReAct Loop Turn {turn}"
+            )
+            if not msg:
+                raise Exception("All fallback models failed to return a valid response.")
+            # Append the message to the conversation correctly
+            messages.append(msg)
+            
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    if tc.function.name == "execute_ssh_command":
+                        args = json.loads(tc.function.arguments)
+                        cmd = args.get("command")
+                        logger.info(f"🛠️ LLM decided to execute tool: {cmd}")
+                        post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"LLM executing: {cmd}")
+                        
+                        # Execute
+                        ok, out_log = execute_ssh_sop(ip, user, password, [cmd])
+                        full_exec_log += out_log
+                        
+                        # Feed back to LLM
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "name": tc.function.name,
+                            "content": out_log
+                        })
+                        if not ok:
+                            is_success = False
+            else:
+                # Final summary produced, no tools called
+                summary = msg.content
+                logger.info(f"✅ ReAct Loop finished for {number}: {summary}")
+                full_exec_log += f"\n=== FINAL AGENT SUMMARY ===\n{summary}\n"
+                break
+        except Exception as e:
+            logger.error(f"ReAct Loop Error: {e}")
+            full_exec_log += f"\n=== ERROR ===\n{str(e)}\n"
+            is_success = False
+            break
+            
+    return is_success, full_exec_log
+
+
 def solve_in_progress_incident(token, incident, kb_articles):
     inc_id = incident.get("id")
     number = incident.get("number", inc_id)
@@ -1769,17 +1862,16 @@ def solve_in_progress_incident(token, incident, kb_articles):
                 logger.info(f"🟢 Execution approved! Human operator approved synthesized SOP for [{number}]. Proceeding...")
                 sop_commands = my_approval.get("proposedCommands", sop_commands)
 
-    # 4. Execute SSH Commands on Worker (Ensure SINGLE execution attempt per incident session)
+    # 4. Execute SSH Commands dynamically via LLM ReAct Tool Calling
     processed_in_progress_incidents.add(inc_id)
 
-    cmd_str = " && ".join(sop_commands) if isinstance(sop_commands, list) else str(sop_commands)
-    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 SSH SOP Execution", "RUNNING", f"Executing commands: {cmd_str}")
-    success, exec_log = execute_ssh_sop(ip, user, password, sop_commands)
+    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"LLM is dynamically orchestrating execution...")
+    success, exec_log = run_dynamic_react_loop(ip, user, password, sop_commands, short_desc, number, inc_id, ci_name)
 
     if not success:
-        post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "💻 SSH SOP Execution", "FAILED", f"SSH session execution failed: {exec_log}")
+        post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "💻 Dynamic SSH Execution", "FAILED", f"Dynamic SSH execution failed: {exec_log[:200]}")
     else:
-        post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 SSH SOP Execution", "SUCCESS", "SOP commands executed successfully.")
+        post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "SUCCESS", "Dynamic SOP commands executed successfully.")
 
     # 5. Evaluate Live Terminal Logs
     eval_prompt = f"""

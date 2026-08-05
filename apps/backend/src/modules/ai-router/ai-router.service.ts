@@ -120,7 +120,7 @@ export class AiRouterService implements OnModuleInit {
     }
 
     const analysis = await this.llmService.analyzeIncidentWithNvidiaLLM({
-      incidentId: inc.id || inc.number,
+      incidentId: inc.number || inc.id,
       shortDescription: inc.shortDescription,
       description: inc.description,
       caller: inc.caller,
@@ -182,7 +182,7 @@ export class AiRouterService implements OnModuleInit {
       // Log EXACTLY ONCE per incident ID
       if (!this.loggedIncidentIds.has(cleanId)) {
         this.loggedIncidentIds.add(cleanId);
-        const logStr = `🤖 [Llama-3.3 70B AI Agent] Ticket: ${cleanId} | Target: "${targetDept}" | AssignedTo: "${assignedTechnician}" | Confidence: ${analysis.confidenceScore}%`;
+        const logStr = `🤖 [Llama-3.3 70B AI Agent] Ticket: ${incident.number || cleanId} | Target: "${targetDept}" | AssignedTo: "${assignedTechnician}" | Confidence: ${analysis.confidenceScore}%`;
         this.logger.log(logStr);
         this.appendLogFile(`[${new Date().toISOString()}] ${logStr}`);
       }
@@ -245,7 +245,7 @@ export class AiRouterService implements OnModuleInit {
       this.processedIncidentIds.add(cleanId);
 
       try {
-        this.logger.log(`⏳ [Priority Queue Router] Starting LLM analysis on ${cleanId} (Priority: ${inc.priority || 'P2'})...`);
+        this.logger.log(`⏳ [Priority Queue Router] Starting LLM analysis on ${inc.number || cleanId} (Priority: ${inc.priority || 'P2'})...`);
         const res = await this.routeIncident(tenantId, cleanId);
         if (res && res.success) routedCount++;
         results.push(res);

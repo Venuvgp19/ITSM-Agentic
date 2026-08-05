@@ -145,8 +145,8 @@ export default function IncidentsPage() {
           }));
 
           apiMapped.sort((a, b) => {
-            const numA = parseInt((a.id || '').replace(/\D/g, ''), 10) || 0;
-            const numB = parseInt((b.id || '').replace(/\D/g, ''), 10) || 0;
+            const numA = parseInt((a.number || '').replace(/\D/g, ''), 10) || 0;
+            const numB = parseInt((b.number || '').replace(/\D/g, ''), 10) || 0;
             return numB - numA;
           });
           setIncidents(apiMapped);
