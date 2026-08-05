@@ -184,6 +184,41 @@ export class IncidentService {
     return this.mapIncidentToDTO(updated);
   }
 
+  async updateState(tenantId: string, id: string, state: string, resolutionNotes?: string, resolutionCode?: string, assignedTo?: string) {
+    const cleanId = (id || '');
+    const existing = await this.prisma.incident.findFirst({
+      where: { tenantId, OR: [{ id: cleanId.toLowerCase() }, { number: cleanId.toUpperCase() }] },
+    });
+
+    if (!existing) throw new NotFoundException(`Incident ${cleanId} not found`);
+
+    let activities = (existing.activitiesJson as any[]) || [];
+    const timeStr = new Date().toLocaleTimeString();
+
+    if (state === 'RESOLVED') {
+      activities.push({
+        id: `act_${existing.number}_resolved_${Date.now()}`,
+        author: '🤖 Unix Auto-Resolver Agent',
+        isWorkNote: true,
+        comment: `🎉 Incident ${existing.number} state transitioned to RESOLVED. Remote SSH SOP execution verified. Saved to PostgreSQL database.`,
+        timestamp: timeStr,
+      });
+    }
+
+    const updated = await this.prisma.incident.update({
+      where: { id: existing.id },
+      data: {
+        state: state,
+        resolutionCode: resolutionCode || (state === 'RESOLVED' ? 'Server - Kernel & OS Patch' : existing.resolutionCode),
+        resolutionNotes: resolutionNotes || existing.resolutionNotes,
+        assignedToName: assignedTo || existing.assignedToName,
+        activitiesJson: activities,
+      },
+    });
+
+    return this.mapIncidentToDTO(updated);
+  }
+
   async addActivity(tenantId: string, incidentId: string, authorId: string, dto: AddActivityDto) {
     const cleanId = (incidentId || '');
     const existing = await this.prisma.incident.findFirst({

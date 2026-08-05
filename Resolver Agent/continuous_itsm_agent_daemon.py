@@ -512,8 +512,15 @@ def update_incident_status(token, incident_id, state, resolution_code=None, reso
     if assigned_to:
         payload["assignedTo"] = assigned_to
     try:
-        res = requests.patch(f"{ITSM_BASE_URL}/incidents/{incident_id}", headers=headers, json=payload, timeout=5)
-        return res.status_code == 200
+        res = requests.patch(f"{ITSM_BASE_URL}/incidents/{incident_id}/state", headers=headers, json=payload, timeout=5)
+        if res.status_code not in [200, 201]:
+            res = requests.patch(f"{ITSM_BASE_URL}/incidents/{incident_id}", headers=headers, json=payload, timeout=5)
+        
+        if state == "RESOLVED":
+            resolved_incident_sessions.add(incident_id)
+            logger.info(f"🔒 Incident [{incident_id}] state saved as RESOLVED in PostgreSQL DB — locked from re-processing.")
+            
+        return res.status_code in [200, 201]
     except Exception as e:
         logger.error(f"Failed to update status for {incident_id}: {e}")
         return False

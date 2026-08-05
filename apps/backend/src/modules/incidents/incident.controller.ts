@@ -47,6 +47,24 @@ export class IncidentController {
   }
 
   @Public()
+  @Patch(':id/state')
+  @ApiOperation({ summary: 'Save and update incident state directly in PostgreSQL database' })
+  async updateState(
+    @CurrentUser('tenantId') tenantId: string,
+    @Param('id') id: string,
+    @Body() body: { state: string; resolutionNotes?: string; resolutionCode?: string; assignedTo?: string },
+  ) {
+    return this.incidentService.updateState(
+      tenantId || 'tenant_acme_01',
+      id,
+      body.state,
+      body.resolutionNotes,
+      body.resolutionCode,
+      body.assignedTo
+    );
+  }
+
+  @Public()
   @Patch(':id')
   @ApiOperation({ summary: 'Update incident state, priority, assignment, or resolution code' })
   async update(
