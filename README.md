@@ -5,19 +5,19 @@ The system autonomously triages incoming helpdesk tickets, retrieves verified SO
 
 ---
 
-## 🏛️ Architecture & Complete System Flow
+## 🏛️ Exact Architecture & System Flowchart
 
 ```mermaid
 flowchart TD
-    START(["1. Incident Created<br/>State = NEW, Department = UNASSIGNED"])
+    START(["1. Incident Ticket Created<br/>State = NEW, Dept = UNASSIGNED"])
 
     subgraph ROUTER["Phase 1: AI Router Service (NestJS API :4000)"]
-        R1["scanAndRouteUnassignedQueue()<br/>Polls every 10s for unassigned tickets"]
-        R2["Sort queue by Priority<br/>P1 Critical → P4 Low"]
-        R3["analyzeIncidentWithNvidiaLLM()<br/>Model: Meta Llama 3.3 70B"]
+        R1["scanAndRouteUnassignedQueue()<br/>Polls unassigned queue every 10s"]
+        R2["Sort Queue by Priority<br/>P1 Critical → P2 High → P3 Medium → P4 Low"]
+        R3["Take Top 2 Tickets & Invoke Meta Llama 3.3 70B"]
         R4{"Confidence ≥ 85%?"}
         R5["Auto-Assign Group & Set State = IN_PROGRESS"]
-        R6["Leave UNASSIGNED for Human Triage"]
+        R6["Leave UNASSIGNED for Manual Helpdesk Triage"]
 
         R1 --> R2 --> R3 --> R4
         R4 -->|"Yes"| R5
@@ -25,66 +25,72 @@ flowchart TD
     end
 
     subgraph DAEMON["Phase 2: Auto-Resolver Agent Daemon (Python :Background)"]
-        P1["Poll IN_PROGRESS Queue via REST API"]
-        P2["Extract Incident Title & Description"]
-        P3["Generate 4096-D Vector Embedding<br/>Model: nvidia/nv-embed-v1"]
-        P4["Cosine Similarity Search against SQLite vector_db.db"]
+        P1["Poll IN_PROGRESS Tickets every 15s"]
+        P2["Fingerprint Target CI Host OS via SSH (uname -s)"]
+        P3["Sanitize Text & Generate 4096-D Vector Embedding<br/>Model: nvidia/nv-embed-v1"]
+        P4["Cosine Similarity Search against vector_db.db"]
         P5{"Similarity Score ≥ 0.50?"}
 
         P1 --> P2 --> P3 --> P4 --> P5
     end
 
-    subgraph RAGHIT["Phase 3A: RAG Hit (Verified SOP Match)"]
+    subgraph RAGHIT["Phase 3A: RAG Hit (Verified SOP Found)"]
         H1["Retrieve Verified Master SOP (e.g. KB0000020)"]
-        H2["Parameterize Placeholders<br/>{ip}, {username}, {password}"]
-        H3["Format Non-Interactive SSH Commands"]
+        H2["LLM Placeholder Parameterization<br/>Replace {ip}, {username}, {password}"]
+        H3["Direct SSH Execution Path (Bypasses HITL Gate)"]
 
         H1 --> H2 --> H3
     end
 
     subgraph RAGMISS["Phase 3B: RAG Miss & SOP Synthesis"]
-        M1["Trigger Reactive SOP Synthesizer<br/>Model: NVIDIA Nemotron 550B"]
-        M2["Synthesize SSH Resolution Steps,<br/>Symptoms & Root Cause"]
-        M3["Fuzzy Deduplication Check (Jaccard Overlap ≥ 60%)"]
-        M4{"Similar SOP Exists?"}
-        M5["Merge Steps into Existing KB via API PATCH"]
-        M6["Draft New SOP Knowledge Article"]
+        M1["Invoke Knowledge Creator LLM<br/>Model: NVIDIA Nemotron 550B"]
+        M2["Synthesize SSH Resolution Commands,<br/>Symptoms & Root Cause"]
+        M3["Submit PENDING Approval to Control Tower (:5173)"]
+        M4["Set State = ON_HOLD & Add Session Lock"]
 
         M1 --> M2 --> M3 --> M4
-        M4 -->|"Yes"| M5
-        M4 -->|"No"| M6
     end
 
     subgraph HITL["Phase 4: Agent Control Tower Governance (:5173)"]
-        G1["POST Approval Request to Control Tower"]
-        G2["Set Incident State = ON_HOLD (Session Locked)"]
-        G3["Display Card with SOP & Terminal Preview"]
-        G4{"Human Operator Decision?"}
-        G5["Operator Clicked APPROVE"]
-        G6["Operator Clicked REJECT"]
+        G1["Human Operator Reviews Approval Card"]
+        G2{"Operator Decision?"}
+        G3["Click APPROVE<br/>Consume Approval & Unlock Session"]
+        G4["Click REJECT<br/>Escalate to DevOps & Lock Permanently"]
 
-        G1 --> G2 --> G3 --> G4
-        G4 -->|"Approved"| G5
-        G4 -->|"Rejected"| G6
+        G1 --> G2
+        G2 -->|"Approved"| G3
+        G2 -->|"Rejected"| G4
     end
 
     subgraph SSH["Phase 5: Remote SSH Execution & Verification"]
-        S1["Paramiko SSH Client connects to Target CI"]
-        S2["Execute Commands Non-Interactively over SSH"]
-        S3["Parse Output Telemetry & Port Health (e.g. 200 OK)"]
-        S4{"Execution Successful?"}
-        S5["Set State = RESOLVED & Post Audit Work Note"]
-        S6["Set State = ON_HOLD & Escalate to DevOps"]
+        S1["Paramiko SSH Client connects to Target Host (e.g. 192.168.100.102)"]
+        S2["Execute Non-Interactive Commands line-by-line"]
+        S3["Capture stdout / stderr & Perform Port Health Check"]
+        S4["Invoke LLM Verification Engine (Evaluate Output Log)"]
+        S5{"is_healthy == True?"}
+        S6["State = RESOLVED<br/>Attach Execution Proof Work Notes"]
+        S7["State = ON_HOLD<br/>Escalate to Team Member"]
 
-        S1 --> S2 --> S3 --> S4
-        S4 -->|"Pass"| S5
-        S4 -->|"Fail"| S6
+        S1 --> S2 --> S3 --> S4 --> S5
+        S5 -->|"Yes"| S6
+        S5 -->|"No"| S7
     end
 
-    subgraph CONSOLIDATOR["Phase 6: Proactive Master SOP Consolidation"]
+    subgraph DEDUP["Phase 6: Save & Fuzzy Deduplicate KB Article"]
+        D1["Check Jaccard Token Overlap against existing KBs"]
+        D2{"Similarity ≥ 60%?"}
+        D3["API PATCH: Append steps into existing KB"]
+        D4["API POST: Create New KB Article & Embed into vector_db.db"]
+
+        D1 --> D2
+        D2 -->|"Yes"| D3
+        D2 -->|"No"| D4
+    end
+
+    subgraph CONSOLIDATOR["Phase 7: Proactive Master SOP Consolidation"]
         C1["NestJS KnowledgeConsolidator Worker"]
-        C2["Group KB Articles by Category + Intent"]
-        C3["Merge Duplicate Drafts into Unified Master SOP"]
+        C2["Group KBs by Category + Intent (e.g. User Management::CREATE)"]
+        C3["Merge Duplicate Articles into Master SOPs"]
 
         C1 --> C2 --> C3
     end
@@ -93,101 +99,118 @@ flowchart TD
     R5 --> DAEMON
     P5 -->|"RAG Hit (≥ 0.50)"| RAGHIT
     P5 -->|"RAG Miss (< 0.50)"| RAGMISS
-    RAGHIT --> HITL
+    RAGHIT --> SSH
     RAGMISS --> HITL
-    G5 --> SSH
-    G6 --> S6
-    S5 --> CONSOLIDATOR
+    G3 --> SSH
+    G4 --> S7
+    S6 --> DEDUP
+    D3 --> CONSOLIDATOR
+    D4 --> CONSOLIDATOR
 ```
 
 ---
 
-## 🔍 How It Works: Detailed Explanation
+## 🔍 Detailed Code-Flow Breakdown
 
-### 1. Phase 1: Intelligent Ticket Triage & AI Routing
-When an incident is logged in the system (via web portal, monitoring webhook, or API), its initial state is `NEW` and its department is `UNASSIGNED`. 
-- The NestJS `AiRouterService` polls unassigned tickets every 10 seconds.
-- It passes the ticket details to **Meta Llama 3.3 70B** to extract key telemetry, urgency, configuration item (CI), and assignment group.
-- If the AI confidence score is **≥ 85%**, it automatically assigns the ticket and sets its state to `IN_PROGRESS`.
+### 1. Phase 1: AI Router Service (`AiRouterService`)
+* **Trigger:** Polls unassigned tickets every 10,000ms (`apps/backend/src/modules/ai-router/ai-router.service.ts`).
+* **Priority Queueing:** Sorts tickets strictly by priority: `P1 Critical` → `P2 High` → `P3 Medium` → `P4 Low`.
+* **LLM Analysis:** Ingests top 2 tickets per cycle and invokes **Meta Llama 3.3 70B** (`llmService.analyzeIncidentWithNvidiaLLM`).
+* **Routing Decision:**
+  * If `confidenceScore >= 85%`: Updates ticket department, assigns technician, sets state to `IN_PROGRESS`, and posts audit work notes.
+  * If `confidenceScore < 85%`: Leaves ticket `UNASSIGNED` for manual human triage.
 
-### 2. Phase 2: High-Precision Vector RAG Search
-The Python Auto-Resolver Agent Daemon picks up tickets in `IN_PROGRESS` state:
-- It strips out raw shell script noise and isolates clean `Title` + `Summary` text.
-- It calls the **NVIDIA `nv-embed-v1`** model to generate a **4096-dimensional dense vector embedding**.
-- It queries the local SQLite `vector_db.db` using Cosine Similarity.
-- **Threshold Calibration (`0.50`):**
-  - **Score ≥ 0.50 (RAG Hit):** Matches a verified Master SOP (e.g., `KB0000020` for NexaCore Application Recovery).
-  - **Score < 0.50 (RAG Miss):** Triggers the reactive SOP synthesizer.
+### 2. Phase 2: Auto-Resolver Agent Daemon (`continuous_itsm_agent_daemon.py`)
+* **Trigger:** Polls tickets in `IN_PROGRESS` state every 15 seconds.
+* **CI Fingerprinting:** SSHes into the target host to fingerprint the OS (`uname -s`).
+* **Resource Threshold Check:** For CPU/Memory alerts, captures live utilization via `top`/`free`. If utilization is `< 90%`, auto-resolves the ticket immediately.
+* **Dense Vector Search:**
+  * Extracts clean `Title` + `Summary` (excluding raw shell code noise).
+  * Calls **NVIDIA `nv-embed-v1`** to generate a 4096-dimensional embedding.
+  * Searches local SQLite `vector_db.db` via Cosine Similarity.
 
-### 3. Phase 3: Reactive SOP Synthesis & Fuzzy Deduplication
-If RAG misses:
-- **NVIDIA Nemotron 550B** synthesizes a step-by-step recovery SOP based on incident telemetry and SSH diagnostic logs.
-- **Fuzzy Token-Overlap Deduplicator:** Before creating a new KB, the daemon tokenizes keywords and calculates **Jaccard Token Overlap** against existing database SOPs. If a similar SOP exists (similarity ≥ 60%), it appends the new resolution commands to the existing KB via API `PATCH` instead of creating duplicate articles!
+### 3. Phase 3 & 4: RAG Hit vs. RAG Miss (HITL Control Tower)
+* **RAG Hit (`Similarity ≥ 0.50`):**
+  * Retrieves verified SOP from PostgreSQL.
+  * Parameterizes placeholders (`{ip}`, `{username}`, `{password}`).
+  * **Direct Execution:** Bypasses approval and proceeds directly to SSH execution.
+* **RAG Miss (`Similarity < 0.50`):**
+  * Invokes Knowledge Creator LLM (**NVIDIA Nemotron 550B**) to synthesize new resolution commands.
+  * Submits PENDING approval request to **Agent Control Tower Dashboard** (`http://localhost:5173`).
+  * Changes ticket state to `ON_HOLD` and adds a session lock (`locked_incident_sessions.add(inc_id)`).
+  * **Operator Decision:**
+    * **APPROVE:** Daemon consumes approval, unlocks session, and executes approved commands.
+    * **REJECT:** Daemon escalates ticket to `DevOps Team` and locks session permanently.
 
-### 4. Phase 4: Human-in-the-Loop (HITL) Governance
-Before any script touches a production server:
-- The daemon submits an approval request to the **Agent Control Tower Dashboard** (`http://localhost:5173`).
-- The incident state changes to `ON_HOLD` and a session lock is established.
-- Human operators review the SOP steps, AI confidence score, and command preview before clicking **APPROVE** or **REJECT**.
+### 4. Phase 5: Remote SSH Execution & LLM Verification
+* **Paramiko SSH Client:** Connects to target CI host (e.g., `WorkerNode1HL` at `192.168.100.102`).
+* **Non-Interactive Execution:** Runs commands line-by-line and captures `stdout`/`stderr`.
+* **Health Check:** Validates live port health (e.g., `HTTP 200 OK` on port `8080`).
+* **LLM Verification Engine:** Passes execution output log to LLM (`invoke_llm_with_fallback`).
+  * If `is_healthy == True`: State = `RESOLVED`, posts execution proof work notes.
+  * If `is_healthy == False`: State = `ON_HOLD`, escalates to team member.
 
-### 5. Phase 5: Remote SSH Remediation & Verification
-Upon operator approval:
-- The daemon establishes a secure, non-interactive SSH connection (`Paramiko`) to the target server (e.g., `WorkerNode1HL` at `192.168.100.102`).
-- It executes the resolution steps line-by-line and captures `stdout`/`stderr`.
-- It performs a post-execution health check (e.g., verifying `HTTP 200 OK` on port `8080`).
-- If healthy, the ticket state is updated to `RESOLVED`, audit work notes are attached, and the session lock is released.
+### 5. Phase 6: Save & Fuzzy Token-Overlap Deduplication
+* **Jaccard Token Similarity:** Upon successful incident resolution of a new SOP, tokenizes the title keywords.
+* **Overlap Check:** Compares against existing KB titles in PostgreSQL.
+  * **Similarity ≥ 60%:** Merges new SSH steps into existing KB via API `PATCH`.
+  * **Similarity < 60%:** Creates a new KB article via API `POST` and embeds it into `vector_db.db`.
 
-### 6. Phase 6: Proactive Master SOP Consolidation
-In the background, the NestJS `KnowledgeService` continuously scans all published KB articles. It groups them by **Category** + **Intent** (e.g., `User Management` + `CREATE`), deduplicates commands, and merges single articles into comprehensive **Master SOPs**.
+### 6. Phase 7: Proactive Master SOP Consolidation
+* **Background Worker:** NestJS `KnowledgeService` (`runContinuousBackgroundSynthesis`) scans published KBs.
+* **Categorization & Intent Matching:** Groups articles by Category + Intent (e.g., `User Management::CREATE`).
+* **Master SOP Generation:** Invokes LLM to merge duplicate single articles into clean **Master SOPs** (`KB00000xx`).
 
 ---
 
-## 🛠️ Complete Setup Commands
+## 🛠️ Complete Operational Commands
 
-### Option A: Windows (PowerShell) - Full Manual Setup
+### 1. Database Setup & Restore (PostgreSQL)
 
-#### 1. Database Setup & Restore
 ```powershell
-# Ensure PostgreSQL is running on port 5432
-# Create Database and User
+# Windows (PowerShell)
 & "$env:USERPROFILE\pgsql\pgsql\bin\psql.exe" -U postgres -c "CREATE USER postgres WITH PASSWORD 'postgres';"
 & "$env:USERPROFILE\pgsql\pgsql\bin\psql.exe" -U postgres -c "CREATE DATABASE itsm_db OWNER postgres;"
-
-# Restore Database Dump
 & "$env:USERPROFILE\pgsql\pgsql\bin\psql.exe" -U postgres -d itsm_db -f packages/db/itsm_db_dump.sql
 ```
 
-#### 2. Install Workspace Dependencies
-```powershell
-# Root Workspace Dependencies
-npm install
-
-# Agent Control Tower Dashboard Dependencies
-cd "Resolver Agent\agent-approval-dashboard"
-npm install
-cd ..\..
-
-# Python Resolver Daemon Dependencies
-cd "Resolver Agent"
-pip install -r requirements.txt
-cd ..
+```bash
+# Linux / macOS
+psql -U postgres -c "CREATE USER postgres WITH PASSWORD 'postgres';"
+createdb -U postgres -O postgres itsm_db
+psql -U postgres -d itsm_db -f packages/db/itsm_db_dump.sql
 ```
 
-#### 3. Rebuild Binaries
-```powershell
+### 2. Workspace Dependencies Installation
+
+```bash
+# Root & Workspace Dependencies
+npm install
+
+# Control Tower Dashboard Dependencies
+cd "Resolver Agent/agent-approval-dashboard" && npm install && cd ../..
+
+# Python Resolver Daemon Dependencies
+cd "Resolver Agent" && pip install -r requirements.txt && cd ..
+```
+
+### 3. Build Project Binaries
+
+```bash
 npm run build:backend
 npm run build:mcp
 ```
 
-#### 4. Start All Services (Each in a New Terminal)
+### 4. Launch Services (Individual Terminals)
+
 ```powershell
-# Terminal 1: NestJS Backend API (Port 4000)
+# Terminal 1: NestJS Backend API Server (Port 4000)
 node apps/backend/dist/main.js
 
-# Terminal 2: Next.js Frontend (Port 3000)
+# Terminal 2: Next.js Frontend Dev Server (Port 3000)
 npm run dev:frontend
 
-# Terminal 3: Agent Control Tower Dashboard (Port 5173)
+# Terminal 3: Agent Control Tower Dashboard Server (Port 5173)
 cd "Resolver Agent\agent-approval-dashboard"
 node server.js
 
@@ -197,76 +220,30 @@ Remove-Item "daemon.lock" -Force -ErrorAction SilentlyContinue
 python -u continuous_itsm_agent_daemon.py
 ```
 
----
+### 5. Health Check & API Verification Commands
 
-### Option B: Linux / macOS - Full Manual Setup
-
-```bash
-# 1. Database Setup
-createdb -U postgres itsm_db
-psql -U postgres -d itsm_db -f packages/db/itsm_db_dump.sql
-
-# 2. Install Dependencies
-npm install
-cd "Resolver Agent/agent-approval-dashboard" && npm install && cd ../..
-cd "Resolver Agent" && pip install -r requirements.txt && cd ..
-
-# 3. Build Project
-npm run build:backend
-npm run build:mcp
-
-# 4. Run Services
-node apps/backend/dist/main.js &                       # Port 4000
-npm run dev:frontend &                                  # Port 3000
-node "Resolver Agent/agent-approval-dashboard/server.js" & # Port 5173
-python3 -u "Resolver Agent/continuous_itsm_agent_daemon.py" &
-```
-
----
-
-## ⚡ Useful Operational Commands
-
-### 1. Service Health & Port Inspection
 ```powershell
-# Check if all required ports are active
+# Verify Port Listening Status
 @(5432, 4000, 3000, 5173) | ForEach-Object {
     $l = Get-NetTCPConnection -LocalPort $_ -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Listen' }
     if ($l) { "Port $_ : ACTIVE 🟢" } else { "Port $_ : DOWN 🔴" }
 }
-```
 
-### 2. Authenticate & Obtain JWT Bearer Token
-```powershell
+# Authenticate & Retrieve JWT Token
 $body = @{ email = "admin@acme.com"; password = "Admin123!" } | ConvertTo-Json
 $res = Invoke-RestMethod -Uri "http://localhost:4000/api/v1/auth/login" -Method POST -Body $body -ContentType "application/json"
 $token = $res.accessToken
-Write-Host "JWT Token: $token"
-```
 
-### 3. Create Test Incident via API (Triggers Full AI Pipeline)
-```powershell
+# Trigger Test Incident (NexaCore Recovery on WorkerNode1HL)
 $headers = @{ Authorization = "Bearer $token" }
-$body = @{
+$ticketBody = @{
     title = "NexaCore Portal unresponsive on 192.168.100.102"
     description = "NexaCore web application returning HTTP 502 Bad Gateway on port 8080 on WorkerNode1HL."
     category = "Application / Web Services"
     priority = "HIGH"
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri "http://localhost:4000/api/v1/incidents" -Method POST -Body $body -ContentType "application/json" -Headers $headers
-```
-
-### 4. Force Restart Resolver Daemon (Clear Stale Lock)
-```powershell
-Stop-Process -Name python -Force -ErrorAction SilentlyContinue
-Remove-Item "Resolver Agent\daemon.lock" -Force -ErrorAction SilentlyContinue
-cd "Resolver Agent"
-python -u continuous_itsm_agent_daemon.py
-```
-
-### 5. Export Fresh Database Dump
-```powershell
-& "$env:USERPROFILE\pgsql\pgsql\bin\pg_dump.exe" -U postgres -d itsm_db -F p -f "packages/db/itsm_db_dump.sql"
+Invoke-RestMethod -Uri "http://localhost:4000/api/v1/incidents" -Method POST -Body $ticketBody -ContentType "application/json" -Headers $headers
 ```
 
 ---
