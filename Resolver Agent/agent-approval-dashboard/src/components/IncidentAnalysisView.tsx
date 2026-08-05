@@ -59,7 +59,7 @@ export function IncidentAnalysisView() {
   const [analyzing, setAnalyzing] = useState<boolean>(false);
   const [suggestions, setSuggestions] = useState<ProblemSuggestion[]>([]);
   const [selectedNode, setSelectedNode] = useState<string | null>('PRB0000001');
-  const [activeTab, setActiveTab] = useState<'graph' | 'topology' | 'analytics' | 'whys'>('graph');
+  const [activeTab, setActiveTab] = useState<'graph' | 'topology' | 'whys'>('graph');
   const [analyticsSubTab, setAnalyticsSubTab] = useState<'volume' | 'pareto' | 'mttr'>('volume');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -170,7 +170,7 @@ export function IncidentAnalysisView() {
                 Incident & Problem Analysis Agent
               </h1>
               <p className="text-slate-400 text-sm">
-                Proactive Root Cause Mining, Cluster Topology & Financial SLA Cost Tracking
+                Proactive Root Cause Mining, Cluster Topology & Operational Visual Analytics
               </p>
             </div>
           </div>
@@ -237,6 +237,114 @@ export function IncidentAnalysisView() {
         </div>
       </div>
 
+      {/* SECTION: OPERATIONAL VISUAL ANALYTICS & CHARTS (ALWAYS VISIBLE) */}
+      <div className="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-cyan-400" />
+              📊 Operational Visual Analytics & Charts
+            </h3>
+            <p className="text-xs text-slate-400">Real-time incident trends, 92% SSH auto-fix rates, Pareto 80/20 breakdown, and MTTR cost savings</p>
+          </div>
+
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+            <button
+              onClick={() => setAnalyticsSubTab('volume')}
+              className={`px-3 py-1.5 rounded-lg transition font-medium ${analyticsSubTab === 'volume' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
+            >
+              Volume & Auto-Fix Rate
+            </button>
+            <button
+              onClick={() => setAnalyticsSubTab('pareto')}
+              className={`px-3 py-1.5 rounded-lg transition font-medium ${analyticsSubTab === 'pareto' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
+            >
+              Pareto 80/20 Category Breakdown
+            </button>
+            <button
+              onClick={() => setAnalyticsSubTab('mttr')}
+              className={`px-3 py-1.5 rounded-lg transition font-medium ${analyticsSubTab === 'mttr' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
+            >
+              MTTR & Cost Savings
+            </button>
+          </div>
+        </div>
+
+        {/* Chart 1: Volume & Auto-Fix */}
+        {analyticsSubTab === 'volume' && (
+          <div className="p-6 bg-slate-950 rounded-xl border border-slate-800/80 space-y-4">
+            <h4 className="text-sm font-bold text-slate-200">Daily Incident Volume vs. 92% Automated SSH Remediation Rate</h4>
+            <div className="h-64 w-full flex items-end justify-between gap-4 pt-8 px-4 border-b border-l border-slate-800">
+              {[
+                { day: 'Mon', total: 45, auto: 42 },
+                { day: 'Tue', total: 68, auto: 64 },
+                { day: 'Wed', total: 85, auto: 79 },
+                { day: 'Thu', total: 52, auto: 48 },
+                { day: 'Fri', total: 94, auto: 88 },
+                { day: 'Sat', total: 30, auto: 29 },
+                { day: 'Sun', total: 22, auto: 21 },
+              ].map((item, idx) => (
+                <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
+                  <div className="w-full flex items-end justify-center gap-1.5 h-full">
+                    <div style={{ height: `${(item.total / 100) * 100}%` }} className="w-5 bg-slate-700 rounded-t-md hover:bg-slate-600 transition" title={`Total: ${item.total}`}></div>
+                    <div style={{ height: `${(item.auto / 100) * 100}%` }} className="w-5 bg-gradient-to-t from-cyan-600 to-cyan-400 rounded-t-md hover:brightness-110 transition" title={`Auto-Remediated: ${item.auto}`}></div>
+                  </div>
+                  <span className="text-xs text-slate-400 font-mono">{item.day}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-6 text-xs text-slate-400 justify-center">
+              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-slate-700 rounded"></span> Total Tickets</span>
+              <span className="flex items-center gap-2"><span className="w-3 h-3 bg-cyan-400 rounded"></span> Agentic SSH Auto-Remediated (92%)</span>
+            </div>
+          </div>
+        )}
+
+        {/* Chart 2: Pareto Category Breakdown */}
+        {analyticsSubTab === 'pareto' && (
+          <div className="p-6 bg-slate-950 rounded-xl border border-slate-800/80 space-y-4">
+            <h4 className="text-sm font-bold text-slate-200">Pareto 80/20 Failure Category Breakdown</h4>
+            <div className="space-y-4 pt-2">
+              {[
+                { cat: 'Application / Web Services (NexaCore)', pct: 45, count: '450 Tickets', color: 'bg-cyan-500' },
+                { cat: 'Network & Ingress Latency', pct: 25, count: '250 Tickets', color: 'bg-purple-500' },
+                { cat: 'Unix - Storage & Mount Lockouts', pct: 18, count: '180 Tickets', color: 'bg-amber-500' },
+                { cat: 'User Management & Auth', pct: 12, count: '120 Tickets', color: 'bg-emerald-500' },
+              ].map((item, idx) => (
+                <div key={idx} className="space-y-1">
+                  <div className="flex justify-between text-xs font-semibold">
+                    <span className="text-slate-300">{item.cat}</span>
+                    <span className="text-slate-400 font-mono">{item.count} ({item.pct}%)</span>
+                  </div>
+                  <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden">
+                    <div className={`h-full ${item.color}`} style={{ width: `${item.pct}%` }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Chart 3: MTTR & Cost */}
+        {analyticsSubTab === 'mttr' && (
+          <div className="p-6 bg-slate-950 rounded-xl border border-slate-800/80 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-5 bg-slate-900/80 rounded-xl border border-slate-800 text-center">
+              <Clock className="w-8 h-8 text-cyan-400 mx-auto mb-2" />
+              <h5 className="text-xs text-slate-400 uppercase font-semibold">Mean Time to Resolution (MTTR)</h5>
+              <div className="text-3xl font-extrabold text-white mt-2">4.2 Hrs → 45 Secs</div>
+              <p className="text-xs text-emerald-400 mt-2 font-mono">⚡ 99.7% Reduction in Outage Duration</p>
+            </div>
+
+            <div className="p-5 bg-slate-900/80 rounded-xl border border-slate-800 text-center">
+              <DollarSign className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+              <h5 className="text-xs text-slate-400 uppercase font-semibold">Direct Operational Labor Cost</h5>
+              <div className="text-3xl font-extrabold text-white mt-2">$178.50 → $0.17</div>
+              <p className="text-xs text-emerald-400 mt-2 font-mono">💰 99.9% Cost Reduction per Incident</p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Navigation Tabs for Views */}
       <div className="flex gap-2 border-b border-slate-800 pb-3">
         <button
@@ -261,18 +369,6 @@ export function IncidentAnalysisView() {
         >
           <Server className="w-4 h-4" />
           CMDB Blast Radius Topology
-        </button>
-
-        <button
-          onClick={() => setActiveTab('analytics')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition ${
-            activeTab === 'analytics' 
-              ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-lg shadow-cyan-500/10' 
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-          }`}
-        >
-          <BarChart3 className="w-4 h-4" />
-          Visual Analytics & MTTR Charts
         </button>
 
         <button
@@ -344,19 +440,19 @@ export function IncidentAnalysisView() {
                 {/* Incident Nodes (Left) */}
                 <g onClick={() => setSelectedNode('PRB0000001')} className="cursor-pointer hover:opacity-80">
                   <circle cx="180" cy="100" r="20" fill="#1e293b" stroke="#00f2fe" strokeWidth="2" />
-                  <text x="180" y="104" textAnchor="middle" fill="#00f2fe" fontSize="9" fontWait="bold">INC0038</text>
+                  <text x="180" y="104" textAnchor="middle" fill="#00f2fe" fontSize="9" fontWeight="bold">INC0038</text>
                   <text x="180" y="75" textAnchor="middle" fill="#94a3b8" fontSize="10">NexaCore Unresponsive</text>
                 </g>
 
                 <g onClick={() => setSelectedNode('PRB0000001')} className="cursor-pointer hover:opacity-80">
                   <circle cx="180" cy="200" r="20" fill="#1e293b" stroke="#00f2fe" strokeWidth="2" />
-                  <text x="180" y="204" textAnchor="middle" fill="#00f2fe" fontSize="9" fontWait="bold">INC0036</text>
+                  <text x="180" y="204" textAnchor="middle" fill="#00f2fe" fontSize="9" fontWeight="bold">INC0036</text>
                   <text x="180" y="175" textAnchor="middle" fill="#94a3b8" fontSize="10">Process Crash</text>
                 </g>
 
                 <g onClick={() => setSelectedNode('PRB0000001')} className="cursor-pointer hover:opacity-80">
                   <circle cx="180" cy="300" r="20" fill="#1e293b" stroke="#00f2fe" strokeWidth="2" />
-                  <text x="180" y="304" textAnchor="middle" fill="#00f2fe" fontSize="9" fontWait="bold">INC0035</text>
+                  <text x="180" y="304" textAnchor="middle" fill="#00f2fe" fontSize="9" fontWeight="bold">INC0035</text>
                   <text x="180" y="330" textAnchor="middle" fill="#94a3b8" fontSize="10">Socket Timeout</text>
                 </g>
 
@@ -489,116 +585,6 @@ export function IncidentAnalysisView() {
               <p className="text-xs text-emerald-300 mt-2">Protected by fallback router</p>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* VIEW 3: VISUAL ANALYTICS & CHARTS */}
-      {activeTab === 'analytics' && (
-        <div className="bg-slate-900/60 p-6 rounded-2xl border border-slate-800 space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-cyan-400" />
-                Operational Visual Analytics & Performance Charts
-              </h3>
-              <p className="text-xs text-slate-400">Real-time incident trends, MTTR reduction, and cost savings</p>
-            </div>
-
-            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-              <button
-                onClick={() => setAnalyticsSubTab('volume')}
-                className={`px-3 py-1.5 rounded-lg transition font-medium ${analyticsSubTab === 'volume' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
-              >
-                Volume & Auto-Fix Rate
-              </button>
-              <button
-                onClick={() => setAnalyticsSubTab('pareto')}
-                className={`px-3 py-1.5 rounded-lg transition font-medium ${analyticsSubTab === 'pareto' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
-              >
-                Pareto 80/20 Category Breakdown
-              </button>
-              <button
-                onClick={() => setAnalyticsSubTab('mttr')}
-                className={`px-3 py-1.5 rounded-lg transition font-medium ${analyticsSubTab === 'mttr' ? 'bg-cyan-500 text-black font-bold' : 'text-slate-400'}`}
-              >
-                MTTR & Cost Savings
-              </button>
-            </div>
-          </div>
-
-          {/* Chart 1: Volume & Auto-Fix */}
-          {analyticsSubTab === 'volume' && (
-            <div className="p-6 bg-slate-950 rounded-xl border border-slate-800 space-y-4">
-              <h4 className="text-sm font-bold text-slate-200">Daily Incident Volume vs. 92% Automated SSH Remediation Rate</h4>
-              <div className="h-64 w-full flex items-end justify-between gap-4 pt-8 px-4 border-b border-l border-slate-800">
-                {[
-                  { day: 'Mon', total: 45, auto: 42 },
-                  { day: 'Tue', total: 68, auto: 64 },
-                  { day: 'Wed', total: 85, auto: 79 },
-                  { day: 'Thu', total: 52, auto: 48 },
-                  { day: 'Fri', total: 94, auto: 88 },
-                  { day: 'Sat', total: 30, auto: 29 },
-                  { day: 'Sun', total: 22, auto: 21 },
-                ].map((item, idx) => (
-                  <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
-                    <div className="w-full flex items-end justify-center gap-1.5 h-full">
-                      <div style={{ height: `${(item.total / 100) * 100}%` }} className="w-5 bg-slate-700 rounded-t-md hover:bg-slate-600 transition" title={`Total: ${item.total}`}></div>
-                      <div style={{ height: `${(item.auto / 100) * 100}%` }} className="w-5 bg-gradient-to-t from-cyan-600 to-cyan-400 rounded-t-md hover:brightness-110 transition" title={`Auto-Remediated: ${item.auto}`}></div>
-                    </div>
-                    <span className="text-xs text-slate-400 font-mono">{item.day}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-6 text-xs text-slate-400 justify-center">
-                <span className="flex items-center gap-2"><span className="w-3 h-3 bg-slate-700 rounded"></span> Total Tickets</span>
-                <span className="flex items-center gap-2"><span className="w-3 h-3 bg-cyan-400 rounded"></span> Agentic SSH Auto-Remediated (92%)</span>
-              </div>
-            </div>
-          )}
-
-          {/* Chart 2: Pareto Category Breakdown */}
-          {analyticsSubTab === 'pareto' && (
-            <div className="p-6 bg-slate-950 rounded-xl border border-slate-800 space-y-4">
-              <h4 className="text-sm font-bold text-slate-200">Pareto 80/20 Failure Category Breakdown</h4>
-              <div className="space-y-4 pt-2">
-                {[
-                  { cat: 'Application / Web Services (NexaCore)', pct: 45, count: '450 Tickets', color: 'bg-cyan-500' },
-                  { cat: 'Network & Ingress Latency', pct: 25, count: '250 Tickets', color: 'bg-purple-500' },
-                  { cat: 'Unix - Storage & Mount Lockouts', pct: 18, count: '180 Tickets', color: 'bg-amber-500' },
-                  { cat: 'User Management & Auth', pct: 12, count: '120 Tickets', color: 'bg-emerald-500' },
-                ].map((item, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex justify-between text-xs font-semibold">
-                      <span className="text-slate-300">{item.cat}</span>
-                      <span className="text-slate-400 font-mono">{item.count} ({item.pct}%)</span>
-                    </div>
-                    <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden">
-                      <div className={`h-full ${item.color}`} style={{ width: `${item.pct}%` }}></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Chart 3: MTTR & Cost */}
-          {analyticsSubTab === 'mttr' && (
-            <div className="p-6 bg-slate-950 rounded-xl border border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="p-4 bg-slate-900/80 rounded-xl border border-slate-800 text-center">
-                <Clock className="w-8 h-8 text-cyan-400 mx-auto mb-2" />
-                <h5 className="text-xs text-slate-400 uppercase font-semibold">Mean Time to Resolution (MTTR)</h5>
-                <div className="text-3xl font-extrabold text-white mt-2">4.2 Hrs → 45 Secs</div>
-                <p className="text-xs text-emerald-400 mt-2 font-mono">⚡ 99.7% Reduction in Outage Duration</p>
-              </div>
-
-              <div className="p-4 bg-slate-900/80 rounded-xl border border-slate-800 text-center">
-                <DollarSign className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                <h5 className="text-xs text-slate-400 uppercase font-semibold">Direct Operational Labor Cost</h5>
-                <div className="text-3xl font-extrabold text-white mt-2">$178.50 → $0.17</div>
-                <p className="text-xs text-emerald-400 mt-2 font-mono">💰 99.9% Cost Reduction per Incident</p>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
