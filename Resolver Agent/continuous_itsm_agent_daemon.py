@@ -1252,6 +1252,8 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
     if rag_results:
         top_match = rag_results[0]
         similarity_score = top_match.get("score", 0)
+        is_offboarding_task = any(k in query_text.lower() for k in ["offboard", "userdel", "delete user", "remove user", "deprovision", "deactivate user"])
+        
         if similarity_score >= 0.50:
             matched_number = top_match.get("number")
             for art in kb_articles:
@@ -1259,8 +1261,19 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                     matched_kb = art
                     break
             if matched_kb is not None:
-                is_new = False
-                logger.info(f"🎯 RAG Match: Score {similarity_score:.4f} -> {matched_number} '{matched_kb.get('title', '')}'")
+                # Intent Safety Check: Prevent offboarding tickets from matching application/web restart SOPs
+                kb_text = f"{matched_kb.get('title', '')} {matched_kb.get('summary', '')}".lower()
+                is_app_sop = any(k in kb_text for k in ["nexacore", "http", "portal", "web server", "bad gateway", "502"])
+                if is_offboarding_task and is_app_sop:
+                    logger.warning(f"🛡️ Intent Safety Guard: Prevented User Offboarding ticket [{ticket_number}] from matching Application SOP [{matched_number}]. Forcing RAG Miss & HITL approval.")
+                    is_new = True
+                elif is_offboarding_task:
+                    # Offboarding tasks must ALWAYS require human approval!
+                    logger.info(f"🛡️ Intent Safety Guard: User Offboarding ticket [{ticket_number}] requires mandatory Human-in-the-Loop signoff.")
+                    is_new = True
+                else:
+                    is_new = False
+                    logger.info(f"🎯 RAG Match: Score {similarity_score:.4f} -> {matched_number} '{matched_kb.get('title', '')}'")
     
     if is_new:
         logger.info(f"✨ RAG Miss (similarity score {similarity_score:.4f} < 0.50). Handing over to Knowledge base creator LLM for SOP synthesis...")
