@@ -627,15 +627,46 @@ def save_new_kb_article_to_storage(new_article_data):
     """
     try:
         target_title = str(new_article_data.get("title", "")).strip().lower()
+        target_tokens = set(t for t in target_title.split() if len(t) > 3)
+        
         if target_title:
             try:
                 existing_kbs = requests.get("http://localhost:4000/api/v1/knowledge/articles", timeout=5).json()
                 for kb in existing_kbs:
-                    if str(kb.get("title", "")).strip().lower() == target_title:
-                        logger.info(f"ℹ️ KB Article '{kb.get('number')}' already exists in KB database with title '{kb.get('title')}'. Skipping duplicate creation.")
+                    existing_title = str(kb.get("title", "")).strip().lower()
+                    
+                    # 1. Exact Title Match
+                    if existing_title == target_title:
+                        logger.info(f"ℹ️ KB Article '{kb.get('number')}' already exists with identical title '{kb.get('title')}'. Skipping duplicate creation.")
                         return kb
-            except Exception:
-                pass
+                    
+                    # 2. Fuzzy Token Overlap Check (>60% similarity)
+                    existing_tokens = set(t for t in existing_title.split() if len(t) > 3)
+                    if target_tokens and existing_tokens:
+                        overlap = len(target_tokens.intersection(existing_tokens))
+                        similarity = overlap / max(len(target_tokens), len(existing_tokens))
+                        if similarity >= 0.60:
+                            logger.info(f"ℹ️ KB Article '{kb.get('number')}' ('{kb.get('title')}') is semantically similar (similarity: {similarity:.2f}). Merging steps into existing KB...")
+                            # Append any new unique resolution steps
+                            existing_steps = kb.get("resolutionSteps", [])
+                            new_steps = new_article_data.get("resolutionSteps", [])
+                            merged_steps = list(dict.fromkeys(existing_steps + new_steps))
+                            
+                            # PATCH existing article via API
+                            try:
+                                patch_res = requests.patch(
+                                    f"http://localhost:4000/api/v1/knowledge/articles/{kb.get('number')}",
+                                    json={"resolutionSteps": merged_steps},
+                                    timeout=5
+                                )
+                                if patch_res.status_code == 200:
+                                    logger.info(f"✅ Successfully merged new resolution steps into {kb.get('number')}")
+                                    return patch_res.json()
+                            except Exception as patch_err:
+                                logger.warning(f"Could not patch existing KB {kb.get('number')}: {patch_err}")
+                            return kb
+            except Exception as check_err:
+                logger.warning(f"Error checking existing KBs for deduplication: {check_err}")
 
         payload = {
             "title": new_article_data.get("title", "Troubleshooting & SOP: New Issue"),
