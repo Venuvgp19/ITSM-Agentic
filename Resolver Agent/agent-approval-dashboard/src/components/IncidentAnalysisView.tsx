@@ -53,12 +53,59 @@ interface ProblemSuggestion {
   fiveWhys: string[];
 }
 
+const DEFAULT_SUGGESTIONS: ProblemSuggestion[] = [
+  {
+    id: 'PRB0000001',
+    title: 'Recurring NexaCore Application Port 8080 Subprocess Crashing',
+    description: 'Repeated HTTP 502 Bad Gateway errors and socket connection refusals detected on WorkerNode1HL (192.168.100.102:8080).',
+    rootCause: 'Orphaned Python http.server subprocesses failing under transient TCP connection socket pressure due to unclosed file descriptors.',
+    workaround: 'Execute automated non-interactive SSH recovery: kill orphaned pids, clean socket locks, and restart python3 -m http.server 8080.',
+    priority: 'P2 - HIGH',
+    configurationItem: 'WorkerNode1HL (192.168.100.102)',
+    incidentIds: ['INC0001038', 'INC0001036', 'INC0001035'],
+    incidentsList: [],
+    approved: false,
+    costLeakage: 14250,
+    mtbfHours: 18.4,
+    riskScore: 88,
+    fiveWhys: [
+      "Why 1: NexaCore web portal returning HTTP 502 Bad Gateway to end users.",
+      "Why 2: The Python http.server listener process on port 8080 crashed.",
+      "Why 3: The process ran out of available Linux file descriptors.",
+      "Why 4: High volume of unclosed socket connections during background telemetry scans.",
+      "Why 5 (Root Cause): Missing TCP keepalive timeout in the application startup script on WorkerNode1HL."
+    ]
+  },
+  {
+    id: 'PRB0000002',
+    title: 'Kubernetes Ingress Controller High Memory & CPU Spikes',
+    description: 'Cascading latency spikes across ingress controllers on Control Plane node during high-frequency API polling.',
+    rootCause: 'Containerd buffer overflow caused by unthrottled telemetry log verbosity.',
+    workaround: 'Flush log buffers and apply CPU quota patch via kubectl apply.',
+    priority: 'P1 - CRITICAL',
+    configurationItem: 'Control Plane (192.168.100.101)',
+    incidentIds: ['INC0001024', 'INC0001019'],
+    incidentsList: [],
+    approved: false,
+    costLeakage: 28500,
+    mtbfHours: 42.1,
+    riskScore: 64,
+    fiveWhys: [
+      "Why 1: Ingress controller latency increased from 15ms to 4500ms.",
+      "Why 2: Ingress pods experiencing extreme CPU throttling.",
+      "Why 3: Containerd logging daemon consuming 98% memory.",
+      "Why 4: Verbose debug logging left enabled in production cluster.",
+      "Why 5 (Root Cause): Unthrottled log verbosity causing buffer allocation bottlenecks."
+    ]
+  }
+];
+
 export function IncidentAnalysisView() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [analyzing, setAnalyzing] = useState<boolean>(false);
-  const [suggestions, setSuggestions] = useState<ProblemSuggestion[]>([]);
-  const [selectedNode, setSelectedNode] = useState<string | null>('PRB0000001');
+  const [suggestions, setSuggestions] = useState<ProblemSuggestion[]>(DEFAULT_SUGGESTIONS);
+  const [selectedNode, setSelectedNode] = useState<string>('PRB0000001');
   const [activeTab, setActiveTab] = useState<'graph' | 'topology' | 'whys'>('graph');
   const [analyticsSubTab, setAnalyticsSubTab] = useState<'volume' | 'pareto' | 'mttr'>('volume');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -73,79 +120,15 @@ export function IncidentAnalysisView() {
       const res = await fetch('http://localhost:4000/api/v1/incidents');
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           setIncidents(data);
-          runAnalysisAgent(data);
         }
       }
     } catch (e) {
       console.error('Failed to load incidents for analysis:', e);
-      // Fallback data if offline
-      runAnalysisAgent([
-        { id: '1', number: 'INC0001038', shortDescription: 'NexaCore Portal unresponsive on 192.168.100.102', description: 'HTTP 502 Bad Gateway port 8080', state: 'IN_PROGRESS', configurationItem: 'WorkerNode1HL', priority: 'P2 - HIGH' },
-        { id: '2', number: 'INC0001036', shortDescription: 'NexaCore Application port 8080 process crash', description: 'Python server died unexpectedly', state: 'RESOLVED', configurationItem: 'WorkerNode1HL', priority: 'P2 - HIGH' },
-        { id: '3', number: 'INC0001035', shortDescription: 'WorkerNode1HL socket timeout on port 8080', description: 'Transient connection refusal', state: 'RESOLVED', configurationItem: 'WorkerNode1HL', priority: 'P3 - MEDIUM' },
-        { id: '4', number: 'INC0001024', shortDescription: 'Kubernetes ingress controller high CPU spike', description: 'Ingress pod memory leak', state: 'RESOLVED', configurationItem: 'Control Plane', priority: 'P1 - CRITICAL' },
-        { id: '5', number: 'INC0001021', shortDescription: 'SSH daemon connection timeout on Worker1OL', description: 'MaxStartups limit reached', state: 'RESOLVED', configurationItem: 'Worker1OL', priority: 'P2 - HIGH' }
-      ]);
     } finally {
       setLoading(false);
     }
-  };
-
-  const runAnalysisAgent = (allIncidents: Incident[]) => {
-    setAnalyzing(true);
-    
-    // Group incidents by CI and pattern
-    const suggestionsList: ProblemSuggestion[] = [
-      {
-        id: 'PRB0000001',
-        title: 'Recurring NexaCore Application Port 8080 Subprocess Crashing',
-        description: 'Repeated HTTP 502 Bad Gateway errors and socket connection refusals detected on WorkerNode1HL (192.168.100.102:8080).',
-        rootCause: 'Orphaned Python http.server subprocesses failing under transient TCP connection socket pressure due to unclosed file descriptors.',
-        workaround: 'Execute automated non-interactive SSH recovery: kill orphaned pids, clean socket locks, and restart python3 -m http.server 8080.',
-        priority: 'P2 - HIGH',
-        configurationItem: 'WorkerNode1HL (192.168.100.102)',
-        incidentIds: ['INC0001038', 'INC0001036', 'INC0001035'],
-        incidentsList: allIncidents.filter(i => ['INC0001038', 'INC0001036', 'INC0001035'].includes(i.number)),
-        approved: false,
-        costLeakage: 14250,
-        mtbfHours: 18.4,
-        riskScore: 88,
-        fiveWhys: [
-          "Why 1: NexaCore web portal returning HTTP 502 Bad Gateway to end users.",
-          "Why 2: The Python http.server listener process on port 8080 crashed.",
-          "Why 3: The process ran out of available Linux file descriptors.",
-          "Why 4: High volume of unclosed socket connections during background telemetry scans.",
-          "Why 5 (Root Cause): Missing TCP keepalive timeout in the application startup script on WorkerNode1HL."
-        ]
-      },
-      {
-        id: 'PRB0000002',
-        title: 'Kubernetes Ingress Controller High Memory & CPU Spikes',
-        description: 'Cascading latency spikes across ingress controllers on Control Plane node during high-frequency API polling.',
-        rootCause: 'Containerd buffer overflow caused by unthrottled telemetry log verbosity.',
-        workaround: 'Flush log buffers and apply CPU quota patch via kubectl apply.',
-        priority: 'P1 - CRITICAL',
-        configurationItem: 'Control Plane (192.168.100.101)',
-        incidentIds: ['INC0001024', 'INC0001019'],
-        incidentsList: allIncidents.filter(i => ['INC0001024', 'INC0001019'].includes(i.number)),
-        approved: false,
-        costLeakage: 28500,
-        mtbfHours: 42.1,
-        riskScore: 64,
-        fiveWhys: [
-          "Why 1: Ingress controller latency increased from 15ms to 4500ms.",
-          "Why 2: Ingress pods experiencing extreme CPU throttling.",
-          "Why 3: Containerd logging daemon consuming 98% memory.",
-          "Why 4: Verbose debug logging left enabled in production cluster.",
-          "Why 5 (Root Cause): Unthrottled log verbosity causing buffer allocation bottlenecks."
-        ]
-      }
-    ];
-
-    setSuggestions(suggestionsList);
-    setAnalyzing(false);
   };
 
   const handleCreateProblem = (id: string) => {
@@ -154,7 +137,7 @@ export function IncidentAnalysisView() {
     setTimeout(() => setActionSuccess(null), 4000);
   };
 
-  const currentProblem = suggestions.find(s => s.id === selectedNode) || suggestions[0];
+  const currentProblem = suggestions.find(s => s.id === selectedNode) || suggestions[0] || DEFAULT_SUGGESTIONS[0];
 
   return (
     <div className="p-6 space-y-6 bg-slate-950 text-slate-100 min-h-screen">
@@ -239,7 +222,7 @@ export function IncidentAnalysisView() {
 
       {/* SECTION: OPERATIONAL VISUAL ANALYTICS & CHARTS (ALWAYS VISIBLE) */}
       <div className="bg-slate-900/80 p-6 rounded-2xl border border-slate-800 shadow-xl space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-cyan-400" />
@@ -385,7 +368,7 @@ export function IncidentAnalysisView() {
       </div>
 
       {/* VIEW 1: INTERACTIVE KNOWLEDGE GRAPH */}
-      {activeTab === 'graph' && (
+      {activeTab === 'graph' && currentProblem && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* SVG Force Graph */}
           <div className="lg:col-span-2 bg-slate-900/60 p-6 rounded-2xl border border-slate-800 flex flex-col justify-between relative overflow-hidden">
@@ -589,7 +572,7 @@ export function IncidentAnalysisView() {
       )}
 
       {/* VIEW 4: AI 5-WHYS ROOT CAUSE CHAIN */}
-      {activeTab === 'whys' && (
+      {activeTab === 'whys' && currentProblem && (
         <div className="bg-slate-900/60 p-6 rounded-2xl border border-slate-800 space-y-6">
           <div>
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -600,7 +583,7 @@ export function IncidentAnalysisView() {
           </div>
 
           <div className="space-y-3">
-            {currentProblem.fiveWhys.map((why, idx) => (
+            {(currentProblem.fiveWhys || []).map((why, idx) => (
               <div 
                 key={idx} 
                 className={`p-4 rounded-xl border transition ${
