@@ -1594,14 +1594,24 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
     ]
 
     messages = [
-        {"role": "system", "content": "You are a dynamic IT Agent. You must resolve the incident by following the provided SOP guide. Use the `execute_ssh_command` tool to run commands one by one. Check the output of each command. If it succeeds, proceed to the next logical step. If the output indicates the goal is already achieved, you can SKIP unnecessary steps (e.g. jumping to step 7 after step 4). When fully resolved, reply with a final summary and stop calling tools. YOU MUST ONLY USE NATIVE SHELL COMMANDS. DO NOT prepend 'ssh root@ip' to your commands."},
+        {
+            "role": "system", 
+            "content": (
+                "You are an elite, hyper-efficient IT DevOps Agent. You must resolve the incident in the MINIMUM required steps using the SOP guide.\n"
+                "RULES FOR MAXIMUM EFFICIENCY:\n"
+                "1. NO DUPLICATE COMMANDS: Never run duplicate checks (e.g. repeating `ps aux`, `ss -tlnp`, `tail`, or `cat` if already performed in a previous turn).\n"
+                "2. ONE-PASS VERIFICATION: Once the application process is running and a single verification (process or HTTP check) succeeds, IMMEDIATELY STOP calling tools and output your final summary.\n"
+                "3. BATCH DEPENDENT COMMANDS: Execute logical sequences efficiently. DO NOT run unnecessary sleep or redundant loop turns.\n"
+                "4. NATIVE SHELL ONLY: DO NOT prepend 'ssh root@ip' to commands."
+            )
+        },
         {"role": "user", "content": f"Target Host: {ip}\nIncident: {short_desc}\n\nSOP Guide Commands:\n" + json.dumps(guide_commands)}
     ]
 
     full_exec_log = ""
     is_success = True
     
-    max_turns = 10
+    max_turns = 5
     turn = 0
     
     while turn < max_turns:
