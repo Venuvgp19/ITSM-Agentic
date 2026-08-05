@@ -39,10 +39,10 @@ export class AiRouterService implements OnModuleInit {
   private config: AiRouterConfig = {
     autoAssignConfidenceThreshold: 85,
     autoWorkNoteEnabled: true,
-    modelName: 'genailab-maas-gpt-4o',
+    modelName: 'nvidia/nemotron-3-ultra-550b-a55b',
     reasoningBudget: 16384,
     continuousMonitoringEnabled: true,
-    pollIntervalMs: 10000,
+    pollIntervalMs: 2000,
   };
 
   private auditLogs: RoutingAuditRecord[] = [];
