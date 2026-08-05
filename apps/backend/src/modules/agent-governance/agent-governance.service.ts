@@ -576,6 +576,11 @@ export class AgentGovernanceService implements OnModuleInit {
         details: dto.step.details || ''
       };
       if (stepIdx >= 0) {
+        // If later steps already exist after stepIdx, lock status from reverting back to RUNNING
+        const hasSubsequentSteps = meta.steps.slice(stepIdx + 1).length > 0;
+        if (hasSubsequentSteps && dto.step.status === 'RUNNING') {
+          newStep.status = meta.steps[stepIdx].status === 'RUNNING' ? 'SUCCESS' : meta.steps[stepIdx].status;
+        }
         meta.steps[stepIdx] = newStep;
       } else {
         // Enforce strict 100% sequential progression: mark all preceding RUNNING steps as SUCCESS

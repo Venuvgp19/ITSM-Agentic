@@ -1600,8 +1600,8 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                 "You are an elite, hyper-efficient IT DevOps Agent. You must resolve the incident in the MINIMUM required steps using the SOP guide.\n"
                 "RULES FOR MAXIMUM EFFICIENCY:\n"
                 "1. NO DUPLICATE COMMANDS: Never run duplicate checks (e.g. repeating `ps aux`, `ss -tlnp`, `tail`, or `cat` if already performed in a previous turn).\n"
-                "2. ONE-PASS VERIFICATION: Once the application process is running and a single verification (process or HTTP check) succeeds, IMMEDIATELY STOP calling tools and output your final summary.\n"
-                "3. BATCH DEPENDENT COMMANDS: Execute logical sequences efficiently. DO NOT run unnecessary sleep or redundant loop turns.\n"
+                "2. COMPLETE APPLICATION STARTUP: If an application or service is down, you MUST execute the startup command (e.g. `cd /opt/nexacore-app && nohup python3 nexacore_app.py > nexacore.log 2>&1 &`) AFTER clearing ports/processes. NEVER stop after killing processes!\n"
+                "3. ONE-PASS VERIFICATION: Once the application process is running and verified active, IMMEDIATELY STOP calling tools and output your final summary.\n"
                 "4. NATIVE SHELL ONLY: DO NOT prepend 'ssh root@ip' to commands."
             )
         },
