@@ -31,9 +31,9 @@ export interface IncidentAnalysisResult {
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
 
-  private readonly fallbackLiteLlmBaseUrl = process.env.LITELLM_BASE_URL || 'https://integrate.api.nvidia.com/v1';
-  private readonly fallbackLiteLlmApiKey = process.env.LITELLM_API_KEY || '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';
-  private readonly fallbackDefaultModel = process.env.LLM_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b';
+  private readonly fallbackLiteLlmBaseUrl = process.env.LITELLM_BASE_URL || 'https://genailab.tcs.in/v1';
+  private readonly fallbackLiteLlmApiKey = process.env.LITELLM_API_KEY || 'sk-taPdt4_aNdzmFCX3nP0GiA';
+  private readonly fallbackDefaultModel = process.env.LLM_MODEL || 'genailab-maas-gpt-4o';
 
   private readonly nvidiaBaseUrl = 'https://integrate.api.nvidia.com/v1';
   private readonly nvidiaApiKey = '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';
@@ -48,6 +48,7 @@ export class LlmService {
         baseUrl: govConfig.baseUrl,
         apiKey: govConfig.apiKey,
         defaultModel: govConfig.routerModel || this.fallbackDefaultModel,
+        govConfig,
       };
     }
 
@@ -55,6 +56,7 @@ export class LlmService {
       baseUrl: this.fallbackLiteLlmBaseUrl,
       apiKey: this.fallbackLiteLlmApiKey,
       defaultModel: this.fallbackDefaultModel,
+      govConfig,
     };
   }
 
