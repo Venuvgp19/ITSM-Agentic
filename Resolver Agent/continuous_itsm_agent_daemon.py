@@ -2016,6 +2016,21 @@ Respond ONLY in valid JSON format:
             "proof_summary": "System responded cleanly to SSH commands and reported normal operational metrics." if success else "SOP execution failed during SSH session."
         }
 
+    # HARD PHYSICAL PROBE GUARD: If ticket involves Nexacore or Application down, physically test HTTP endpoint!
+    if "nexacore" in short_desc.lower() or "application" in short_desc.lower() or "8080" in short_desc.lower():
+        try:
+            probe_req = urllib.request.urlopen(f"http://{ip}:8080", timeout=3)
+            if probe_req.getcode() != 200:
+                logger.warning(f"❌ HARD PHYSICAL PROBE FAILED for [{number}]: HTTP status {probe_req.getcode()}")
+                evaluation["is_healthy"] = False
+                evaluation["proof_summary"] = f"Hard physical HTTP probe to http://{ip}:8080 failed with status {probe_req.getcode()}."
+            else:
+                logger.info(f"✅ HARD PHYSICAL PROBE PASSED for [{number}]: http://{ip}:8080 returned HTTP 200 OK")
+        except Exception as probe_err:
+            logger.warning(f"❌ HARD PHYSICAL PROBE FAILED for [{number}]: {probe_err}")
+            evaluation["is_healthy"] = False
+            evaluation["proof_summary"] = f"Hard physical HTTP connection to http://{ip}:8080 refused or timed out ({probe_err}). Application is unreachable."
+
     # 6. Check if Resolver Agent was able to perform and verify the task
     is_healthy = evaluation.get("is_healthy", True)
     if not is_healthy:
