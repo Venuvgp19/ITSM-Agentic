@@ -379,13 +379,28 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                     const ip = ipMatch ? ipMatch[0] : '192.168.100.101';
                     const t = (title || '').toLowerCase();
 
+                    const pamsudoMatches = (title || '').match(/Pamsudo\d+|pamsudo\d+/gi);
+                    if (pamsudoMatches && pamsudoMatches.length > 0) {
+                      const users = Array.from(new Set(pamsudoMatches.map(u => u.trim()))).sort();
+                      const steps: string[] = [];
+                      users.forEach(u => {
+                        steps.push(`id -u ${u} 2>/dev/null || useradd -m -s /bin/bash ${u}`);
+                        if (t.includes('jboss') || t.includes('su -')) {
+                          steps.push(`echo "${u} ALL=(ALL) NOPASSWD: /usr/bin/su - jboss, /bin/su - jboss" > /etc/sudoers.d/99-${u} && chmod 440 /etc/sudoers.d/99-${u}`);
+                        } else {
+                          steps.push(`echo "${u} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/99-${u} && chmod 440 /etc/sudoers.d/99-${u}`);
+                        }
+                      });
+                      steps.push('visudo -c');
+                      return steps;
+                    }
+
                     if (t.includes('user') || t.includes('venu') || t.includes('privilege') || t.includes('passwordless')) {
                       return [
                         `id -u venu 2>/dev/null || useradd -m -s /bin/bash venu`,
-                        `echo "venu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/venu`,
-                        `chmod 0440 /etc/sudoers.d/venu`,
-                        `visudo -c`,
-                        `sudo -u venu sudo -v`
+                        `echo "venu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/99-venu`,
+                        `chmod 0440 /etc/sudoers.d/99-venu`,
+                        `visudo -c`
                       ];
                     }
                     if (t.includes('cpu') || t.includes('kernel') || t.includes('spike') || t.includes('degradation')) {

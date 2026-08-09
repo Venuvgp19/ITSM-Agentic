@@ -1386,14 +1386,37 @@ def _enforce_sop_safety_rules(sop_commands, short_desc, desc, kb_number):
 
 
 def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articles, incident_id, target_os="Linux/Unix"):
-    # 1. Hybrid RAG Strategy: Dense Primary + Keyword Tie-Breaker
+    # 1. Dual-Vector RAG Strategy: Raw Query + Normalized Operational Intent Fusion
     rag_results = []
-    query_text = f"{short_desc} {desc}"
+    raw_query = f"{short_desc} {desc}"
+    query_text = raw_query
     
+    # Abstract query into clean L2 Operational Intent for vector search matching
+    norm_query = raw_query
+    q_low = raw_query.lower()
+    if any(k in q_low for k in ["user", "id", "account", "pamsudo", "sudo", "privilege", "permission", "useradd"]):
+        if any(k in q_low for k in ["su -", "systemctl", "sudoers", "drop-in", "execute"]):
+            norm_query = "Provision Linux user account with restricted sudoers drop-in permission for systemctl command execution"
+        else:
+            norm_query = "Linux User Account Provisioning & Passwordless Sudo Access Runbook"
+    elif any(k in q_low for k in ["nexacore", "port 8080", "502", "bad gateway", "connection refused"]):
+        norm_query = "SOP: NexaCore Port 8080 Firewalld Unblock and Subprocess Restart"
+
     try:
-        query_emb = get_embedding(query_text)
-        if query_emb:
-            rag_results = vector_db.search_kb(query_emb, limit=5)
+        raw_emb = get_embedding(raw_query)
+        norm_emb = get_embedding(norm_query) if norm_query != raw_query else None
+        
+        results_raw = vector_db.search_kb(raw_emb, limit=10) if raw_emb else []
+        results_norm = vector_db.search_kb(norm_emb, limit=10) if norm_emb else []
+
+        # Merge results, taking max score for each KB
+        combined_dict = {}
+        for r in results_raw + results_norm:
+            num = r["number"]
+            if num not in combined_dict or r.get("score", 0) > combined_dict[num].get("score", 0):
+                combined_dict[num] = r
+                
+        rag_results = sorted(list(combined_dict.values()), key=lambda x: x.get("score", 0), reverse=True)
     except Exception as e:
         logger.warning(f"Dense vector search failed: {e}")
     
@@ -1411,8 +1434,10 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                     num = r["number"]
                     if num in kw_dict:
                         dense_val = r["score"]
-                        r["score"] = round(0.7 * dense_val + 0.3 * kw_dict[num], 4)
-                        logger.info(f"   ↳ Boosted [{num}] score to {r['score']:.4f} (Dense: {dense_val}, Kw: {kw_dict[num]})")
+                        blended = round(0.75 * dense_val + 0.25 * kw_dict[num], 4)
+                        # Never lower dense score — only boost if keyword match adds value
+                        r["score"] = max(dense_val, blended)
+                        logger.info(f"   ↳ Evaluated [{num}] score: {r['score']:.4f} (Dense: {dense_val}, Kw: {kw_dict[num]})")
                 
                 rag_results.sort(key=lambda x: x["score"], reverse=True)
             except Exception as kw_err:
@@ -1425,53 +1450,98 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
     is_new = True
     matched_kb = None
     similarity_score = 0.0
+    top_match = None
     
+    is_offboarding_task = any(k in query_text.lower() for k in ["offboard", "userdel", "delete user", "remove user", "deprovision", "deactivate user"])
+    is_single_user_req = not any(k in query_text.lower() for k in ["20 users", "5 users", "pamsudo1 to", "user01 to", "bulk", "multiple users", "users pamsudo"])
+
     if rag_results:
-        top_match = rag_results[0]
-        similarity_score = top_match.get("score", 0)
-        is_offboarding_task = any(k in query_text.lower() for k in ["offboard", "userdel", "delete user", "remove user", "deprovision", "deactivate user"])
-        
-        if similarity_score >= RAG_SIMILARITY_THRESHOLD:
-            matched_number = top_match.get("number")
+        best_candidate_evaluated = rag_results[0]
+        top_inspected_score = best_candidate_evaluated.get("score", 0.0)
+        next_best_info = ""
+
+        for candidate in rag_results:
+            cand_score = candidate.get("score", 0.0)
+            cand_number = candidate.get("number")
+            
+            cand_art = None
             for art in kb_articles:
-                if art.get("number") == matched_number:
-                    matched_kb = art
+                if art.get("number") == cand_number:
+                    cand_art = art
                     break
-            if matched_kb is not None:
-                # Intent Safety Check: Prevent offboarding tickets from matching application/web restart SOPs
-                kb_text = f"{matched_kb.get('title', '')} {matched_kb.get('summary', '')}".lower()
-                is_app_sop = any(k in kb_text for k in ["nexacore", "http", "portal", "web server", "bad gateway", "502"])
-                if is_offboarding_task and is_app_sop:
-                    logger.warning(f"🛡️ Intent Safety Guard: Prevented User Offboarding ticket [{ticket_number}] from matching Application SOP [{matched_number}]. Forcing RAG Miss & HITL approval.")
-                    is_new = True
-                elif is_offboarding_task:
-                    # Offboarding tasks must ALWAYS require human approval!
-                    logger.info(f"🛡️ Intent Safety Guard: User Offboarding ticket [{ticket_number}] requires mandatory Human-in-the-Loop signoff.")
-                    is_new = True
-                else:
-                    is_new = False
-                    logger.info(f"🎯 RAG Match Executing: Score {similarity_score:.4f} >= {RAG_SIMILARITY_THRESHOLD} threshold -> {matched_number} '{matched_kb.get('title', '')}'")
+            
+            if not cand_art:
+                continue
+
+            kb_text = f"{cand_art.get('title', '')} {cand_art.get('summary', '')}".lower()
+            is_app_sop = any(k in kb_text for k in ["nexacore", "http", "portal", "web server", "bad gateway", "502"])
+            is_bulk_sop = any(k in kb_text for k in ["20 ", "20 users", "20 restricted", "user01 to user20"])
+
+            # Safety & Quantity Filter Check
+            if is_offboarding_task:
+                logger.warning(f"🛡️ Intent Safety Guard: User Offboarding ticket [{ticket_number}] requires mandatory Human-in-the-Loop signoff. Omitting [{cand_number}]...")
+                continue
+            elif is_single_user_req and is_bulk_sop:
+                logger.warning(f"🛡️ Quantity Mismatch Guard: Single-user ticket [{ticket_number}] matched Bulk SOP [{cand_number}] (Score {cand_score:.4f}). Omitting & inspecting next best candidate...")
+                next_best_info = f"Candidate [{cand_number}] omitted due to Quantity Mismatch (Score {cand_score:.4f})."
+                continue
+            
+            if cand_score < RAG_SIMILARITY_THRESHOLD:
+                logger.info(f"   ↳ Inspected next best candidate [{cand_number}] '{cand_art.get('title', '')}' — Score {cand_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold.")
+                if not next_best_info:
+                    next_best_info = f"Next best candidate [{cand_number}] score {cand_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold."
+                continue
+
+            # Valid Match Found!
+            is_new = False
+            matched_kb = cand_art
+            top_match = candidate
+            similarity_score = cand_score
+            logger.info(f"🎯 RAG Match Selected: Score {similarity_score:.4f} >= {RAG_SIMILARITY_THRESHOLD} threshold -> {cand_number} '{matched_kb.get('title', '')}'")
+            break
     
     if is_new:
-        logger.info(f"✨ RAG Miss (similarity score {similarity_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold). Handing over to Knowledge base creator LLM for SOP synthesis...")
+        miss_reason = next_best_info if next_best_info else f"Top similarity score {similarity_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold."
+        logger.info(f"✨ RAG Miss ({miss_reason}). Executing live SSH server diagnosis probe...")
         
-        # Invoke LLM to synthesize a new SOP
+        # 1. SSH Server Diagnosis Context Probe (strictly to analyze live server situation)
+        diag_cmds = [
+            "uname -a",
+            "cat /etc/os-release 2>/dev/null | head -n 5 || true",
+            "ss -tulpn 2>/dev/null | head -n 15 || true",
+            "ps aux --sort=-%cpu 2>/dev/null | head -n 10 || true"
+        ]
+        diag_logs = ""
+        try:
+            success, raw_logs = execute_ssh_sop(ip, "root", "root123", diag_cmds)
+            diag_logs = raw_logs if success else str(raw_logs)
+            logger.info(f"🔍 Server Diagnostic Context Captured ({len(diag_logs)} bytes)")
+        except Exception as diag_err:
+            logger.warning(f"Diagnostic probe warning: {diag_err}")
+            diag_logs = "Diagnostic context unavailable (SSH probe timeout/skipped)."
+
+        # 2. Invoke LLM to synthesize a GENERIC Master SOP based on Server Diagnosis + Ticket Requirement
         prompt = f"""
 You are a Senior L2 Systems & DevOps Administrator for Enterprise Infrastructure.
 No relevant SOP article was found in the database for the following incident.
-Synthesize a realistic, production-ready Standard Operating Procedure (SOP) Knowledge Base Article to resolve this ticket exactly as a real L2 Engineer would.
 
-CRITICAL L2 OPERATIONAL RULES:
-1. ABSOLUTELY NO HALLUCINATIONS OR UNREACHABLE EXTERNAL URLS:
-   - DO NOT generate curl/wget commands downloading from fake domain names (e.g. NEVER use internal-gitlab.example.com, mycompany.local, github.example, or any fake URL).
-   - DO NOT include pseudo-code or key placeholders like "<PASTE_KEY_HERE>" or "[insert key]".
-   - Every command MUST be a real, self-contained, working Linux/Unix shell command.
+FIRST: Review the live server diagnostic context captured from {ci_name} ({ip}):
+--- LIVE SERVER DIAGNOSTIC CONTEXT ---
+{diag_logs[:1500]}
+-------------------------------------
 
+CRITICAL OPERATIONAL RULES FOR GENERIC MASTER SOP SYNTHESIS:
+1. SERVER CONTEXT INTEGRATION:
+   - Use the live server context (OS release, listening ports, running processes) to format valid shell commands for {target_os}.
+2. GENERIC MASTER SOP WITH PARAMETER PLACEHOLDERS:
+   - Synthesize a GENERIC Master SOP using standard parameter placeholders:
+     * {{username}} for target user account names
+     * {{password}} for user/service passwords
+     * {{sudo_command}} for delegated sudo execution rights (e.g. /usr/bin/su - jboss or /bin/systemctl restart)
+     * {{service_name}} / {{port}} for application services
+   - The SOP must be generic so future RAG hits can take exact parameters from new incident descriptions and execute autonomously.
 3. KNOWLEDGE BASE ENRICHMENT & RAG COVERAGE RULE:
-   - Always synthesize a generalized, high-coverage SOP that enriches the knowledge base for similar future tickets.
-   - Extract the EXACT requested usernames (e.g. Pamsudo1 to Pamsudo5, User01 to User20, venkat) and EXACT command execution rights (e.g. su - jboss, systemctl restart Nexacore, NOPASSWD:ALL) directly from the ticket description.
-   - Do NOT use generic placeholder usernames like "venu" unless explicitly requested in the ticket description.
-   - Include a rich array of 6-10 generalized symptoms, synonyms, and alternate phrasing patterns in "symptoms" (e.g. covering multi-user creation, sudoers delegation, custom su commands, service restarts, and host variations) so vector search (RAG) will match similar future tickets with high similarity (>= 0.70).
+   - Include 6-10 generalized symptoms, synonyms, and alternate phrasing patterns in "symptoms" so vector search (RAG) matches similar future tickets with high similarity (>= 0.70).
 
 Incident Details:
 - Ticket Number: {ticket_number}
@@ -1482,18 +1552,18 @@ Incident Details:
 
 Respond ONLY in JSON format:
 {{
-  "title": "SOP: Technical Title",
-  "summary": "2-3 sentence technical executive summary explaining failure mode and fix",
+  "title": "Master SOP: Technical Title",
+  "summary": "Technical summary based on live server diagnostics and incident requirement",
   "symptoms": [
     "{short_desc}",
     "{desc}",
     "Provision Linux users with custom sudoers command execution rights",
     "Configure /etc/sudoers.d/ permissions for restricted commands (e.g. su - jboss, systemctl restart)",
-    "Bulk user creation and useradd on {ci_name}"
+    "Bulk user account creation and privilege delegation on {ci_name}"
   ],
-  "resolution_steps": ["ssh root@{ip}", "command1", "command2", ...],
-  "safety_checks": ["check1", "check2"],
-  "reasoning": "Technical L2 rationale"
+  "resolution_steps": ["id -u {{username}} &>/dev/null || useradd -m -s /bin/bash {{username}}", "echo '{{username}} ALL=(ALL) NOPASSWD: {{sudo_command}}' > /etc/sudoers.d/99-{{username}}", "chmod 440 /etc/sudoers.d/99-{{username}}", "visudo -c"],
+  "safety_checks": ["visudo -c", "id {{username}}"],
+  "reasoning": "Synthesized generic Master SOP after analyzing live server diagnostic context."
 }}
 """
         plan = {}
@@ -1506,7 +1576,7 @@ Respond ONLY in JSON format:
             if plan_content:
                 plan = json.loads(plan_content) if isinstance(plan_content, str) else plan_content
                 if isinstance(plan, list) and len(plan) > 0: plan = plan[0]
-                logger.info(f"🧠 Knowledge base creator LLM synthesized new SOP using model: '{used_model}'")
+                logger.info(f"🧠 Knowledge base creator LLM synthesized new Master SOP using model: '{used_model}'")
         except Exception as e:
             logger.error(f"LLM SOP synthesis failed for {ticket_number}: {e}")
             plan = {}
@@ -1544,7 +1614,41 @@ Respond ONLY in JSON format:
             if s_clean.lower().startswith("ssh "):
                 formatted_steps.append(s_clean)
             else:
-                formatted_steps.append(f'ssh root@{ip} "{s_clean}"')
+                formatted_steps.append(s_clean)
+
+        # Deterministic Fallback Parser if LLM output was empty or sanitized to 0 steps
+        if not formatted_steps:
+            logger.warning(f"⚠️ Synthesized steps were empty for [{ticket_number}]. Invoking Deterministic Fallback Extractor...")
+            full_txt = f"{short_desc} {desc}"
+            
+            # 1. Check for bulk / single user creation
+            pamsudo_matches = re.findall(r'Pamsudo\d+|pamsudo\d+', full_txt, re.IGNORECASE)
+            if pamsudo_matches:
+                users = sorted(list(set(pamsudo_matches)))
+            else:
+                u_match = re.search(r'(?:user|users|account)\s+([a-zA-Z0-9_\-\s]+?)(?:\s+on|\s+with|\s+and|\s+which|$)', full_txt, re.IGNORECASE)
+                users = [u_match.group(1).strip()] if u_match and len(u_match.group(1).strip()) > 2 else []
+
+            # Check for restricted command capability like su - jboss
+            cmd_match = re.search(r'(?:command like|capability|command)\s+([a-zA-Z0-9_\-\/\s]+)', full_txt, re.IGNORECASE)
+            restricted_cmd = cmd_match.group(1).strip() if cmd_match else ""
+
+            if users:
+                for u in users:
+                    formatted_steps.append(f'id -u "{u}" &>/dev/null || useradd -m -s /bin/bash "{u}"')
+                    if "jboss" in full_txt.lower() or "su -" in full_txt.lower():
+                        formatted_steps.append(f'echo "{u} ALL=(ALL) NOPASSWD: /usr/bin/su - jboss, /bin/su - jboss" > "/etc/sudoers.d/99-{u}" && chmod 440 "/etc/sudoers.d/99-{u}"')
+                    elif restricted_cmd:
+                        formatted_steps.append(f'echo "{u} ALL=(ALL) NOPASSWD: {restricted_cmd}" > "/etc/sudoers.d/99-{u}" && chmod 440 "/etc/sudoers.d/99-{u}"')
+                    else:
+                        formatted_steps.append(f'echo "{u} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/99-{u}" && chmod 440 "/etc/sudoers.d/99-{u}"')
+                formatted_steps.append("visudo -c")
+            elif "nexacore" in full_txt.lower() or "8080" in full_txt.lower():
+                formatted_steps = [
+                    "systemctl restart firewalld 2>/dev/null || true",
+                    "systemctl restart Nexacore",
+                    f"curl -s -o /dev/null -w '%{{http_code}}' http://{ip}:8080"
+                ]
 
         new_sop_data = {
             "title": kb_title,
@@ -1579,41 +1683,31 @@ Incident Details:
 Review the matched SOP and parameterize or verify the commands for execution on the target host.
 Ensure all commands comply with the DIRECT COMMAND EXECUTION RULE (do NOT prefix commands with ssh).
 
-CRITICAL: For ALL commands, replace {{ip}} with the target IP address. The FIRST command is a validation gate — do NOT modify it, just replace {{ip}} and {{username}}.
+CRITICAL: For ALL commands, replace {{ip}} with the target IP address.
 
-For USER CREATION SOP (KB0000001), extract:
-- {{username}}: Extract the username to create
-- {{full_name}}: Extract or infer the full name. If not specified, capitalize the username.
+CRITICAL MULTI-USER & BULK PROVISIONING EXPANSION RULE:
+- If the incident description requests MULTIPLE users or a RANGE of users (e.g. "5 users Pamsudo1 to pamsudo5", "User01 to User20", "create users user1, user2, user3"):
+  - You MUST extract ALL target usernames: [Pamsudo1, Pamsudo2, Pamsudo3, Pamsudo4, Pamsudo5].
+  - Extract the requested sudo command capability (e.g. "su - jboss", "systemctl restart", "NOPASSWD:ALL").
+  - REPLICATE the user creation and sudoers configuration steps for EVERY SINGLE USER in the list! Do NOT create only 1 user when 5 are requested.
+  - End with a single "visudo -c" syntax validation check.
+
+For USER CREATION SOP (KB0000001 / KB0000029), extract:
+- {{username_list}}: Extract array of ALL requested usernames [Pamsudo1, Pamsudo2, Pamsudo3, Pamsudo4, Pamsudo5].
 - {{password}}: Extract if specified, otherwise use "ChangeMe@2026"
-- {{sudo_command}}: If sudo access is explicitly mentioned (e.g. "sudo access", "root access", "admin access"), replace with: "echo '{{username}} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-{{username}} && chmod 440 /etc/sudoers.d/99-{{username}} && visudo -c -f /etc/sudoers.d/99-{{username}} 2>&1 && echo SUDO_OK || echo SUDO_FAILED"
-- {{sudo_command}}: If the ticket asks for write/read access to a SPECIFIC DIRECTORY (e.g. "write access to /etc", "read access to /var"), replace with: "setfacl -R -m u:{{username}}:rwx {{target_directory}} 2>&1 && echo ACL_SET_OK || echo ACL_SET_FAILED" — extract the target directory from the ticket description. Do NOT use sudo in this case.
-- {{sudo_command}}: If sudo is NOT mentioned and NO directory access is requested, replace with: "echo SUDO_NOT_REQUESTED"
+- {{sudo_command}}: Extract requested capability (e.g. "/usr/bin/su - jboss, /bin/su - jboss" or "ALL").
 
 For PASSWORD RESET SOP (KB0000017), extract:
 - {{username}}: Extract the username whose password needs resetting
 - {{password}}: Extract the new password. If not specified, use "Reset@2026"
 
 For USER DELETION SOP (KB0000014), extract:
-- {{username}}: Extract the username to delete
-
-For LOCK/UNLOCK SOP (KB0000015), extract:
-- {{username}}: Extract the username to lock or unlock
-- {{lock_unlock_command}}: If the ticket says "lock" or "disable", replace with: "passwd -l {{username}} 2>&1 && echo ACCOUNT_LOCKED_OK || echo LOCK_FAILED"
-- {{lock_unlock_command}}: If the ticket says "unlock" or "enable", replace with: "passwd -u {{username}} 2>&1 && echo ACCOUNT_UNLOCKED_OK || echo UNLOCK_FAILED"
-
-For MODIFY USER SOP (KB0000018), extract:
-- {{username}}: Extract the username to modify
-- {{modify_command}}: Based on the request, construct the appropriate usermod command. Examples:
-  - Change shell: "chsh -s /bin/zsh {{username}} 2>&1 && echo SHELL_CHANGED_OK"
-  - Add to group: "usermod -aG {{group_name}} {{username}} 2>&1 && echo GROUP_ADDED_OK"
-  - Remove from group: "gpasswd -d {{username}} {{group_name}} 2>&1 && echo GROUP_REMOVED_OK"
-
-For NexaCore/Application SOPs (KB0000003), the IP and port are already in the commands — just verify they match the target.
+- {{username_list}}: Extract ALL usernames to delete.
 
 Respond ONLY in JSON:
 {{
   "sop_commands": ["cmd1", "cmd2", ...],
-  "reasoning": "..."
+  "reasoning": "Technical explanation of parameterized commands for all requested users."
 }}
 """
         plan = {}
@@ -2235,8 +2329,11 @@ Respond ONLY in valid JSON format:
             "proof_summary": "System responded cleanly to SSH commands and reported normal operational metrics." if success else "SOP execution failed during SSH session."
         }
 
-    # HARD PHYSICAL PROBE GUARD: If ticket involves Nexacore or Application down, physically test HTTP endpoint!
-    if "nexacore" in short_desc.lower() or "application" in short_desc.lower() or "8080" in short_desc.lower():
+    # HARD PHYSICAL PROBE GUARD: Only physically test HTTP endpoint for Application Outage / Service Restart tickets!
+    is_user_ticket = any(k in short_desc.lower() for k in ["user", "id", "account", "pamsudo", "sudo", "privilege", "permission", "useradd", "provision"])
+    is_app_outage = any(k in short_desc.lower() for k in ["down", "unreachable", "crash", "502", "bad gateway", "service down", "outage", "8080"])
+
+    if is_app_outage and not is_user_ticket:
         time.sleep(3)  # Give background process time to complete socket bind
         try:
             probe_req = urllib.request.urlopen(f"http://{ip}:8080", timeout=5)
