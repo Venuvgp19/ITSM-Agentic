@@ -195,7 +195,7 @@ export class IncidentService {
     let activities = (existing.activitiesJson as any[]) || [];
     const timeStr = new Date().toLocaleTimeString();
 
-    if (state === 'RESOLVED') {
+    if (state === 'RESOLVED' && existing.state !== 'RESOLVED') {
       activities.push({
         id: `act_${existing.number}_resolved_${Date.now()}`,
         author: '🤖 Unix Auto-Resolver Agent',

@@ -627,8 +627,13 @@ export default function KnowledgePage() {
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Standard Operating Procedure (SOP)
                   </h4>
                   <div className="space-y-2">
-                    {selectedArticle.resolutionSteps.map((step, idx) => (
-                      <div key={idx} className="text-xs text-slate-200 bg-slate-950 p-3.5 rounded-xl border border-slate-800 font-mono">
+                    {((selectedArticle.resolutionSteps && selectedArticle.resolutionSteps.length > 0)
+                      ? selectedArticle.resolutionSteps
+                      : ((selectedArticle as any).commands && (selectedArticle as any).commands.length > 0)
+                        ? (selectedArticle as any).commands
+                        : (selectedArticle.content || '').split('\n').filter((l: string) => l.trim().length > 0)
+                    ).map((step: string, idx: number) => (
+                      <div key={idx} className="text-xs text-slate-200 bg-slate-950 p-3.5 rounded-xl border border-slate-800 font-mono whitespace-pre-wrap">
                         {step}
                       </div>
                     ))}

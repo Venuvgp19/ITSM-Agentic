@@ -63,6 +63,16 @@ def release_lock():
         pass
 
 
+import threading
+from collections import defaultdict
+
+# ----------------------------------------------------
+# Thread Safety & Strict Concurrency Locks
+# ----------------------------------------------------
+host_execution_locks = defaultdict(threading.Lock)
+incident_execution_lock = threading.Lock()
+active_processing_incidents = set()
+
 # ----------------------------------------------------
 # Configuration
 # ----------------------------------------------------
@@ -76,6 +86,8 @@ ROUTER_MODEL = "azure_ai/genailab-maas-Llama-3.3-70B-Instruct"
 RESOLVER_MODEL = "azure_ai/genailab-maas-Llama-3.3-70B-Instruct"
 SYNTHESIZER_MODEL = "azure_ai/genailab-maas-DeepSeek-R1"
 GOVERNANCE_MODEL = "genailab-maas-gpt-4o"
+
+RAG_SIMILARITY_THRESHOLD = 0.65
 
 MODEL_NAME = ROUTER_MODEL
 POLL_INTERVAL_SECONDS = 15
@@ -256,7 +268,7 @@ CI_CREDENTIALS = {
 }
 
 # Custom HTTP Client with SSL disabled for enterprise proxy
-custom_httpx_client = httpx.Client(verify=False)
+custom_httpx_client = httpx.Client(verify=False, timeout=httpx.Timeout(30.0, connect=10.0))
 
 # Initialize OpenAI Client pointing to Gen AI Lab Gemini 3.1 Pro Preview
 llm_client = OpenAI(
@@ -274,7 +286,7 @@ resolved_incident_sessions = set()
 
 # Cosine Similarity & Keyword Vector space model for RAG
 KEYWORDS = [
-    "ssh", "sshd", "kubelet", "kubernetes", "k8s", "containerd", "docker", 
+    "ssh", "sshd", "kubelet", "kubernetes", "k8s", "containerd", "docker", "podman",
     "service", "status", "restart", "fail", "error", "refused", "timeout", 
     "port", "disk", "space", "full", "permission", "denied", "key", "auth", 
     "login", "etcd", "apiserver", "scheduler", "controller", "active", "inactive",
@@ -283,7 +295,8 @@ KEYWORDS = [
     "user", "users", "account", "accounts", "id", "asha", "praneeth", "venu", "sudo",
     "passwordless", "privileges", "wheel", "virtualenv", "snappy", "python",
     "sssd", "kernel", "pam", "database", "postgres", "pool", "vacuum", "firewalld",
-    "unblock", "oom", "ram", "utilization", "threshold", "exceeded", "load"
+    "unblock", "oom", "ram", "utilization", "threshold", "exceeded", "load",
+    "db2", "beaver", "cloudbeaver", "dbeaver", "testdb", "db2server", "db2inst1", "50000"
 ]
 
 def cosine_similarity(v1, v2):
@@ -296,7 +309,7 @@ def cosine_similarity(v1, v2):
         return 0.0
     return dot_prod / (mag1 * mag2)
 
-def get_keyword_vector(text):
+def get_keyword_vector(text, target_dim=4096):
     text_lower = text.lower()
     vector = []
     for kw in KEYWORDS:
@@ -304,37 +317,135 @@ def get_keyword_vector(text):
         vector.append(float(count))
     mag = sum(x*x for x in vector) ** 0.5
     if mag > 0:
-        return [x / mag for x in vector]
-    return [0.0] * len(KEYWORDS)
+        norm_vec = [x / mag for x in vector]
+    else:
+        norm_vec = [0.0] * len(KEYWORDS)
+    
+    # Pad vector to target_dim (4096) for ChromaDB dimension consistency
+    if len(norm_vec) < target_dim:
+        norm_vec.extend([0.0] * (target_dim - len(norm_vec)))
+    return norm_vec[:target_dim]
 
 def get_embedding(text, client=None):
-    try:
-        clean_text = text.replace("\n", " ").strip()
-        if not clean_text:
-            clean_text = "empty"
-        
-        config = get_current_model_config()
-        base_url = NVIDIA_BASE_URL
-        api_key = NVIDIA_API_KEY
-        model = "nvidia/nv-embed-v1"
-        
-        if config and config.get("baseUrl"):
-            b_url = config.get("baseUrl", "").lower()
-            if "genailab" in b_url:
-                base_url = config.get("baseUrl")
-                api_key = config.get("apiKey", GENAI_API_KEY)
-                model = "azure/genailab-maas-text-embedding-3-large"
-            elif "nvidia" in b_url or "integrate.api.nvidia.com" in b_url:
-                base_url = config.get("baseUrl")
-                api_key = config.get("apiKey", NVIDIA_API_KEY)
-                model = "nvidia/nv-embed-v1"
+    clean_text = text.replace("\n", " ").strip()
+    if not clean_text:
+        clean_text = "empty"
+    
+    config = get_current_model_config()
+    base_url = NVIDIA_BASE_URL
+    api_key = NVIDIA_API_KEY
+    model = "nvidia/nv-embed-v1"
+    
+    if config and config.get("baseUrl"):
+        b_url = config.get("baseUrl", "").lower()
+        if "genailab" in b_url:
+            base_url = config.get("baseUrl")
+            api_key = config.get("apiKey", GENAI_API_KEY)
+            model = "azure/genailab-maas-text-embedding-3-large"
+        elif "nvidia" in b_url or "integrate.api.nvidia.com" in b_url:
+            base_url = config.get("baseUrl")
+            api_key = config.get("apiKey", NVIDIA_API_KEY)
+            model = "nvidia/nv-embed-v1"
 
-        emb_client = OpenAI(api_key=api_key, base_url=base_url, http_client=custom_httpx_client)
-        res = emb_client.embeddings.create(input=[clean_text], model=model)
-        return res.data[0].embedding
-    except Exception as e:
-        logger.warning(f"Embedding API call failed: {e}. Falling back to keyword-based vector search.")
-        return get_keyword_vector(text)
+    # Retry up to 3 times with backoff if network or API glitch occurs
+    for attempt in range(3):
+        try:
+            emb_client = OpenAI(api_key=api_key, base_url=base_url, http_client=custom_httpx_client)
+            res = emb_client.embeddings.create(input=[clean_text], model=model)
+            emb = res.data[0].embedding
+            if len(emb) < 4096:
+                emb.extend([0.0] * (4096 - len(emb)))
+            return emb[:4096]
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(1.0 * (attempt + 1))
+            else:
+                logger.warning(f"Embedding API call failed after 3 attempts: {e}. Falling back to 4096-D padded keyword vector.")
+                return get_keyword_vector(text, target_dim=4096)
+
+try:
+    import chromadb
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    CHROMADB_AVAILABLE = False
+
+class ChromaVectorDB:
+    def __init__(self, db_dir=None):
+        if db_dir is None:
+            db_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_db")
+        self.db_dir = db_dir
+        self.collection = None
+        if CHROMADB_AVAILABLE:
+            try:
+                self.client = chromadb.PersistentClient(path=self.db_dir)
+                self.collection = self.client.get_or_create_collection(
+                    name="itsm_knowledge_articles",
+                    metadata={"hnsw:space": "cosine"}
+                )
+                logger.info(f"🟣 ChromaDB Vector Engine initialized successfully at '{self.db_dir}'!")
+            except Exception as e:
+                logger.warning(f"ChromaDB initialization warning: {e}")
+
+    def get_indexed_ids(self):
+        if self.collection:
+            try:
+                res = self.collection.get()
+                return set(res["ids"])
+            except Exception:
+                return set()
+        return set()
+
+    def get_indexed_numbers(self):
+        if self.collection:
+            try:
+                res = self.collection.get()
+                numbers = set()
+                for meta in res.get("metadatas", []):
+                    if meta and "number" in meta:
+                        numbers.add(meta["number"])
+                return numbers
+            except Exception:
+                return set()
+        return set()
+
+    def add_kb_embedding(self, kb_id, number, title, embedding):
+        if self.collection:
+            try:
+                final_id = str(kb_id or number or title)
+                final_num = str(number or kb_id or "")
+                self.collection.upsert(
+                    ids=[final_id],
+                    embeddings=[embedding],
+                    metadatas=[{"number": final_num, "title": str(title)}]
+                )
+            except Exception as e:
+                logger.warning(f"Failed to index KB in ChromaDB: {e}")
+
+    def search_kb(self, query_embedding, limit=3):
+        if not self.collection:
+            return []
+        try:
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=limit
+            )
+            hits = []
+            if results and results["ids"] and len(results["ids"]) > 0:
+                ids = results["ids"][0]
+                distances = results["distances"][0] if "distances" in results and results["distances"] else [0]*len(ids)
+                metadatas = results["metadatas"][0] if "metadatas" in results and results["metadatas"] else [{}]*len(ids)
+                for i in range(len(ids)):
+                    similarity = max(0.0, 1.0 - distances[i])
+                    hits.append({
+                        "id": ids[i],
+                        "number": metadatas[i].get("number", ids[i]),
+                        "title": metadatas[i].get("title", ""),
+                        "score": similarity
+                    })
+            return hits
+        except Exception as e:
+            logger.warning(f"ChromaDB search failed: {e}")
+            return []
 
 class LocalVectorDB:
     def __init__(self, db_path="vector_db.db"):
@@ -393,8 +504,8 @@ class LocalVectorDB:
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:limit]
 
-# Instantiate Local Vector Database
-vector_db = LocalVectorDB(os.path.join(os.path.dirname(os.path.abspath(__file__)), "vector_db.db"))
+# Instantiate ChromaDB Vector Database Engine
+vector_db = ChromaVectorDB()
 
 def sync_vector_db_with_kb(token, client, vdb):
     try:
@@ -410,7 +521,7 @@ def sync_vector_db_with_kb(token, client, vdb):
                 symptoms = ' '.join(art.get("symptoms", []))
                 content_to_embed = f"Title: {title}\nSummary: {summary}\nSymptoms: {symptoms}"
                 
-                emb = get_keyword_vector(content_to_embed)
+                emb = get_embedding(content_to_embed)
                 vdb.add_kb_embedding(art_id, art_number, title, emb)
                 logger.info(f"Indexed KB article {art_number} in vector database (100% SOP RAG Coverage).")
     except Exception as e:
@@ -661,21 +772,37 @@ def save_new_kb_article_to_storage(new_article_data):
                         similarity = overlap / max(len(target_tokens), len(existing_tokens))
                         if similarity >= 0.60:
                             logger.info(f"ℹ️ KB Article '{kb.get('number')}' ('{kb.get('title')}') is semantically similar (similarity: {similarity:.2f}). Merging steps into existing KB...")
-                            # Append any new unique resolution steps
+                            # Append any new unique resolution steps & symptoms for RAG enrichment
                             existing_steps = kb.get("resolutionSteps", [])
                             new_steps = new_article_data.get("resolutionSteps", [])
                             merged_steps = list(dict.fromkeys(existing_steps + new_steps))
+
+                            existing_symptoms = kb.get("symptoms", [])
+                            new_symptoms = new_article_data.get("symptoms", [])
+                            merged_symptoms = list(dict.fromkeys(existing_symptoms + new_symptoms))
                             
                             # PATCH existing article via API
                             try:
                                 patch_res = requests.patch(
                                     f"http://localhost:4000/api/v1/knowledge/articles/{kb.get('number')}",
-                                    json={"resolutionSteps": merged_steps},
+                                    json={"resolutionSteps": merged_steps, "symptoms": merged_symptoms},
                                     timeout=5
                                 )
                                 if patch_res.status_code == 200:
-                                    logger.info(f"✅ Successfully merged new resolution steps into {kb.get('number')}")
-                                    return patch_res.json()
+                                    logger.info(f"✅ Successfully merged new resolution steps and enriched symptoms into {kb.get('number')}")
+                                    updated_kb = patch_res.json()
+                                    # Re-index in ChromaDB vector database immediately
+                                    try:
+                                        vdb = ChromaVectorDB()
+                                        symptoms_str = ' '.join(merged_symptoms) if isinstance(merged_symptoms, list) else str(merged_symptoms)
+                                        content_to_embed = f"Title: {kb.get('title')}\nSummary: {kb.get('summary')}\nSymptoms: {symptoms_str}\nSteps: {' '.join(merged_steps)}"
+                                        emb = get_embedding(content_to_embed)
+                                        if emb:
+                                            vdb.add_kb_embedding(kb.get('number'), kb.get('number'), kb.get('title'), emb)
+                                            logger.info(f"⚡ Re-indexed vector embeddings for {kb.get('number')} in ChromaDB with enriched RAG coverage.")
+                                    except Exception as vec_err:
+                                        logger.warning(f"Failed to re-index vector embedding: {vec_err}")
+                                    return updated_kb
                             except Exception as patch_err:
                                 logger.warning(f"Could not patch existing KB {kb.get('number')}: {patch_err}")
                             return kb
@@ -698,6 +825,20 @@ def save_new_kb_article_to_storage(new_article_data):
         if res.status_code in [200, 201]:
             new_article = res.json()
             logger.info(f"✨ PERSISTED NEW SOP ARTICLE TO DATABASE VIA API: {new_article.get('number')} - {new_article.get('title')}")
+            # Automatically index new article into ChromaDB vector database
+            try:
+                vdb = ChromaVectorDB()
+                symptom_list = new_article.get('symptoms', [])
+                symptoms_str = ' '.join(symptom_list) if isinstance(symptom_list, list) else str(symptom_list)
+                steps_list = new_article.get('resolutionSteps', [])
+                steps_str = ' '.join(steps_list) if isinstance(steps_list, list) else str(steps_list)
+                content_to_embed = f"Title: {new_article.get('title')}\nSummary: {new_article.get('summary')}\nSymptoms: {symptoms_str}\nSteps: {steps_str}"
+                emb = get_embedding(content_to_embed)
+                if emb:
+                    vdb.add_kb_embedding(new_article.get('number'), new_article.get('number'), new_article.get('title'), emb)
+                    logger.info(f"⚡ Indexed new vector embedding for {new_article.get('number')} in ChromaDB with high RAG coverage.")
+            except Exception as vec_err:
+                logger.warning(f"Failed to index new vector embedding: {vec_err}")
             return new_article
         else:
             logger.error(f"Failed to post KB article. Status: {res.status_code}, Body: {res.text}")
@@ -1245,17 +1386,39 @@ def _enforce_sop_safety_rules(sop_commands, short_desc, desc, kb_number):
 
 
 def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articles, incident_id, target_os="Linux/Unix"):
-    # 1. Vector DB RAG Query (primary)
+    # 1. Hybrid RAG Strategy: Dense Primary + Keyword Tie-Breaker
     rag_results = []
+    query_text = f"{short_desc} {desc}"
+    
     try:
-        query_text = f"{short_desc} {desc}"
-        query_emb = get_keyword_vector(query_text)
+        query_emb = get_embedding(query_text)
         if query_emb:
             rag_results = vector_db.search_kb(query_emb, limit=5)
     except Exception as e:
-        logger.warning(f"Vector search failed, falling back to keyword search: {e}")
+        logger.warning(f"Dense vector search failed: {e}")
     
-    # 2. Fallback to keyword search if vector search returns nothing
+    # 2. Keyword Tie-Breaker for Edge Cases (0.35 <= Dense Score < RAG_SIMILARITY_THRESHOLD)
+    if rag_results:
+        top_score = rag_results[0].get("score", 0.0)
+        if 0.35 <= top_score < RAG_SIMILARITY_THRESHOLD:
+            logger.info(f"🔍 Dense RAG Score ({top_score:.4f}) in edge-case range (0.35-{RAG_SIMILARITY_THRESHOLD}). Running Keyword Tie-Breaker...")
+            try:
+                kw_emb = get_keyword_vector(query_text)
+                kw_hits = vector_db.search_kb(kw_emb, limit=5)
+                kw_dict = {h["number"]: h["score"] for h in kw_hits}
+                
+                for r in rag_results:
+                    num = r["number"]
+                    if num in kw_dict:
+                        dense_val = r["score"]
+                        r["score"] = round(0.7 * dense_val + 0.3 * kw_dict[num], 4)
+                        logger.info(f"   ↳ Boosted [{num}] score to {r['score']:.4f} (Dense: {dense_val}, Kw: {kw_dict[num]})")
+                
+                rag_results.sort(key=lambda x: x["score"], reverse=True)
+            except Exception as kw_err:
+                logger.warning(f"Keyword tie-breaker failed: {kw_err}")
+    
+    # 3. Fallback to keyword search if vector search returns nothing
     if not rag_results:
         rag_results = search_kb_without_embeddings(short_desc, desc, kb_articles)
     
@@ -1268,7 +1431,7 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
         similarity_score = top_match.get("score", 0)
         is_offboarding_task = any(k in query_text.lower() for k in ["offboard", "userdel", "delete user", "remove user", "deprovision", "deactivate user"])
         
-        if similarity_score >= 0.65:
+        if similarity_score >= RAG_SIMILARITY_THRESHOLD:
             matched_number = top_match.get("number")
             for art in kb_articles:
                 if art.get("number") == matched_number:
@@ -1287,10 +1450,10 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                     is_new = True
                 else:
                     is_new = False
-                    logger.info(f"🎯 RAG Match: Score {similarity_score:.4f} >= 0.65 -> {matched_number} '{matched_kb.get('title', '')}'")
+                    logger.info(f"🎯 RAG Match Executing: Score {similarity_score:.4f} >= {RAG_SIMILARITY_THRESHOLD} threshold -> {matched_number} '{matched_kb.get('title', '')}'")
     
     if is_new:
-        logger.info(f"✨ RAG Miss (similarity score {similarity_score:.4f} < 0.65 threshold). Handing over to Knowledge base creator LLM for SOP synthesis...")
+        logger.info(f"✨ RAG Miss (similarity score {similarity_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold). Handing over to Knowledge base creator LLM for SOP synthesis...")
         
         # Invoke LLM to synthesize a new SOP
         prompt = f"""
@@ -1304,25 +1467,11 @@ CRITICAL L2 OPERATIONAL RULES:
    - DO NOT include pseudo-code or key placeholders like "<PASTE_KEY_HERE>" or "[insert key]".
    - Every command MUST be a real, self-contained, working Linux/Unix shell command.
 
-2. SPECIFIC RULE FOR USER ACCOUNT CREATION & DELETION / OFFBOARDING TICKETS:
-   - If ticket asks to CREATE a user account, provision a user ID, or grant passwordless sudo:
-     Step 1: "ssh root@{ip}"
-     Step 2: Create user account idempotently: "id -u <username> &>/dev/null || useradd -m -s /bin/bash -c '<Full Name>' <username>"
-     Step 3: Create .ssh directory with proper ownership: "mkdir -p /home/<username>/.ssh && chmod 700 /home/<username>/.ssh && chown -R <username>:<username> /home/<username>/.ssh"
-     Step 4 (if sudo requested): Grant sudoers safely: "echo '<username> ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/99-<username> && chmod 440 /etc/sudoers.d/99-<username> && visudo -c -f /etc/sudoers.d/99-<username>"
-     Step 5: Validate account creation: "id <username> && ls -ld /home/<username>"
-   
-   - If ticket asks to DELETE / REMOVE / DEPROVISION a user account:
-     Step 1: "ssh root@{ip}"
-     Step 2: Archive user home directory safely: "tar -czf /root/<username>_archive_$(date +%F).tar.gz -C /home <username> 2>/dev/null || true"
-     Step 3: Remove sudoers file safely: "rm -f /etc/sudoers.d/<username> /etc/sudoers.d/99-<username> || true"
-     Step 4: Delete user account and home directory: "userdel -r -f <username> 2>/dev/null || true"
-     Step 5: Validate deletion proof: "id <username> 2>/dev/null && echo 'User still exists' || echo 'User successfully deleted'"
-
-3. TECHNICAL REALISM FOR OTHER INCIDENTS (Disk Space, /etc/fstab, CPU, Memory, NTP, Services, etcd):
-   - For /etc/fstab modifications: NEVER blindly append with 'echo ... >> /etc/fstab'. ALWAYS check first: "grep -qs '<mount_point>' /etc/fstab || echo '<UUID> <mount_point> ext4 defaults 0 2' >> /etc/fstab && systemctl daemon-reload"
-   - Tailor commands specifically to the technology (e.g., systemctl restart <service>, journalctl --vacuum-time=2d, df -h, crictl/docker, lvextend, ionice).
-   - Do NOT use generic vague phrases. Provide concrete, idempotent shell commands.
+3. KNOWLEDGE BASE ENRICHMENT & RAG COVERAGE RULE:
+   - Always synthesize a generalized, high-coverage SOP that enriches the knowledge base for similar future tickets.
+   - Extract the EXACT requested usernames (e.g. Pamsudo1 to Pamsudo5, User01 to User20, venkat) and EXACT command execution rights (e.g. su - jboss, systemctl restart Nexacore, NOPASSWD:ALL) directly from the ticket description.
+   - Do NOT use generic placeholder usernames like "venu" unless explicitly requested in the ticket description.
+   - Include a rich array of 6-10 generalized symptoms, synonyms, and alternate phrasing patterns in "symptoms" (e.g. covering multi-user creation, sudoers delegation, custom su commands, service restarts, and host variations) so vector search (RAG) will match similar future tickets with high similarity (>= 0.70).
 
 Incident Details:
 - Ticket Number: {ticket_number}
@@ -1335,6 +1484,13 @@ Respond ONLY in JSON format:
 {{
   "title": "SOP: Technical Title",
   "summary": "2-3 sentence technical executive summary explaining failure mode and fix",
+  "symptoms": [
+    "{short_desc}",
+    "{desc}",
+    "Provision Linux users with custom sudoers command execution rights",
+    "Configure /etc/sudoers.d/ permissions for restricted commands (e.g. su - jboss, systemctl restart)",
+    "Bulk user creation and useradd on {ci_name}"
+  ],
   "resolution_steps": ["ssh root@{ip}", "command1", "command2", ...],
   "safety_checks": ["check1", "check2"],
   "reasoning": "Technical L2 rationale"
@@ -1678,6 +1834,35 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
 
 
 def solve_in_progress_incident(token, incident, kb_articles):
+    inc_id = incident.get("id")
+    number = incident.get("number", inc_id)
+    short_desc = incident.get("shortDescription", "")
+    desc = incident.get("description", "")
+
+    # 1. Prevent concurrent processing of the exact same incident across threads
+    with incident_execution_lock:
+        if inc_id in active_processing_incidents:
+            logger.info(f"🔒 Incident [{number}] is currently being processed by another thread. Skipping.")
+            return
+        active_processing_incidents.add(inc_id)
+
+    ci_info, ci_name = resolve_ci_credentials(incident)
+    host_ip = (ci_info or {}).get("ip", "default_host")
+    host_lock = host_execution_locks[host_ip]
+
+    try:
+        # 2. Acquire strict per-host lock so no two incidents execute SSH commands concurrently on the same host
+        logger.info(f"🔒 Acquiring SSH execution lock for host [{ci_name} / {host_ip}] on Incident [{number}]...")
+        with host_lock:
+            logger.info(f"🔑 Host lock acquired for [{ci_name} / {host_ip}] — Executing SOP for Incident [{number}]...")
+            _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, ci_name)
+    finally:
+        with incident_execution_lock:
+            active_processing_incidents.discard(inc_id)
+        logger.info(f"🔓 Released host execution lock for [{ci_name} / {host_ip}] on Incident [{number}].")
+
+
+def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, ci_name):
     inc_id = incident.get("id")
     number = incident.get("number", inc_id)
     short_desc = incident.get("shortDescription", "")

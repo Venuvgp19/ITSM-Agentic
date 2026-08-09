@@ -230,7 +230,7 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                 <div className="text-right px-4 py-2 bg-slate-950/60 rounded-xl border border-slate-800/80 shadow-inner">
                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">AI Confidence</div>
                   <div className="text-base font-black text-emerald-400 flex items-center justify-end gap-1">
-                    <span>{appr.confidenceScore}%</span>
+                    <span>{appr.confidenceScore > 100 ? (appr.confidenceScore / 100).toFixed(0) : appr.confidenceScore}%</span>
                   </div>
                 </div>
 

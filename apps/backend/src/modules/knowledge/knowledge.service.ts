@@ -567,8 +567,27 @@ Return JSON with:
               modelUsed: this.llamaModel,
             };
 
-            await this.prisma.knowledgeArticle.create({ data: masterArticle });
-            this.logger.log(`✅ Created Master SOP ${kbNumber} for "${category}" consolidating ${articles.length} articles`);
+            const existingMaster = await this.prisma.knowledgeArticle.findFirst({
+              where: { tenantId, title: { equals: masterArticle.title, mode: 'insensitive' } }
+            });
+
+            if (existingMaster) {
+              await this.prisma.knowledgeArticle.update({
+                where: { id: existingMaster.id },
+                data: {
+                  symptoms: masterArticle.symptoms,
+                  rootCause: masterArticle.rootCause,
+                  resolutionSteps: masterArticle.resolutionSteps,
+                  workNotesAnalyzedCount: masterArticle.workNotesAnalyzedCount,
+                  sourceIncidentIds: masterArticle.sourceIncidentIds,
+                  summary: masterArticle.summary,
+                }
+              });
+              this.logger.log(`🔄 Updated existing Master SOP ${existingMaster.number} for "${category}" consolidating ${articles.length} articles`);
+            } else {
+              await this.prisma.knowledgeArticle.create({ data: masterArticle });
+              this.logger.log(`✅ Created Master SOP ${kbNumber} for "${category}" consolidating ${articles.length} articles`);
+            }
           } catch (err: any) {
             this.logger.error(`Error creating Master SOP for ${category}: ${err.message}`);
           }
@@ -592,6 +611,30 @@ Return JSON with:
 
   async createArticle(dto: any) {
     const tenantId = dto.tenantId || 'tenant_acme_01';
+
+    // Strict Deduplication Guard: Prevent duplicate creation if an article with identical title already exists
+    if (dto.title) {
+      const existing = await this.prisma.knowledgeArticle.findFirst({
+        where: { tenantId, title: { equals: dto.title.trim(), mode: 'insensitive' } }
+      });
+      if (existing) {
+        this.logger.log(`ℹ️ KB Article '${existing.number}' already exists with title '${existing.title}'. Merging resolution steps and symptoms...`);
+        const existingSteps = (existing.resolutionSteps as string[]) || [];
+        const newSteps = (dto.resolutionSteps as string[]) || [];
+        const mergedSteps = Array.from(new Set([...existingSteps, ...newSteps]));
+
+        const existingSymptoms = (existing.symptoms as string[]) || [];
+        const newSymptoms = (dto.symptoms as string[]) || [];
+        const mergedSymptoms = Array.from(new Set([...existingSymptoms, ...newSymptoms]));
+
+        const updated = await this.prisma.knowledgeArticle.update({
+          where: { id: existing.id },
+          data: { resolutionSteps: mergedSteps, symptoms: mergedSymptoms }
+        });
+        return this.mapKBToDTO(updated);
+      }
+    }
+
     const totalKb = await this.prisma.knowledgeArticle.count({ where: { tenantId } });
     const newId = dto.number || `KB${String(totalKb + 1).padStart(7, '0')}`;
     const record = await this.prisma.knowledgeArticle.upsert({

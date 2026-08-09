@@ -103,7 +103,7 @@ export class AgentGovernanceService implements OnModuleInit {
       targetCi: details.targetCi || 'Worker 1 (192.168.56.10)',
       department: details.department || 'Unix',
       riskLevel: details.riskLevel || 'HIGH',
-      confidenceScore: record.confidenceScore || 95.0,
+      confidenceScore: record.confidenceScore ? (record.confidenceScore > 100 ? record.confidenceScore / 100 : record.confidenceScore) : 95.0,
       status: record.status as any || 'PENDING',
       requestedAt: record.timestamp ? record.timestamp.toISOString() : new Date().toISOString(),
       summary: record.summary || '',
@@ -154,6 +154,17 @@ export class AgentGovernanceService implements OnModuleInit {
     return records.map(r => this.mapApprovalToDTO(r));
   }
 
+  async getApprovalsByStatus(status: string): Promise<AgentApproval[]> {
+    if (!status || status.toUpperCase() === 'ALL') {
+      return this.getAllApprovals();
+    }
+    const records = await this.prisma.agentApproval.findMany({
+      where: { status: status.toUpperCase() },
+      orderBy: { timestamp: 'desc' }
+    });
+    return records.map(r => this.mapApprovalToDTO(r));
+  }
+
   async getAllApprovals(): Promise<AgentApproval[]> {
     const records = await this.prisma.agentApproval.findMany({
       orderBy: { timestamp: 'desc' }
@@ -174,42 +185,31 @@ export class AgentGovernanceService implements OnModuleInit {
     const existingPending = await this.prisma.agentApproval.findFirst({
       where: { entityId: dto.incidentId, status: 'PENDING' }
     });
-
-    let details: any = {
-      incidentTitle: dto.incidentTitle || 'Autonomous Agent Remediation Request',
-      agentId: dto.agentId || 'agent-unix-resolver-01',
-      agentName: dto.agentName || '🤖 Unix Auto-Resolver Agent',
-      model: dto.model || 'nvidia/nemotron-3-ultra-550b-a55b',
-      targetCi: dto.targetCi || 'Worker 1 (192.168.56.10)',
-      department: dto.department || 'Unix',
-      riskLevel: dto.riskLevel || 'HIGH',
-      proposedCommands: dto.proposedCommands || [],
-      kbArticleReference: dto.kbArticleReference || 'KB0000001',
-      kbTitle: dto.kbTitle || 'Standard Remediation SOP',
-      safetyChecks: dto.safetyChecks || [],
-      aiReasoning: dto.aiReasoning || '',
-      routerOutput: dto.routerOutput,
-      resolverOutput: dto.resolverOutput,
-      synthesizerOutput: dto.synthesizerOutput
-    };
-
     if (existingPending) {
-      const existingDetails = existingPending.details as any || {};
-      details = { ...existingDetails, ...details };
-
-      const updated = await this.prisma.agentApproval.update({
-        where: { id: existingPending.id },
-        data: {
-          summary: dto.summary || existingPending.summary,
-          details,
-          timestamp: new Date()
-        }
-      });
-      return this.mapApprovalToDTO(updated);
+      return this.mapApprovalToDTO(existingPending);
     }
 
     const newId = `APPR-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newRecord = await this.prisma.agentApproval.create({
+
+    const details = {
+      model: dto.model || 'gemini-3.1-pro-preview',
+      targetCi: dto.targetCi || 'Worker 1',
+      department: dto.department || 'Unix',
+      riskLevel: dto.riskLevel || 'HIGH',
+      confidenceScore: dto.confidenceScore || 0.95,
+      summary: dto.summary || 'Agent requested approval for system execution.',
+      proposedCommands: dto.proposedCommands || [],
+      kbArticleReference: dto.kbArticleReference,
+      kbTitle: dto.kbTitle,
+      safetyChecks: dto.safetyChecks || [],
+      aiReasoning: dto.aiReasoning || 'Identified mandatory high-risk action requiring human approval.',
+      routerOutput: dto.routerOutput,
+      resolverOutput: dto.resolverOutput,
+      synthesizerOutput: dto.synthesizerOutput,
+      incidentTitle: dto.incidentTitle
+    };
+
+    const record = await this.prisma.agentApproval.create({
       data: {
         id: newId,
         type: 'EXECUTION',
@@ -217,26 +217,23 @@ export class AgentGovernanceService implements OnModuleInit {
         entityType: 'Incident',
         summary: dto.summary || 'Agent requested approval for system execution.',
         proposedAction: 'Execute SSH Remediation',
-        confidenceScore: dto.confidenceScore || 95.0,
+        confidenceScore: dto.confidenceScore ? (dto.confidenceScore <= 1.0 ? dto.confidenceScore * 100 : dto.confidenceScore) : 85.0,
         status: 'PENDING',
-        details,
+        details: details as any,
         timestamp: new Date()
       }
     });
 
-    return this.mapApprovalToDTO(newRecord);
+    return this.mapApprovalToDTO(record);
   }
 
-  async approveRequest(id: string, approverName: string = 'System Admin (Human in the Loop)', proposedCommands?: string[]) {
+  async approveRequest(id: string, approverName: string = 'System Admin', proposedCommands?: string[]) {
     const cleanId = id.toUpperCase();
     const record = await this.prisma.agentApproval.findUnique({ where: { id: cleanId } });
     if (!record) throw new NotFoundException(`Approval request ${id} not found.`);
 
     const details = record.details as any || {};
-    details.approvedBy = approverName;
-    details.approvedAt = new Date().toISOString();
-    
-    if (Array.isArray(proposedCommands) && proposedCommands.length > 0) {
+    if (proposedCommands && proposedCommands.length > 0) {
       details.proposedCommands = proposedCommands;
     }
 
@@ -264,6 +261,38 @@ export class AgentGovernanceService implements OnModuleInit {
     });
 
     await this.updateIncidentToRejected(record.entityId, rejectorName, details.rejectionReason);
+
+    // Create AgentHistory log entry for historical activity view filter
+    try {
+      await this.prisma.agentHistory.create({
+        data: {
+          id: `HIST-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          type: 'LOG',
+          incidentId: record.entityId || 'INC0000001',
+          title: record.summary || details.incidentTitle || 'Rejected Approval Request',
+          description: `Approval Request Rejected: ${details.rejectionReason}`,
+          timestamp: new Date(),
+          metadata: {
+            approvalId: record.id,
+            agentId: details.agentId || 'agent-control-tower',
+            agentName: '🛡️ HITL Governance',
+            model: details.model || 'gemini-3.1-pro-preview',
+            targetCi: details.targetCi || 'WorkerNode1HL',
+            department: details.department || 'Governance',
+            riskLevel: details.riskLevel || 'HIGH',
+            status: 'REJECTED',
+            actionType: 'HUMAN_REJECTED',
+            durationMs: 0,
+            humanApprover: rejectorName,
+            commandExecuted: `REJECTED: ${details.rejectionReason}`,
+            executionOutput: `Approval request was rejected by human operator (${rejectorName}) with reason: ${details.rejectionReason}`,
+            resolutionOutcome: `Rejected by human operator policy.`,
+          }
+        }
+      });
+    } catch (err) {
+      console.warn(`Failed to insert history log for rejected approval: ${err}`);
+    }
 
     return { approval: this.mapApprovalToDTO(updated), historyEntry: null as any };
   }
@@ -328,7 +357,7 @@ export class AgentGovernanceService implements OnModuleInit {
   }
 
   async createHistoryEntry(dto: Partial<AgentHistoryEntry>): Promise<AgentHistoryEntry> {
-    const newId = `HIST-${Math.floor(8000 + Math.random() * 1000)}`;
+    const newId = `HIST-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     
     const record = await this.prisma.agentHistory.create({
       data: {

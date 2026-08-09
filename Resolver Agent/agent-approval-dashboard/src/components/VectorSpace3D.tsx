@@ -74,25 +74,34 @@ export function VectorSpace3D() {
   const lastMousePos = useRef({ x: 0, y: 0 });
   const [hoveredNode, setHoveredNode] = useState<any | null>(null);
 
-  // Map articles to 3D coordinate space coordinates
-  const vectorPoints = useMemo(() => {
-    return articles.map((art, idx) => {
-      // Offset clusters slightly by categories
+  const nodes = useMemo(() => {
+    return articles.map((art) => {
+      // Categorize articles accurately based on domain title & category keywords
+      const titleLower = (art.title || '').toLowerCase();
+      const catLower = (art.category || '').toLowerCase();
+      const summaryLower = (art.summary || '').toLowerCase();
+      const text = `${titleLower} ${catLower} ${summaryLower}`;
+
       let xOffset = 0;
       let yOffset = 0;
       let zOffset = 0;
+      let clusterColor = '#818cf8'; // Default Indigo
 
-      const cat = (art.category || '').toLowerCase();
-      if (cat.includes('server') || cat.includes('kernel') || cat.includes('patch')) {
-        xOffset = -60; yOffset = -40; zOffset = -20;
-      } else if (cat.includes('db') || cat.includes('vacuum') || cat.includes('postgres')) {
-        xOffset = 60; yOffset = 40; zOffset = -30;
-      } else if (cat.includes('network') || cat.includes('router') || cat.includes('bgp')) {
-        xOffset = -40; yOffset = 50; zOffset = 60;
-      } else if (cat.includes('user management') || cat.includes('user error')) {
+      if (text.includes('db2') || text.includes('postgres') || text.includes('database') || text.includes('sql')) {
+        xOffset = 70; yOffset = 40; zOffset = -30;
+        clusterColor = '#34d399'; // Emerald 🟢 Database & DB2
+      } else if (text.includes('user') || text.includes('sudo') || text.includes('account') || text.includes('provision') || text.includes('pablo') || text.includes('venu')) {
         xOffset = 50; yOffset = -50; zOffset = 40;
-      } else if (cat.includes('application')) {
+        clusterColor = '#fb923c'; // Orange 🟠 User Provisioning & Sudo
+      } else if (text.includes('nexacore') || text.includes('application') || text.includes('portal') || text.includes('sap') || text.includes('spooler') || text.includes('virtualenv')) {
         xOffset = -50; yOffset = -60; zOffset = 50;
+        clusterColor = '#fbbf24'; // Amber 🟡 NexaCore & Applications
+      } else if (text.includes('vpn') || text.includes('okta') || text.includes('mfa') || text.includes('ldap') || text.includes('active directory') || text.includes('email') || text.includes('mail')) {
+        xOffset = 40; yOffset = 30; zOffset = 50;
+        clusterColor = '#a78bfa'; // Purple 🟣 Auth, VPN & Security
+      } else {
+        xOffset = -60; yOffset = -40; zOffset = -20;
+        clusterColor = '#818cf8'; // Indigo 🔵 System & K8s Infrastructure
       }
 
       // Hash title for high-frequency deterministic offsets
@@ -111,13 +120,7 @@ export function VectorSpace3D() {
         y,
         z,
         article: art,
-        color: cat.includes('server') || cat.includes('kernel') ? '#818cf8' : // Indigo
-               cat.includes('db') || cat.includes('postgres') ? '#34d399' : // Emerald
-               cat.includes('network') || cat.includes('bgp') ? '#60a5fa' : // Blue
-               cat.includes('user management') ? '#fb923c' : // Orange
-               cat.includes('user error') ? '#a78bfa' : // Purple
-               cat.includes('application') ? '#fbbf24' : // Amber
-               '#cbd5e1' // Slate
+        color: clusterColor
       };
     });
   }, [articles]);
@@ -149,8 +152,8 @@ export function VectorSpace3D() {
       const sinX = Math.sin(localPitch);
 
       // Draw Grid Floor/Axes guides in 3D
-      const axisLength = 110;
-      const drawAxis = (ax: number, ay: number, az: number, strokeColor: string) => {
+      const axisLength = 130;
+      const drawAxis = (ax: number, ay: number, az: number, label: string) => {
         const x1 = ax * cosY - az * sinY;
         const z1 = ax * sinY + az * cosY;
         const y2 = ay * cosX - z1 * sinX;
@@ -161,18 +164,27 @@ export function VectorSpace3D() {
         const sx = cx + x1 * scale;
         const sy = cy + y2 * scale;
 
+        // Draw crisp white axis line
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.lineTo(sx, sy);
-        ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
+
+        // Draw white axis label text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText(label, sx + 5, sy + 4);
       };
 
-      // X, Y, Z axes guides
-      drawAxis(axisLength, 0, 0, 'rgba(244, 63, 94, 0.15)');
-      drawAxis(0, axisLength, 0, 'rgba(16, 185, 129, 0.15)');
-      drawAxis(0, 0, axisLength, 'rgba(59, 130, 246, 0.15)');
+      // X, Y, Z axes guides in crisp white
+      drawAxis(axisLength, 0, 0, '+X (Category Vector)');
+      drawAxis(-axisLength, 0, 0, '-X');
+      drawAxis(0, axisLength, 0, '+Y (Similarity Height)');
+      drawAxis(0, -axisLength, 0, '-Y');
+      drawAxis(0, 0, axisLength, '+Z (Cluster Depth)');
+      drawAxis(0, 0, -axisLength, '-Z');
 
       // Project all coordinates
       const projected = vectorPoints.map((pt) => {
@@ -412,28 +424,24 @@ export function VectorSpace3D() {
           <div className="absolute bottom-4 left-4 p-3 rounded-xl bg-slate-900/90 border border-slate-800 backdrop-blur-md text-[10px] space-y-2 font-mono">
             <span className="font-bold text-slate-400 uppercase block mb-1">Vector Clusters</span>
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-400" />
-              <span className="text-slate-300">Server / Kernel</span>
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#34d399' }} />
+              <span className="text-slate-200 font-semibold">Database & DB2 SOPs</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-              <span className="text-slate-300">Database</span>
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#fb923c' }} />
+              <span className="text-slate-200 font-semibold">User Provisioning & Sudo</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
-              <span className="text-slate-300">Network / BGP</span>
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#fbbf24' }} />
+              <span className="text-slate-200 font-semibold">NexaCore & Application</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-orange-400" />
-              <span className="text-slate-300">User Management</span>
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#a78bfa' }} />
+              <span className="text-slate-200 font-semibold">Auth, VPN & Security SOPs</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-400" />
-              <span className="text-slate-300">User Error</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-              <span className="text-slate-300">Application</span>
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#818cf8' }} />
+              <span className="text-slate-200 font-semibold">System & K8s Infrastructure</span>
             </div>
           </div>
 

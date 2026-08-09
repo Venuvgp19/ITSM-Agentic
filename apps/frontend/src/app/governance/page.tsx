@@ -585,7 +585,7 @@ export default function GovernancePage() {
                       RISK: {req.riskLevel}
                     </span>
                     <span className="text-[10px] font-bold px-2 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                      CONFIDENCE: {req.confidenceScore}%
+                      CONFIDENCE: {req.confidenceScore > 100 ? (req.confidenceScore / 100).toFixed(0) : req.confidenceScore}%
                     </span>
                   </div>
                 </div>
