@@ -97,4 +97,14 @@ export class IncidentController {
   ) {
     return this.incidentService.deleteActivity(tenantId || 'tenant_acme_01', id, activityId);
   }
+
+  @Public()
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete an incident ticket' })
+  async delete(
+    @CurrentUser('tenantId') tenantId: string,
+    @Param('id') id: string,
+  ) {
+    return this.incidentService.delete(tenantId || 'tenant_acme_01', id);
+  }
 }

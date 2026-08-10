@@ -276,4 +276,19 @@ export class IncidentService {
 
     return { deleted: true, activityId };
   }
+
+  async delete(tenantId: string, id: string) {
+    const cleanId = (id || '');
+    const existing = await this.prisma.incident.findFirst({
+      where: { tenantId, OR: [{ id: cleanId.toLowerCase() }, { number: cleanId.toUpperCase() }] },
+    });
+
+    if (!existing) throw new NotFoundException(`Incident ${cleanId} not found`);
+
+    await this.prisma.incident.delete({
+      where: { id: existing.id },
+    });
+
+    return { deleted: true, id: existing.id, number: existing.number };
+  }
 }
