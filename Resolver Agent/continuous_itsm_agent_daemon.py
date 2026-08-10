@@ -1485,9 +1485,26 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             kb_text = f"{cand_art.get('title', '')} {cand_art.get('summary', '')}".lower()
             is_app_sop = any(k in kb_text for k in ["nexacore", "http", "portal", "web server", "bad gateway", "502"])
             is_bulk_sop = any(k in kb_text for k in ["20 ", "20 users", "20 restricted", "user01 to user20", "bulk linux user"])
-            is_sop_deletion = any(k in kb_text for k in ["delete", "deletion", "remove", "offboard", "offboarding", "deprovision", "deprovisioning", "userdel"])
+            kb_title = cand_art.get('title', '').lower()
+            # DB2 provisioning SOP contains REVOKE/DELETE commands as part of provisioning steps — classify by title first
+            is_db2_provisioning_sop = "db2" in kb_title and any(k in kb_title for k in ["provisioning", "provision", "access", "cloudbeaver"])
+            is_sop_deletion = not is_db2_provisioning_sop and any(k in kb_text for k in ["delete", "deletion", "remove", "offboard", "offboarding", "deprovision", "deprovisioning", "userdel"])
             is_sop_provision = any(k in kb_text for k in ["create", "creation", "provision", "provisioning", "add user", "useradd", "passwordless sudo"]) and not is_sop_deletion
             is_sop_user_mgmt = is_sop_deletion or is_sop_provision
+            is_linux_only_sop = any(k in kb_text for k in ["linux user account", "linux account", "useradd", "sudoers", "pamsudo"]) and "db2" not in kb_text
+
+            # Early cross-domain guard: DB2/CloudBeaver ticket must never match Linux SOPs
+            _ticket_is_db2 = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui", "cloudbeaver access"])
+            _ticket_is_k8s = any(k in q_low for k in ["kubernetes", "k8s", "argocd", "kubectl"])
+            _ticket_is_jenkins = any(k in q_low for k in ["jenkins", "initialadminpassword"])
+            if _ticket_is_db2 and is_linux_only_sop:
+                logger.warning(f"\U0001f6e1\ufe0f Domain Guard: DB2/CloudBeaver ticket [{ticket_number}] matched Linux-only SOP [{cand_number}] '{cand_art.get('title', '')}'. Skipping.")
+                next_best_info = f"Candidate [{cand_number}] skipped — Linux SOP blocked for DB2 ticket."
+                continue
+            if _ticket_is_k8s and is_linux_only_sop and cand_number not in ["KB0000039", "KB0000026", "KB0000040"]:
+                logger.warning(f"\U0001f6e1\ufe0f Domain Guard: K8s ticket [{ticket_number}] matched Linux-only SOP [{cand_number}]. Skipping.")
+                next_best_info = f"Candidate [{cand_number}] skipped — Linux SOP blocked for K8s ticket."
+                continue
 
             # Action Direction & Quantity Safety Filter Check
             if is_credential_task and is_sop_user_mgmt:
