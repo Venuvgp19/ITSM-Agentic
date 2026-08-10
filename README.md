@@ -2,19 +2,19 @@
 
 An enterprise-grade, autonomous **IT Service Management (ITSM) Platform** powered by a **Multi-Agent Artificial Intelligence Engine**. 
 
-The system automates helpdesk operations by autonomously triaging incoming IT tickets, executing Dense Vector RAG (ChromaDB 4096-D embeddings with **Dual-Vector Query Normalization Fusion** & **Quantity Mismatch Protection**), running remote SSH remediation scripts on target servers using **Async Parallel Worker Pools**, synthesizing new Master SOP runbooks on RAG misses, and enforcing Human-in-the-Loop (HITL) governance through an Agent Control Tower Dashboard.
+The system automates helpdesk operations by autonomously triaging incoming IT tickets, executing Dense Vector RAG (ChromaDB 4096-D embeddings with **Dual-Vector Query Normalization Fusion**, **Action Direction Safety Guards**, and **Generic Intent Pattern Boosters**), running remote SSH remediation scripts on target servers using **Async Parallel Worker Pools**, parameterizing generic Master SOP runbooks, synthesizing new Master SOPs on RAG misses, and enforcing Human-in-the-Loop (HITL) governance through an Agent Control Tower Dashboard.
 
 ---
 
 ## 📋 Table of Contents
 1. [Project Overview & Key Capabilities](#-project-overview--key-capabilities)
-2. [System Requirements & Prerequisites](#-system-requirements--prerequisites)
-3. [Architecture & Data Flow Diagram (Mermaid.js)](#-architecture--data-flow-diagram-mermaidjs)
-4. [Step-by-Step Installation & Setup Guide](#-step-by-step-installation--setup-guide)
-5. [Running the Application Stack](#-running-the-application-stack)
-6. [Active Service URLs & Port Reference](#-active-service-urls--port-reference)
-7. [Verification & System Testing](#-verification--system-testing)
-8. [Troubleshooting & Frequently Asked Questions](#-troubleshooting--frequently-asked-questions)
+2. [Generic Master SOP & Parameterization Architecture](#-generic-master-sop--parameterization-architecture)
+3. [System Requirements & Prerequisites](#-system-requirements--prerequisites)
+4. [Architecture & Data Flow Diagram](#-architecture--data-flow-diagram)
+5. [Database & Vector Store Dump Restoration](#-database--vector-store-dump-restoration)
+6. [Step-by-Step Installation & Application Startup Sequence](#-step-by-step-installation--application-startup-sequence)
+7. [Active Service URLs & Port Reference](#-active-service-urls--port-reference)
+8. [Verification & System Testing](#-verification--system-testing)
 9. [Repository Structure](#-repository-structure)
 10. [License](#-license)
 
@@ -24,16 +24,34 @@ The system automates helpdesk operations by autonomously triaging incoming IT ti
 
 - **Automated Incident Triage & AI Routing**: AI Router Service continuously scans new helpdesk tickets, evaluates priority (P1 Critical to P4 Low), predicts operational assignment groups with high confidence (≥ 85%), and assigns tickets for automated resolution.
 - **Dense Vector RAG Engine**: Persistent ChromaDB vector store powered by 4096-dimensional embeddings with Dual-Vector Query Normalization (HyDE - Hypothetical Document Embeddings) to map noisy ticket descriptions to standardized Master SOPs.
-- **Quantity Mismatch Guard**: Intelligently prevents single-user requests from matching bulk 20-user SOPs, automatically inspecting next-best candidate SOPs to prevent over-provisioning.
-- **Live SSH Server Diagnosis Probe & Self-Learning SOP Generator**: On RAG misses, the daemon probes target infrastructure (`uname -a`, `cat /etc/os-release`, `ss -tulpn`, `ps aux`), captures diagnostic telemetry, and invokes Nemotron LLMs to synthesize generic, parameterizable Master SOPs (`{username}`, `{password}`, `{sudo_command}`).
+- **Action Direction & Quantity Safety Filter Guards**: Intelligently prevents Action Mismatches (e.g. Credential Retrieval tickets matching User Creation SOPs, or User Deletion tickets matching User Creation SOPs) and Quantity Mismatches (single-user requests matching bulk 20-user SOPs).
+- **System-Wide Generic Intent Pattern Booster**: Boosts core IT domain intents (User Provisioning, User Deprovisioning, Python Virtual Environments, Kubernetes/ArgoCD, Jenkins Credentials, IBM DB2, System Performance) to direct RAG hits (Score `0.8800`), eliminating duplicate SOP generation across the platform.
+- **Dynamic SOP Parameterization Engine**: Parameterizes generic Master SOP placeholders (`{venv_name}`, `{packages}`, `{username}`, `{password}`, `{target_ns}`) on the fly based on incoming ticket requirements.
+- **Live SSH Server Diagnosis Probe & Self-Learning SOP Generator**: On RAG misses, the daemon probes target infrastructure (`uname -a`, `cat /etc/os-release`, `ss -tulpn`, `ps aux`), captures diagnostic telemetry, and invokes Nemotron LLMs to synthesize generic, parameterizable Master SOPs.
 - **Agent Control Tower Dashboard**: Real-time React/Vite HITL dashboard for human operators to inspect, review, approve, or reject AI-synthesized SOP runbooks.
 - **Dynamic SSH ReAct Execution Pool**: Executes shell payloads concurrently across target nodes (`ControlPlane`, `WorkerNode1HL`), captures execution proofs, and verifies service health via physical HTTP & TCP port probes.
 
 ---
 
+## 🌐 Generic Master SOP & Parameterization Architecture
+
+Instead of synthesizing duplicate KB articles for every slight variation in user input (e.g. creating venv `snappy` vs `codex`), the platform utilizes **Generic Master SOPs** paired with an **LLM Parameterization Engine**:
+
+| IT Domain | Generic Master SOP | Parameter Placeholders | Intent Keywords |
+| :--- | :--- | :--- | :--- |
+| **Python Virtual Environments** | **`KB0000019`**: *Master SOP: Create Python Virtual Environment and Install Required Packages* | `{venv_name}`, `{packages}` | `"python virtual environment"`, `"python venv"`, `"virtualenv"`, `"pip install"` |
+| **User Account Creation** | **`KB0000028`**: *Master SOP: Linux User Account Provisioning & Sudo Access Runbook* | `{username}`, `{password}`, `{group}` | `"create user"`, `"useradd"`, `"provision user"`, `"pamsudo"` |
+| **User Account Deprovisioning** | **`KB0000038`**: *Master SOP: Bulk & Single Linux User Account Deprovisioning & Deletion* | `{username_list}`, `{username}` | `"delete user"`, `"userdel"`, `"remove user"`, `"offboard user"` |
+| **IBM DB2 Management** | **`KB0000033`**: *Master SOP: IBM DB2 User Provisioning, Access Levels & CloudBeaver UI Access* | `{db2_user}`, `{access_level}` | `"db2 user"`, `"ibm db2"`, `"cloudbeaver"`, `"beaver ui"` |
+| **Kubernetes & ArgoCD** | **`KB0000039`**: *Master SOP: Kubernetes & ArgoCD Service Health Restoration* | `{target_ns}`, `{deployment_name}` | `"argocd"`, `"kubernetes cluster"`, `"kubectl get pods"`, `"rollout restart"` |
+| **Jenkins & Secrets** | **`KB0000041`**: *Master SOP: Jenkins Credential Retrieval & Service Verification* | `{service_name}`, `{secret_path}` | `"jenkins credentials"`, `"initialadminpassword"`, `"retrieve credentials"` |
+| **System Performance** | **`KB0468210`**: *Master SOP: System Performance & Resource Utilization Runbook* | `{ci_name}`, `{threshold_type}` | `"cpu 100"`, `"memory 100"`, `"high cpu utilization"`, `"high memory"` |
+
+---
+
 ## ⚙️ System Requirements & Prerequisites
 
-### Minimum Hardware Specs
+### Hardware Specs
 - **CPU**: 4 Cores (x86_64 or ARM64)
 - **RAM**: 8 GB (16 GB Recommended)
 - **Disk Space**: 10 GB free space
@@ -45,12 +63,12 @@ The system automates helpdesk operations by autonomously triaging incoming IT ti
 | **npm** | `>= 9.0.0` | Node Package Manager |
 | **Python** | `>= 3.10.0` | Auto-Resolver Agent Daemon & Vector RAG Engine |
 | **PostgreSQL** | `>= 15.0` | Primary Relational Database (`itsm_db`) |
-| **Docker & Docker Compose** | `>= 24.0.0` | Container runtime for PostgreSQL, Redis, RabbitMQ, MinIO |
+| **Docker & Docker Compose** | `>= 24.0.0` | Container runtime for infrastructure services |
 | **Git** | `>= 2.30.0` | Version Control System |
 
 ---
 
-## 🏛️ Architecture & Data Flow Diagram (Mermaid.js)
+## 🏛️ Architecture & Data Flow Diagram
 
 ```mermaid
 flowchart TD
@@ -59,7 +77,7 @@ flowchart TD
     subgraph FE["Frontend & API Layer"]
         UI["Helpdesk Portal (Next.js :3000)"]
         API["NestJS REST API Server (:4000)"]
-        DB[(PostgreSQL 15 Database :5432<br/>1,079 Pre-Seeded Incidents)]
+        DB[(PostgreSQL 15 Database :5432<br/>934 Pre-Seeded Incidents)]
         UI -->|HTTP / REST| API
         API -->|Prisma ORM| DB
     end
@@ -76,26 +94,26 @@ flowchart TD
         R3 -->|"No"| R5
     end
 
-    subgraph DAEMON["Phase 2: Auto-Resolver Daemon"]
+    subgraph DAEMON["Phase 2: Auto-Resolver Daemon & Intent Booster"]
         P1["Poll IN_PROGRESS Tickets every 15s"]
         P2["Async Parallel Worker Pool (ThreadPoolExecutor)"]
         P3["SSH OS Fingerprint Probe (uname -s)"]
-        P4["Dual-Vector RAG Search against ChromaDB"]
+        P4["System-wide Generic Intent Booster & Vector RAG"]
         P5{"Similarity Score ≥ 0.65?"}
 
         R4 --> P1 --> P2 --> P3 --> P4 --> P5
     end
 
-    subgraph RAGHIT["Phase 3A: RAG Match (Verified Master SOP)"]
-        H1["Retrieve Master SOP (e.g., KB0000036 / KB0000037)"]
-        H2["LLM Parameterizer<br/>Inject {username}, {password}, {sudo_command}"]
+    subgraph RAGHIT["Phase 3A: Master SOP Match & Parameterization"]
+        H1["Retrieve Generic Master SOP (e.g. KB0000019 / KB0000028)"]
+        H2["LLM Parameterizer<br/>Inject {venv_name}, {packages}, {username}"]
         H3["Direct Remote SSH Execution Path"]
 
         P5 -->|"RAG Hit (≥ 0.65)"| H1 --> H2 --> H3
     end
 
-    subgraph RAGMISS["Phase 3B: RAG Miss & Live Diagnosis Probe"]
-        M1["Execute SSH Diagnostic Probe<br/>uname, os-release, ss -tulpn, ps aux"]
+    subgraph RAGMISS["Phase 3B: RAG Miss & Live Read-Only Diagnosis Probe"]
+        M1["Execute Read-Only SSH Diagnostic Probe<br/>uname, os-release, ss -tulpn, ps aux"]
         M2["Invoke Nemotron LLM Knowledge Synthesizer"]
         M3["Submit PENDING Approval Card to Control Tower"]
         M4["Set Ticket State = ON_HOLD"]
@@ -106,7 +124,7 @@ flowchart TD
     subgraph HITL["Phase 4: Agent Control Tower HITL Governance (:5173)"]
         G1["Human Operator Inspects Approval Card"]
         G2{"Operator Decision?"}
-        G3["Click APPROVE<br/>Consume Approval & Enrich Vector Store"]
+        G3["Click APPROVE<br/>Consume Approval & Reindex Vector Store"]
         G4["Click REJECT<br/>Set Approval = REJECTED & Lock Ticket"]
 
         M3 --> G1 --> G2
@@ -116,7 +134,7 @@ flowchart TD
 
     subgraph EXEC["Phase 5: Dynamic SSH ReAct Execution & Verification"]
         S1["Paramiko SSH Client connects to Host (ControlPlane / WorkerNode1HL)"]
-        S2["Execute Shell Payloads Line-by-Line"]
+        S2["Execute Parameterized Shell Payloads Line-by-Line"]
         S3["Capture stdout/stderr & Physical Probes (HTTP 8080 / TCP 5432)"]
         S4["LLM Health Verification Engine"]
         S5{"is_healthy == True?"}
@@ -134,120 +152,57 @@ flowchart TD
 
 ---
 
-## 🛠️ Step-by-Step Installation & Setup Guide
+## 💾 Database & Vector Store Dump Restoration
 
-### Step 1: Clone the Repository
+The repository contains pre-seeded relational and vector database dumps so anyone cloning the repo can immediately restore the complete state:
+
+- **[`db_data_dump.json`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/db_data_dump.json)**: Contains **934 Incidents**, **41 Master SOP Knowledge Articles**, **85 Agent Approvals**, and **50 Problems**.
+- **[`Resolver Agent/chroma_db`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/Resolver%20Agent/chroma_db)**: Persistent ChromaDB HNSW vector index files for all 41 Master SOPs.
+- **[`import_repo_data_dump.py`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/import_repo_data_dump.py)**: 1-Click Restoration script.
+
+To restore the complete environment after cloning:
 ```bash
-git clone https://github.com/Venuvgp19/ITSM-Agentic.git
-cd ITSM-Agentic
-```
-
-### Step 2: Configure Environment Variables
-Copy `.env.example` to `.env` in the repository root:
-```bash
-cp .env.example .env
-```
-Ensure your `.env` contains valid credentials:
-```env
-DATABASE_URL="postgresql://itsm_user:itsm_password@localhost:5432/itsm_db?schema=public"
-REDIS_HOST="localhost"
-REDIS_PORT=6379
-RABBITMQ_URL="amqp://guest:guest@localhost:5672"
-NVIDIA_API_KEY="nvapi-your-nvidia-api-key-here"
-OPENAI_API_KEY="sk-your-openai-api-key-here"
-PORT=4000
-FRONTEND_PORT=3000
-DASHBOARD_PORT=5173
-```
-
-### Step 3: Database Setup & Restoration
-The repository includes a pre-seeded database dump (`itsm_db_dump.sql`) with **1,079 tickets** and Master SOPs.
-
-#### Option A: Local PostgreSQL Service
-```bash
-# 1. Create database user & database
-psql -U postgres -c "CREATE USER itsm_user WITH PASSWORD 'itsm_password';"
-psql -U postgres -c "CREATE DATABASE itsm_db OWNER itsm_user;"
-psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE itsm_db TO itsm_user;"
-
-# 2. Restore 1,079 incidents & knowledge articles
-psql -U itsm_user -d itsm_db -f "itsm_db_dump.sql"
-```
-
-#### Option B: Docker Compose PostgreSQL
-```bash
-docker-compose up -d postgres
-docker exec -i itsm-postgres psql -U itsm_user -d itsm_db < itsm_db_dump.sql
-```
-
-### Step 4: Install Workspace Dependencies
-
-```bash
-# 1. Install root Node.js dependencies
-npm install
-
-# 2. Install Control Tower Dashboard dependencies
-cd "Resolver Agent/agent-approval-dashboard" && npm install && cd ../..
-
-# 3. Install Python dependencies for Resolver Agent Daemon
-cd "Resolver Agent" && pip install -r requirements.txt && cd ..
-```
-
-### Step 5: Build Backend & MCP Server
-
-```bash
-# Build NestJS Backend API
-npm run build:backend
-
-# Build ITSM MCP Server
-npm run build:mcp
+python import_repo_data_dump.py
 ```
 
 ---
 
-## 🚀 Running the Application Stack
+## 🚀 Step-by-Step Installation & Application Startup Sequence
 
-### Option A: Development Mode (Native Process Management)
-
-Launch services in the following order:
+Whenever launching or restarting the application stack, execute the following strict sequence:
 
 1. **Start PostgreSQL Database** (`port 5432`):
-   Ensure PostgreSQL server is active and port 5432 is open.
-
-2. **Start NestJS Backend REST API Server** (`port 4000`):
+   ```powershell
+   & "$env:USERPROFILE\pgsql\pgsql\bin\postgres.exe" -D "$env:USERPROFILE\pgsql\pgsql\data"
+   ```
+2. **Rebuild NestJS Backend**:
+   ```bash
+   npm run build:backend
+   ```
+3. **Build MCP Server**:
+   ```bash
+   npm run build:mcp
+   ```
+4. **Start NestJS Backend REST API Server** (`port 4000`):
    ```bash
    node apps/backend/dist/main.js
    ```
-
-3. **Start Next.js Helpdesk Portal Frontend** (`port 3000`):
+5. **Start Next.js Frontend Dev Server** (`port 3000`):
    ```bash
    npm run dev:frontend
    ```
-
-4. **Start Agent Control Tower HITL Dashboard** (`port 5173`):
+6. **Start Agent Control Tower HITL Dashboard** (`port 5173`):
    ```bash
    cd "Resolver Agent/agent-approval-dashboard" && node server.js
    ```
-
-5. **Start Python Auto-Resolver Agent Daemon**:
+7. **Start Python Auto-Resolver Agent Daemon**:
    ```bash
    cd "Resolver Agent" && python -u continuous_itsm_agent_daemon.py
    ```
-
-6. **Start ITSM MCP Server** *(Optional)*:
+8. **Start ITSM MCP Server**:
    ```bash
    npm run start:mcp
    ```
-
----
-
-### Option B: Production Docker Setup
-
-To bring up infrastructure dependencies (PostgreSQL, Redis, RabbitMQ, MinIO) via Docker:
-
-```bash
-docker-compose up -d --build
-```
 
 ---
 
@@ -255,38 +210,29 @@ docker-compose up -d --build
 
 | Service | Protocol | Host / Port | URL | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **Next.js Helpdesk Portal** | HTTP | `localhost:3000` | [http://localhost:3000](http://localhost:3000) | Helpdesk console & ticket stream (1,079 incidents) |
+| **Next.js Helpdesk Portal** | HTTP | `localhost:3000` | [http://localhost:3000](http://localhost:3000) | Helpdesk console & ticket stream (934 incidents) |
 | **Agent Control Tower Dashboard** | HTTP | `localhost:5173` | [http://localhost:5173](http://localhost:5173) | Real-time HITL approval cards & governance |
-| **NestJS REST API Server** | HTTP | `localhost:4000` | [http://localhost:4000/api/v1](http://localhost:4000/api/v1) | Backend REST API & AI Router Service |
+| **NestJS REST API Server** | HTTP | `localhost:4000` | [http://localhost:4000/api/v1](http://localhost:4000/api/v1) | Backend REST API & continuous AI Router Service |
 | **Swagger API Docs** | HTTP | `localhost:4000` | [http://localhost:4000/api/docs](http://localhost:4000/api/docs) | Interactive OpenAPI documentation |
 | **PostgreSQL Database** | TCP | `localhost:5432` | `postgresql://localhost:5432/itsm_db` | Core relational data store |
-| **Redis Cache / Queue** | TCP | `localhost:6379` | `redis://localhost:6379` | Fast caching & queue management |
-| **RabbitMQ Dashboard** | HTTP | `localhost:15672` | [http://localhost:15672](http://localhost:15672) | AMQP Event Broker Management UI |
+| **ChromaDB Vector Database** | Local / SQLite | Persistent Directory | `Resolver Agent/chroma_db` | Dense 4096-D HNSW Vector Store |
 
 ---
 
 ## 🧪 Verification & System Testing
 
 ### 1. Health Check Endpoint
-Verify NestJS API server health:
 ```bash
 curl http://localhost:4000/api/v1/health
 ```
 
-### 2. Verify Pre-Seeded Incidents
-```bash
-curl http://localhost:4000/api/v1/incidents?limit=5
-```
-
-### 3. Test Proven Enterprise Use Cases
-
-#### Test Case 1: Unprivileged User Creation Without Sudo (`KB0000037`)
+### 2. Test Python Virtual Environment Creation & Parameterization (`KB0000019`)
 ```powershell
 $inc = @{
-    title = "Create standard user account testuser01 on WorkerNode1HL without sudo permissions"
-    shortDescription = "Create user testuser01 without sudo"
-    description = "Provision a standard Linux user testuser01 on WorkerNode1HL with default shell and home directory. No sudoers access required."
-    category = "User Management"
+    title = "create a python virtual environment called codex on WorkerNode1HL and install chromadb"
+    shortDescription = "create a python virtual environment called codex no workernode1HL and install chromadb"
+    description = "create a python virtual environment called codex no workernode1HL and install chromadb"
+    category = "Unix - OS & System Service"
     configurationItem = "WorkerNode1HL"
     priority = "P3"
     state = "IN_PROGRESS"
@@ -294,51 +240,6 @@ $inc = @{
 
 Invoke-RestMethod -Uri "http://localhost:4000/api/v1/incidents" -Method POST -Body $inc -ContentType "application/json"
 ```
-
-#### Test Case 2: IBM DB2 Database User Provisioning (`KB0000033`)
-```powershell
-$inc = @{
-    title = "Create an IBM DB2 user dbuser01 on WorkerNode1HL container db2server"
-    shortDescription = "Provision DB2 user dbuser01 with CloudBeaver UI access"
-    description = "Create DB2 user dbuser01, configure password, grant DB2 CONNECT privileges, and verify CloudBeaver UI access."
-    category = "Infrastructure > Database"
-    configurationItem = "WorkerNode1HL"
-    priority = "P2"
-    state = "IN_PROGRESS"
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:4000/api/v1/incidents" -Method POST -Body $inc -ContentType "application/json"
-```
-
----
-
-## ❓ Troubleshooting & Frequently Asked Questions
-
-### Q1: Database Connection Error (`ECONNREFUSED 127.0.0.1:5432`)
-**Fix**: Ensure PostgreSQL is running and port 5432 is open. Verify credentials in `.env`:
-```bash
-psql -U itsm_user -d itsm_db -h 127.0.0.1 -p 5432
-```
-
-### Q2: Port Conflict (`Port 4000 or 5173 already in use`)
-**Fix**: Terminate orphaned Node.js or Python processes holding port 4000 or 5173:
-```powershell
-# Windows PowerShell
-Get-Process -Id (Get-NetTCPConnection -LocalPort 4000).OwningProcess | Stop-Process -Force
-```
-```bash
-# Linux / macOS
-lsof -ti:4000 | xargs kill -9
-```
-
-### Q3: Python Daemon Lock Error (`daemon.lock exists`)
-**Fix**: If the Python daemon was terminated abruptly, remove the lock file manually:
-```bash
-rm "Resolver Agent/daemon.lock"
-```
-
-### Q4: Database Integrity Policy
-> ⚠️ **IMPORTANT DIRECTIVE**: When building (`npm run build:backend`) or restarting services, **DO NOT RESET OR WIPE THE DATABASE**. Preserve all existing tables, schemas, and 1,079 incident records.
 
 ---
 
@@ -348,8 +249,6 @@ rm "Resolver Agent/daemon.lock"
 ITSM-Agentic/
 ├── apps/
 │   ├── backend/                      # NestJS REST API Server (Port 4000)
-│   │   ├── src/                      # Controllers, Services, Prisma Schemas
-│   │   └── data/                     # Knowledge Articles Backup Data
 │   └── frontend/                     # Next.js Helpdesk Portal & UI (Port 3000)
 ├── packages/
 │   └── mcp-server/                   # ITSM Model Context Protocol (MCP) Server
@@ -358,9 +257,9 @@ ITSM-Agentic/
 │   ├── continuous_itsm_agent_daemon.py # Python Async Parallel Worker Daemon
 │   ├── chroma_db/                    # Persistent Vector Database (4096-D Embeddings)
 │   └── requirements.txt              # Python Agent Dependencies
-├── docker-compose.yml                # Docker Infrastructure Services
-├── itsm_db_dump.sql                  # Complete PostgreSQL Dump (1,079 Incidents)
-├── data_dump.json                    # Structured JSON Data Dump
+├── db_data_dump.json                 # Complete PostgreSQL Seed Dump (934 Incidents, 41 KBs)
+├── chroma_vector_dump.json           # ChromaDB Vector Store Metadata Dump
+├── import_repo_data_dump.py          # 1-Click Environment Restoration Script
 ├── .env.example                      # Environment Variable Template
 ├── package.json                      # Workspace Root Config
 └── README.md                         # Architecture & Technical Documentation
