@@ -1521,8 +1521,8 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             is_user_delete_intent = is_deletion_task and any(k in q_low for k in _linux_delete_kw) and not _db2_or_k8s_in_ticket
             is_user_delete_sop = cand_number in ["KB0000038", "KB0000022", "KB0000023"] or ("user account deprovisioning" in kb_text or "bulk deletion" in kb_text)
 
-            is_db2_intent = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui"])
-            is_db2_sop = cand_number in ["KB0000033", "KB0000025"] or "db2" in kb_text
+            is_db2_intent = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui", "db2 user", "cloudbeaver access"])
+            is_db2_sop = cand_number == "KB0000025" or "db2" in kb_text
 
             is_k8s_intent = any(k in q_low for k in ["argocd", "kubernetes", "k8s", "kubectl", "pod", "namespace", "deployment"])
             is_k8s_sop = cand_number in ["KB0000039", "KB0000026", "KB0000040"] or any(k in kb_text for k in ["argocd", "kubernetes", "kubelet"])
