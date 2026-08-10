@@ -1487,8 +1487,10 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             is_bulk_sop = any(k in kb_text for k in ["20 ", "20 users", "20 restricted", "user01 to user20", "bulk linux user"])
             kb_title = cand_art.get('title', '').lower()
             # DB2 provisioning SOP contains REVOKE/DELETE commands as part of provisioning steps — classify by title first
-            is_db2_provisioning_sop = "db2" in kb_title and any(k in kb_title for k in ["provisioning", "provision", "access", "cloudbeaver"])
-            is_sop_deletion = not is_db2_provisioning_sop and any(k in kb_text for k in ["delete", "deletion", "remove", "offboard", "offboarding", "deprovision", "deprovisioning", "userdel"])
+            # KB0000042 is the DB2 deletion SOP — do NOT shield it from deletion classification
+            is_db2_provisioning_sop = "db2" in kb_title and any(k in kb_title for k in ["provisioning", "provision", "access", "cloudbeaver"]) and cand_number != "KB0000042"
+            is_db2_deletion_sop = cand_number == "KB0000042" or ("db2" in kb_title and any(k in kb_title for k in ["deletion", "revocation", "remove", "offboard"]))
+            is_sop_deletion = (is_db2_deletion_sop) or (not is_db2_provisioning_sop and any(k in kb_text for k in ["delete", "deletion", "remove", "offboard", "offboarding", "deprovision", "deprovisioning", "userdel"]))
             is_sop_provision = any(k in kb_text for k in ["create", "creation", "provision", "provisioning", "add user", "useradd", "passwordless sudo"]) and not is_sop_deletion
             is_sop_user_mgmt = is_sop_deletion or is_sop_provision
             is_linux_only_sop = any(k in kb_text for k in ["linux user account", "linux account", "useradd", "sudoers", "pamsudo"]) and "db2" not in kb_text
@@ -1539,7 +1541,12 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             is_user_delete_sop = cand_number in ["KB0000038", "KB0000022", "KB0000023"] or ("user account deprovisioning" in kb_text or "bulk deletion" in kb_text)
 
             is_db2_intent = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui", "db2 user", "cloudbeaver access"])
-            is_db2_sop = cand_number == "KB0000025" or "db2" in kb_text
+            # DB2 Create intent → KB0000025, DB2 Delete intent → KB0000042
+            _db2_delete_intent = is_deletion_task and is_db2_intent
+            _db2_create_intent = not is_deletion_task and is_db2_intent
+            is_db2_sop = (cand_number == "KB0000025" and _db2_create_intent) or \
+                         (cand_number == "KB0000042" and _db2_delete_intent) or \
+                         (is_db2_intent and "db2" in kb_text and cand_number in ["KB0000025", "KB0000042"])
 
             is_k8s_intent = any(k in q_low for k in ["argocd", "kubernetes", "k8s", "kubectl", "pod", "namespace", "deployment"])
             is_k8s_sop = cand_number in ["KB0000039", "KB0000026", "KB0000040"] or any(k in kb_text for k in ["argocd", "kubernetes", "kubelet"])
