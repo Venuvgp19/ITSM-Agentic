@@ -40,7 +40,7 @@ else:
     print("✅ Fallback Database Restoration Complete!")
 
 print("\n--- RE-INDEXING CHROMADB VECTOR DB FROM RESTORED KBS ---")
-reindex_script = os.path.join(REPO_ROOT, "scratch", "sync_and_reindex_all_kbs.py")
+reindex_script = os.path.join(REPO_ROOT, "reindex_chromadb.py")
 if os.path.exists(reindex_script):
     subprocess.call(["python", reindex_script])
 print("✅ Database & Vector Store Restoration Complete!")
