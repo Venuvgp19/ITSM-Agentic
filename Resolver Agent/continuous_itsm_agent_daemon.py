@@ -1511,10 +1511,14 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             is_venv_intent = any(k in q_low for k in ["python virtual environment", "python venv", "virtualenv", "virtual environment", "python virtual"])
             is_venv_sop = cand_number == "KB0000019" or any(k in kb_text for k in ["create python virtual environment", "python virtual environment", "venv", "virtualenv"])
             
-            is_user_create_intent = is_creation_task and any(k in q_low for k in ["user", "useradd", "pamsudo", "provision", "account"])
-            is_user_create_sop = cand_number in ["KB0000028", "KB0000027", "KB0000021", "KB0000036", "KB0000037"] or ("user account provisioning" in kb_text and "creation" in kb_text)
+            # Require specific Linux provisioning keywords — 'user' alone is too broad and causes cross-domain mismatches
+            _linux_create_kw = ["useradd", "pamsudo", "sudoers", "linux user", "linux account", "create linux", "add linux user", "adduser", "provision linux", "create user account", "new user account", "user account creation", "employee onboard"]
+            _db2_or_k8s_in_ticket = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "kubernetes", "k8s", "argocd", "jenkins"])
+            is_user_create_intent = is_creation_task and any(k in q_low for k in _linux_create_kw) and not _db2_or_k8s_in_ticket
+            is_user_create_sop = cand_number in ["KB0000028", "KB0000027", "KB0000021", "KB0000036", "KB0000037"] or ("user account provisioning" in kb_text and "linux" in kb_text)
 
-            is_user_delete_intent = is_deletion_task and any(k in q_low for k in ["user", "userdel", "offboard", "deprovision", "delete"])
+            _linux_delete_kw = ["userdel", "offboard", "deprovision linux", "delete linux user", "remove linux user", "linux user deletion", "linux account deletion", "employee offboard", "terminate linux"]
+            is_user_delete_intent = is_deletion_task and any(k in q_low for k in _linux_delete_kw) and not _db2_or_k8s_in_ticket
             is_user_delete_sop = cand_number in ["KB0000038", "KB0000022", "KB0000023"] or ("user account deprovisioning" in kb_text or "bulk deletion" in kb_text)
 
             is_db2_intent = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui"])
