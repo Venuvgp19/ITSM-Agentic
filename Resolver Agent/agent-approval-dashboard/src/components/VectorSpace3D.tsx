@@ -77,7 +77,7 @@ export function VectorSpace3D() {
   const lastMousePos = useRef({ x: 0, y: 0 });
   const [hoveredNode, setHoveredNode] = useState<any | null>(null);
 
-  const nodes = useMemo(() => {
+  const vectorPoints = useMemo(() => {
     return articles.map((art) => {
       // Categorize articles accurately based on domain title & category keywords
       const titleLower = (art.title || '').toLowerCase();
