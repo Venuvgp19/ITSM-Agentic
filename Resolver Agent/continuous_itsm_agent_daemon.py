@@ -1496,12 +1496,15 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             is_linux_only_sop = any(k in kb_text for k in ["linux user account", "linux account", "useradd", "sudoers", "pamsudo"]) and "db2" not in kb_text
 
             # Early cross-domain guard: DB2/CloudBeaver ticket must never match Linux SOPs
-            _ticket_is_db2 = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui", "cloudbeaver access"])
+            _ticket_is_db2 = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui", "cloudbeaver access", "cloud baever", "cloud beaver"])
             _ticket_is_k8s = any(k in q_low for k in ["kubernetes", "k8s", "argocd", "kubectl"])
             _ticket_is_jenkins = any(k in q_low for k in ["jenkins", "initialadminpassword"])
-            if _ticket_is_db2 and is_linux_only_sop:
-                logger.warning(f"\U0001f6e1\ufe0f Domain Guard: DB2/CloudBeaver ticket [{ticket_number}] matched Linux-only SOP [{cand_number}] '{cand_art.get('title', '')}'. Skipping.")
-                next_best_info = f"Candidate [{cand_number}] skipped — Linux SOP blocked for DB2 ticket."
+
+            # STRICT DB2 EXCLUSIVE FILTER: Only KB0000025 (provision) or KB0000042 (delete) allowed for DB2 tickets
+            _db2_allowed_sops = ["KB0000025", "KB0000042"]
+            if _ticket_is_db2 and cand_number not in _db2_allowed_sops:
+                logger.warning(f"\U0001f6e1\ufe0f Strict DB2 Guard: DB2/CloudBeaver ticket [{ticket_number}] — only DB2 SOPs allowed. Blocked [{cand_number}] '{cand_art.get('title', '')}'. Skipping.")
+                next_best_info = f"Candidate [{cand_number}] blocked — DB2 ticket only permits KB0000025/KB0000042."
                 continue
             if _ticket_is_k8s and is_linux_only_sop and cand_number not in ["KB0000039", "KB0000026", "KB0000040"]:
                 logger.warning(f"\U0001f6e1\ufe0f Domain Guard: K8s ticket [{ticket_number}] matched Linux-only SOP [{cand_number}]. Skipping.")
