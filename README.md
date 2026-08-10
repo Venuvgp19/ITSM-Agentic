@@ -154,9 +154,9 @@ flowchart TD
 
 ## 💾 Database & Vector Store Dump Restoration
 
-The repository contains pre-seeded relational and vector database dumps so anyone cloning the repo can immediately restore the complete state:
+The repository contains a pre-seeded native PostgreSQL SQL database dump (`itsm_db_dump.sql`) so anyone cloning the repo can immediately restore the complete state:
 
-- **[`db_data_dump.json`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/db_data_dump.json)**: Contains **934 Incidents**, **41 Master SOP Knowledge Articles**, **85 Agent Approvals**, and **50 Problems**.
+- **[`itsm_db_dump.sql`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/itsm_db_dump.sql)**: Native PostgreSQL SQL Dump containing **934 Incidents**, **41 Master SOP Knowledge Articles**, **85 Agent Approvals**, and **50 Problems**.
 - **[`Resolver Agent/chroma_db`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/Resolver%20Agent/chroma_db)**: Persistent ChromaDB HNSW vector index files for all 41 Master SOPs.
 - **[`import_repo_data_dump.py`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/import_repo_data_dump.py)**: 1-Click Restoration script.
 

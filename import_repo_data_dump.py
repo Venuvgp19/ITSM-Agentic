@@ -1,66 +1,45 @@
-import psycopg2
-import json
 import os
 import sys
+import subprocess
 
 sys.stdout.reconfigure(encoding='utf-8')
 
-DB_URL = os.environ.get("DATABASE_URL", "postgresql://itsm_user:itsm_password@127.0.0.1:5432/itsm_db")
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
-DUMP_PATH = os.path.join(REPO_ROOT, "db_data_dump.json")
+SQL_DUMP_PATH = os.path.join(REPO_ROOT, "itsm_db_dump.sql")
 
-if not os.path.exists(DUMP_PATH):
-    print(f"❌ Dump file not found: {DUMP_PATH}")
+if not os.path.exists(SQL_DUMP_PATH):
+    print(f"❌ SQL dump file not found: {SQL_DUMP_PATH}")
     sys.exit(1)
 
-conn = psycopg2.connect(DB_URL)
-cur = conn.cursor()
+print("--- RESTORING POSTGRESQL DATA FROM NATIVE SQL DUMP (itsm_db_dump.sql) ---")
 
-with open(DUMP_PATH, "r", encoding="utf-8") as f:
-    db_dump = json.load(f)
+cmd = f'psql -U itsm_user -d itsm_db -h 127.0.0.1 -p 5432 -f "{SQL_DUMP_PATH}"'
+print(f"Executing: {cmd}")
+ret = os.system(cmd)
 
-print("--- RESTORING POSTGRESQL DATA FROM REPO DUMP ---")
-
-for tbl, records in db_dump.items():
-    if not records:
-        continue
-    
-    cols = list(records[0].keys())
-    col_names = ", ".join([f'"{c}"' for c in cols])
-    placeholders = ", ".join(["%s"] * len(cols))
-    update_clause = ", ".join([f'"{c}" = EXCLUDED."{c}"' for c in cols if c != "id"])
-    
-    sql = f'INSERT INTO "{tbl}" ({col_names}) VALUES ({placeholders}) ON CONFLICT ("id") DO UPDATE SET {update_clause};'
-    
-    count = 0
-    for rec in records:
-        vals = []
-        for c in cols:
-            v = rec[c]
-            if isinstance(v, (dict, list)):
-                vals.append(json.dumps(v))
-            else:
-                vals.append(v)
-        try:
-            cur.execute(sql, vals)
-            count += 1
-        except Exception as e:
-            conn.rollback()
-            try:
-                cur.execute(f'INSERT INTO "{tbl}" ({col_names}) VALUES ({placeholders}) ON CONFLICT DO NOTHING;', vals)
-                conn.commit()
-                count += 1
-            except Exception as inner_e:
-                conn.rollback()
-
-    conn.commit()
-    print(f"  - Restored {count}/{len(records)} records for table '{tbl}'.")
-
-cur.close()
-conn.close()
+if ret == 0:
+    print("✅ PostgreSQL Database Restoration Complete!")
+else:
+    print(f"⚠️ SQL execution returned code {ret}. Attempting Python fallback restoration...")
+    import psycopg2
+    DB_URL = os.environ.get("DATABASE_URL", "postgresql://itsm_user:itsm_password@127.0.0.1:5432/itsm_db")
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    with open(SQL_DUMP_PATH, "r", encoding="utf-8") as f:
+        sql_statements = f.read().split(";\n")
+        for stmt in sql_statements:
+            if stmt.strip() and not stmt.strip().startswith("--"):
+                try:
+                    cur.execute(stmt + ";")
+                except Exception as e:
+                    conn.rollback()
+                    continue
+        conn.commit()
+    cur.close()
+    conn.close()
+    print("✅ Fallback Database Restoration Complete!")
 
 print("\n--- RE-INDEXING CHROMADB VECTOR DB FROM RESTORED KBS ---")
-import subprocess
 reindex_script = os.path.join(REPO_ROOT, "scratch", "sync_and_reindex_all_kbs.py")
 if os.path.exists(reindex_script):
     subprocess.call(["python", reindex_script])
