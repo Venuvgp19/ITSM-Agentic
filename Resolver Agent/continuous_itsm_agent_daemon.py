@@ -1085,7 +1085,7 @@ def execute_ssh_sop(ip, user, password, commands):
                     err = ""
                 logger.info(f"Backgrounded command detected — skipping blocking read. Output: {out.strip()}")
             else:
-                stdout.channel.settimeout(120.0)
+                stdout.channel.settimeout(600.0)
                 out = stdout.read().decode('utf-8', 'ignore')
                 err = stderr.read().decode('utf-8', 'ignore')
 
@@ -2594,10 +2594,10 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                     update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
                     locked_incident_sessions.add(inc_id)
                     return
-            elif status == "APPROVED":
-                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔐 Human-in-the-Loop Gate", "SUCCESS", f"SOP approved by operator ({my_approval.get('approver', 'Human Admin')}). Proceeding to execute.")
-                logger.info(f"🟢 Execution approved! Human operator approved synthesized SOP for [{number}]. Proceeding...")
-                sop_commands = my_approval.get("proposedCommands", sop_commands)
+                elif status == "APPROVED":
+                    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔐 Human-in-the-Loop Gate", "SUCCESS", f"SOP approved by operator ({my_approval.get('approver', 'Human Admin')}). Proceeding to execute.")
+                    logger.info(f"🟢 Execution approved! Human operator approved synthesized SOP for [{number}]. Proceeding...")
+                    sop_commands = my_approval.get("proposedCommands", sop_commands)
 
     # 4. Execute SSH Commands dynamically via LLM ReAct Tool Calling
     processed_in_progress_incidents.add(inc_id)
