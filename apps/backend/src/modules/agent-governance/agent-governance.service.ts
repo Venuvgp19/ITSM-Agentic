@@ -397,9 +397,56 @@ export class AgentGovernanceService implements OnModuleInit {
     const executedCount = await this.prisma.agentApproval.count({ where: { status: 'EXECUTED' } });
     const approvedCount = await this.prisma.agentApproval.count({ where: { status: 'APPROVED' } });
     const rejectedCount = await this.prisma.agentApproval.count({ where: { status: 'REJECTED' } });
+    
+    // Total governance requests evaluated
     const totalProcessed = approvedCount + executedCount + rejectedCount;
-
     const approvalRate = totalProcessed > 0 ? (((approvedCount + executedCount) / totalProcessed) * 100).toFixed(1) : '100.0';
+
+    // Fetch history logs to calculate average execution duration, compliance, and risk levels
+    const historyLogs = await this.prisma.agentHistory.findMany({
+      where: { type: 'LOG' }
+    });
+
+    let totalDurationMs = 0;
+    let safeActions = 0;
+    let violatedActions = 0;
+    const riskBreakdown = {
+      CRITICAL: 0,
+      HIGH: 0,
+      MEDIUM: 0,
+      LOW: 0,
+    };
+
+    historyLogs.forEach(h => {
+      const meta = (h.metadata as any) || {};
+      const risk = String(meta.riskLevel || 'LOW').toUpperCase();
+      if (risk in riskBreakdown) {
+        riskBreakdown[risk]++;
+      } else {
+        riskBreakdown.LOW++;
+      }
+
+      totalDurationMs += Number(meta.durationMs || 500);
+
+      // Check if command execution failed safety checks or contained dangerous flags
+      const cmd = String(meta.commandExecuted || '').toLowerCase();
+      const output = String(meta.executionOutput || '').toLowerCase();
+      const isViolation = cmd.includes('rm -rf') || cmd.includes('dd if=') || cmd.includes('mkfs') || output.includes('permission denied') || output.includes('violation');
+      
+      if (isViolation) {
+        violatedActions++;
+      } else {
+        safeActions++;
+      }
+    });
+
+    // Safety Compliance = Safe Actions / Total Actions (default to 100% if empty)
+    const totalActions = safeActions + violatedActions;
+    const safetyCompliance = totalActions > 0 ? ((safeActions / totalActions) * 100).toFixed(1) : '100.0';
+
+    // MTTR Hours Saved = total executed actions * 1.5 hours average manual handling, minus execution durations in hours
+    const totalSavedMs = (executedCount * 1.5 * 3600 * 1000) - totalDurationMs;
+    const avgResolutionTimeSavedHours = Math.max(0, totalSavedMs / (3600 * 1000)).toFixed(1);
 
     return {
       pendingApprovals: pendingCount,
@@ -407,14 +454,9 @@ export class AgentGovernanceService implements OnModuleInit {
       approvedActions: approvedCount + executedCount,
       rejectedActions: rejectedCount,
       humanApprovalRatePercent: parseFloat(approvalRate),
-      safetyComplianceScore: 99.4,
-      avgResolutionTimeSavedHours: (executedCount * 1.8).toFixed(1),
-      riskBreakdown: {
-        CRITICAL: 1,
-        HIGH: 2,
-        MEDIUM: 5,
-        LOW: 8,
-      },
+      safetyComplianceScore: parseFloat(safetyCompliance),
+      avgResolutionTimeSavedHours,
+      riskBreakdown
     };
   }
 
