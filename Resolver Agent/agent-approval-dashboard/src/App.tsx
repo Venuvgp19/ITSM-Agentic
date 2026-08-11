@@ -21,10 +21,11 @@ import { GovernanceAnalyticsView } from './components/GovernanceAnalyticsView';
 import { ModelConfigView } from './components/ModelConfigView';
 import { VectorSpace3D } from './components/VectorSpace3D';
 import { IncidentAnalysisView } from './components/IncidentAnalysisView';
+import { ProblemAnalysisView } from './components/ProblemAnalysisView';
 import { AgentExecutionTimelineView } from './components/AgentExecutionTimelineView';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'approvals' | 'history' | 'analytics' | 'config' | 'vector' | 'analysis' | 'timeline'>('approvals');
+  const [activeTab, setActiveTab] = useState<'approvals' | 'history' | 'analytics' | 'config' | 'vector' | 'analysis' | 'problems' | 'timeline'>('approvals');
   const [approvals, setApprovals] = useState<AgentApproval[]>([]);
   const [history, setHistory] = useState<AgentHistoryEntry[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -220,6 +221,18 @@ export function App() {
             Incident Analysis Agent
           </button>
 
+           <button
+             onClick={() => setActiveTab('problems')}
+             className={`flex items-center gap-2.5 px-6 py-3.5 text-xs font-extrabold border-b-2 transition-all uppercase tracking-wider ${
+               activeTab === 'problems'
+                 ? 'border-cyan-500 text-cyan-400 bg-cyan-500/10 rounded-t-xl shadow-sm'
+                 : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+             }`}
+           >
+             <Brain className="w-4.5 h-4.5 text-cyan-400" />
+             Problem Analysis
+           </button>
+
           <button
             onClick={() => setActiveTab('timeline')}
             className={`flex items-center gap-2.5 px-6 py-3.5 text-xs font-extrabold border-b-2 transition-all uppercase tracking-wider ${
@@ -298,6 +311,7 @@ export function App() {
 
         {/* Tab 6: Incident Analysis Agent */}
         {activeTab === 'analysis' && <IncidentAnalysisView />}
+        {activeTab === 'problems' && <ProblemAnalysisView />}
 
         {/* Tab 7: Agent Execution Timeline */}
         {activeTab === 'timeline' && <AgentExecutionTimelineView />}
