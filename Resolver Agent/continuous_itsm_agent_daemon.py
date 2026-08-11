@@ -89,6 +89,16 @@ GOVERNANCE_MODEL = "genailab-maas-gpt-4o"
 
 RAG_SIMILARITY_THRESHOLD = 0.65
 
+# --- RAG Scoring Configuration ---
+# Hybrid blend weights — applied when top dense score is in edge zone [0.35, threshold).
+# Formula: final_score = max(dense, HYBRID_DENSE_WEIGHT * dense + HYBRID_KW_WEIGHT * keyword)
+HYBRID_DENSE_WEIGHT    = 0.75   # weight of cosine similarity in hybrid blend
+HYBRID_KW_WEIGHT       = 0.25   # weight of keyword-frequency score in hybrid blend
+
+# Intent Booster — score override for high-confidence domain+intent matches.
+INTENT_BOOST_SCORE     = 0.8800  # score assigned when intent booster fires (must be >= threshold)
+INTENT_BOOST_MIN_SCORE = 0.25    # minimum pre-boost cosine score for booster to activate
+
 MODEL_NAME = ROUTER_MODEL
 POLL_INTERVAL_SECONDS = 15
 FALLBACK_MODELS = [
@@ -326,26 +336,70 @@ def get_keyword_vector(text, target_dim=4096):
         norm_vec.extend([0.0] * (target_dim - len(norm_vec)))
     return norm_vec[:target_dim]
 
-def get_embedding(text, client=None):
+
+# ---------------------------------------------------------------------------
+# Canonical KB Embedding Text Builder
+# ---------------------------------------------------------------------------
+# Single source of truth for how KB articles are converted to embeddable text.
+# All indexing call-sites must use this function to guarantee vector consistency.
+# Changing the fields here REQUIRES a full re-run of reindex_chromadb.py.
+#
+# Fields included (in semantic priority order):
+#   Title    — Primary signal; used by domain guards and intent detection.
+#   Summary  — Concise problem description.
+#   Symptoms — Observable triggers; highest keyword density.
+#   Root Cause (optional) — Causal context; improves recall for diagnostic alerts.
+#
+# Excluded: resolutionSteps — keeping vectors focused on *what the problem is*
+# rather than *how to fix it* maximises cosine alignment with incident queries.
+# ---------------------------------------------------------------------------
+def build_kb_embed_text(title: str, summary: str, symptoms, root_cause: str = "") -> str:
+    symptoms_str = " ".join(symptoms) if isinstance(symptoms, list) else (symptoms or "")
+    parts = [f"Title: {title}"]
+    if summary:
+        parts.append(f"Summary: {summary}")
+    if symptoms_str:
+        parts.append(f"Symptoms: {symptoms_str}")
+    if root_cause:
+        parts.append(f"Root Cause: {root_cause}")
+    return "\n".join(parts)
+
+
+def get_embedding(text, client=None, input_type="query"):
     clean_text = text.replace("\n", " ").strip()
     if not clean_text:
         clean_text = "empty"
-    
+
     config = get_current_model_config()
     base_url = NVIDIA_BASE_URL
     api_key = NVIDIA_API_KEY
     model = "nvidia/nv-embed-v1"
-    
+    is_nvidia = True   # track whether NVIDIA model is active for input_type prefix
+
     if config and config.get("baseUrl"):
         b_url = config.get("baseUrl", "").lower()
         if "genailab" in b_url:
             base_url = config.get("baseUrl")
             api_key = config.get("apiKey", GENAI_API_KEY)
             model = "azure/genailab-maas-text-embedding-3-large"
+            is_nvidia = False   # Azure model does not use instruction prefixes
         elif "nvidia" in b_url or "integrate.api.nvidia.com" in b_url:
             base_url = config.get("baseUrl")
             api_key = config.get("apiKey", NVIDIA_API_KEY)
             model = "nvidia/nv-embed-v1"
+            is_nvidia = True
+
+    # nv-embed-v1 is instruction-tuned: prepend task prefix for passage vs query mode.
+    # This improves retrieval precision ~5-15% on asymmetric retrieval tasks.
+    # 'passage' = KB document being indexed.  'query' = incident ticket being searched.
+    if is_nvidia:
+        NVIDIA_INSTRUCTIONS = {
+            "passage": "Represent the IT knowledge article for retrieval: ",
+            "query":   "Represent the IT support query for retrieval: ",
+        }
+        prefix = NVIDIA_INSTRUCTIONS.get(input_type, "")
+        if prefix:
+            clean_text = prefix + clean_text
 
     # Retry up to 3 times with backoff if network or API glitch occurs
     for attempt in range(3):
@@ -518,10 +572,14 @@ def sync_vector_db_with_kb(token, client, vdb):
             if art_number not in indexed_numbers:
                 title = art.get("title", "")
                 summary = art.get("summary", "")
-                symptoms = ' '.join(art.get("symptoms", []))
-                content_to_embed = f"Title: {title}\nSummary: {summary}\nSymptoms: {symptoms}"
-                
-                emb = get_embedding(content_to_embed)
+                # Use canonical embedding text builder (passage mode for nv-embed-v1)
+                content_to_embed = build_kb_embed_text(
+                    title=title,
+                    summary=summary,
+                    symptoms=art.get("symptoms", []),
+                    root_cause=art.get("rootCause", "")
+                )
+                emb = get_embedding(content_to_embed, input_type="passage")
                 vdb.add_kb_embedding(art_id, art_number, title, emb)
                 logger.info(f"Indexed KB article {art_number} in vector database (100% SOP RAG Coverage).")
     except Exception as e:
@@ -795,8 +853,14 @@ def save_new_kb_article_to_storage(new_article_data):
                                     try:
                                         vdb = ChromaVectorDB()
                                         symptoms_str = ' '.join(merged_symptoms) if isinstance(merged_symptoms, list) else str(merged_symptoms)
-                                        content_to_embed = f"Title: {kb.get('title')}\nSummary: {kb.get('summary')}\nSymptoms: {symptoms_str}\nSteps: {' '.join(merged_steps)}"
-                                        emb = get_embedding(content_to_embed)
+                                        # Re-index using canonical text builder + passage mode for nv-embed-v1
+                                        content_to_embed = build_kb_embed_text(
+                                            title=kb.get('title', ''),
+                                            summary=kb.get('summary', ''),
+                                            symptoms=merged_symptoms,
+                                            root_cause=kb.get('rootCause', '')
+                                        )
+                                        emb = get_embedding(content_to_embed, input_type="passage")
                                         if emb:
                                             vdb.add_kb_embedding(kb.get('number'), kb.get('number'), kb.get('title'), emb)
                                             logger.info(f"⚡ Re-indexed vector embeddings for {kb.get('number')} in ChromaDB with enriched RAG coverage.")
@@ -829,11 +893,14 @@ def save_new_kb_article_to_storage(new_article_data):
             try:
                 vdb = ChromaVectorDB()
                 symptom_list = new_article.get('symptoms', [])
-                symptoms_str = ' '.join(symptom_list) if isinstance(symptom_list, list) else str(symptom_list)
-                steps_list = new_article.get('resolutionSteps', [])
-                steps_str = ' '.join(steps_list) if isinstance(steps_list, list) else str(steps_list)
-                content_to_embed = f"Title: {new_article.get('title')}\nSummary: {new_article.get('summary')}\nSymptoms: {symptoms_str}\nSteps: {steps_str}"
-                emb = get_embedding(content_to_embed)
+                # Index new article using canonical text builder + passage mode for nv-embed-v1
+                content_to_embed = build_kb_embed_text(
+                    title=new_article.get('title', ''),
+                    summary=new_article.get('summary', ''),
+                    symptoms=symptom_list,
+                    root_cause=new_article.get('rootCause', '')
+                )
+                emb = get_embedding(content_to_embed, input_type="passage")
                 if emb:
                     vdb.add_kb_embedding(new_article.get('number'), new_article.get('number'), new_article.get('title'), emb)
                     logger.info(f"⚡ Indexed new vector embedding for {new_article.get('number')} in ChromaDB with high RAG coverage.")
@@ -1405,8 +1472,9 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
         norm_query = "SOP: NexaCore Port 8080 Firewalld Unblock and Subprocess Restart"
 
     try:
-        raw_emb = get_embedding(raw_query)
-        norm_emb = get_embedding(norm_query) if norm_query != raw_query else None
+        # Query embeddings use 'query' input_type (nv-embed-v1 asymmetric retrieval)
+        raw_emb  = get_embedding(raw_query,  input_type="query")
+        norm_emb = get_embedding(norm_query, input_type="query") if norm_query != raw_query else None
         
         results_raw = vector_db.search_kb(raw_emb, limit=10) if raw_emb else []
         results_norm = vector_db.search_kb(norm_emb, limit=10) if norm_emb else []

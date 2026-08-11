@@ -21,7 +21,8 @@ except Exception as e:
     print(f"FAILED to initialize ChromaDB Client: {e}")
     sys.exit(1)
 
-collection_name = "itsm_knowledge_base"
+# Canonical collection name — must match continuous_itsm_agent_daemon.py ChromaVectorDB class
+collection_name = "itsm_knowledge_articles"
 
 NVIDIA_API_KEY = os.environ.get("CHROMA_OPENAI_API_KEY", "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")
 
@@ -39,7 +40,11 @@ except Exception:
     pass  # Collection may not exist yet
 
 try:
-    collection = chroma_client.create_collection(name=collection_name, embedding_function=emb_fn)
+    collection = chroma_client.create_collection(
+        name=collection_name,
+        embedding_function=emb_fn,
+        metadata={"hnsw:space": "cosine"}   # must match daemon's distance metric
+    )
 except Exception as e:
     print(f"FAILED to create collection: {e}")
     sys.exit(1)
@@ -85,7 +90,11 @@ for row in rows:
     elif isinstance(symptoms, str):
         symptoms_str = symptoms
 
-    doc_text = f"Title: {title}\nCategory: {category}\nSummary: {summary or ''}\nSymptoms: {symptoms_str}\nRoot Cause: {root_cause or ''}"
+    # Build canonical document text for embedding.
+    # IMPORTANT: nv-embed-v1 is instruction-tuned; prepend passage prefix for asymmetric retrieval.
+    # This prefix must match the 'passage' input_type prefix in get_embedding() inside the daemon.
+    PASSAGE_PREFIX = "Represent the IT knowledge article for retrieval: "
+    doc_text = PASSAGE_PREFIX + f"Title: {title}\nCategory: {category}\nSummary: {summary or ''}\nSymptoms: {symptoms_str}\nRoot Cause: {root_cause or ''}"
 
     ids.append(str(kb_id))
     documents.append(doc_text)
@@ -109,4 +118,39 @@ try:
     print(f"SUCCESS: Indexed {len(documents)} KB articles into ChromaDB Vector Store!")
 except Exception as e:
     print(f"FAILED to upsert documents: {e}")
+    sys.exit(1)
+
+# ── POST-REINDEX CONSISTENCY VALIDATION ─────────────────────────────────────
+print("\n--- POST-REINDEX CONSISTENCY CHECK ---")
+
+# Count PostgreSQL rows
+try:
+    conn_v = psycopg2.connect(DB_URL)
+    cur_v = conn_v.cursor()
+    cur_v.execute('SELECT COUNT(*) FROM "KnowledgeArticle"')
+    pg_count = cur_v.fetchone()[0]
+    cur_v.close()
+    conn_v.close()
+except Exception as e:
+    print(f"WARNING: Could not re-query PostgreSQL for validation: {e}")
+    pg_count = len(rows)  # fallback to the count already fetched
+
+# Count ChromaDB documents
+try:
+    chroma_count = collection.count()
+except Exception as e:
+    print(f"WARNING: Could not count ChromaDB documents: {e}")
+    chroma_count = -1
+
+print(f"  PostgreSQL KnowledgeArticle rows  : {pg_count}")
+print(f"  ChromaDB '{collection_name}' docs : {chroma_count}")
+
+if chroma_count == pg_count:
+    print(f"✅ VALIDATION PASSED: ChromaDB is fully synchronized ({chroma_count} documents).")
+elif chroma_count == -1:
+    print("⚠️  VALIDATION SKIPPED: Could not query ChromaDB count.")
+else:
+    diff = pg_count - chroma_count
+    print(f"❌ VALIDATION FAILED: {diff} article(s) missing from ChromaDB "
+          f"(PostgreSQL={pg_count}, ChromaDB={chroma_count}). Re-run this script.")
     sys.exit(1)
