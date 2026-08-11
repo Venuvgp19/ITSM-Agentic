@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sliders, Key, Server, Cpu, Check, AlertCircle, RefreshCw, Eye, EyeOff, ShieldCheck, Zap } from 'lucide-react';
 
 export interface ModelConfig {
-  environment: 'genai_lab' | 'production_azure';
+  environment: 'nvidia' | 'genai_lab' | 'production_azure';
   baseUrl: string;
   apiKey: string;
   routerModel: string;
@@ -16,19 +16,16 @@ export function ModelConfigView() {
   const API_BASE = 'http://localhost:4000/api/v1/agent';
   
   const [config, setConfig] = useState<ModelConfig>({
-    environment: 'genai_lab',
-    baseUrl: 'https://genailab.tcs.in/v1',
-    apiKey: 'sk-RRoxANx2dKdNE3N5j0mbxQ',
-    routerModel: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
-    resolverModel: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
-    synthesizerModel: 'azure_ai/genailab-maas-DeepSeek-R1',
-    governanceModel: 'genailab-maas-gpt-4o',
+    environment: 'nvidia',
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    apiKey: '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',
+    routerModel: 'meta/llama-3.1-70b-instruct',
+    resolverModel: 'meta/llama-3.1-70b-instruct',
+    synthesizerModel: 'meta/llama-3.1-70b-instruct',
+    governanceModel: 'meta/llama-3.1-70b-instruct',
     fallbackModels: [
-      'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
-      'azure_ai/genailab-maas-DeepSeek-R1',
-      'genailab-maas-gpt-4o',
-      'gemini-2.5-pro',
-      'azure/genailab-maas-gpt-4o-mini'
+      'meta/llama-3.1-70b-instruct',
+      'meta/llama-3.1-8b-instruct'
     ]
   });
 
@@ -38,41 +35,52 @@ export function ModelConfigView() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const availableModels = [
-    { value: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'NVIDIA Nemotron-3 Ultra 550B (Deep Reasoning & Multi-Agent)' },
-    { value: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct', label: 'Meta Llama-3.3 70B Instruct (High Precision Routing)' },
-    { value: 'azure_ai/genailab-maas-DeepSeek-R1', label: 'DeepSeek R1 (Advanced SOP Reasoning & Synthesis)' },
-    { value: 'genailab-maas-gpt-4o', label: 'OpenAI GPT-4o (Governance & Multi-Modal Evaluation)' },
-    { value: 'gemini-2.5-pro', label: 'Google Gemini 2.5 Pro (Enterprise Reasoning)' },
-    { value: 'gemini-2.5-flash', label: 'Google Gemini 2.5 Flash (Fast Execution)' },
-    { value: 'azure/genailab-maas-gpt-4o-mini', label: 'OpenAI GPT-4o Mini (Cost-Optimized Fallback)' }
+    { value: 'meta/llama-3.1-70b-instruct', label: 'Meta Llama-3.1 70B Instruct (NVIDIA API - Active & Verified)' },
+    { value: 'meta/llama-3.1-8b-instruct', label: 'Meta Llama-3.1 8B Instruct (NVIDIA API - Fast Execution)' },
+    { value: 'genailab-maas-gpt-4o', label: 'OpenAI GPT-4o (GenAI Lab)' },
+    { value: 'gemini-2.5-pro', label: 'Google Gemini 2.5 Pro' },
+    { value: 'gemini-2.5-flash', label: 'Google Gemini 2.5 Flash' }
   ];
 
   const presets = {
+    nvidia: {
+      environment: 'nvidia' as const,
+      baseUrl: 'https://integrate.api.nvidia.com/v1',
+      apiKey: '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',
+      routerModel: 'meta/llama-3.1-70b-instruct',
+      resolverModel: 'meta/llama-3.1-70b-instruct',
+      synthesizerModel: 'meta/llama-3.1-70b-instruct',
+      governanceModel: 'meta/llama-3.1-70b-instruct',
+      fallbackModels: [
+        'meta/llama-3.1-70b-instruct',
+        'meta/llama-3.1-8b-instruct'
+      ]
+    },
     genai_lab: {
       environment: 'genai_lab' as const,
       baseUrl: 'https://genailab.tcs.in/v1',
-      apiKey: 'sk-RRoxANx2dKdNE3N5j0mbxQ',
-      routerModel: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
-      resolverModel: 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
-      synthesizerModel: 'azure_ai/genailab-maas-DeepSeek-R1',
+      apiKey: 'sk-i2uZFN4LB9XrmFr8hMKJag',
+      routerModel: 'genailab-maas-gpt-4o',
+      resolverModel: 'genailab-maas-gpt-4o',
+      synthesizerModel: 'genailab-maas-gpt-4o',
       governanceModel: 'genailab-maas-gpt-4o',
       fallbackModels: [
-        'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
-        'azure_ai/genailab-maas-DeepSeek-R1',
         'genailab-maas-gpt-4o',
-        'gemini-2.5-pro',
-        'azure/genailab-maas-gpt-4o-mini'
+        'gemini-2.5-flash'
       ]
     },
     production_azure: {
       environment: 'production_azure' as const,
       baseUrl: 'https://integrate.api.nvidia.com/v1',
-      apiKey: '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',
-      routerModel: 'nvidia/nemotron-3-ultra-550b-a55b',
-      resolverModel: 'nvidia/nemotron-3-ultra-550b-a55b',
-      synthesizerModel: 'nvidia/nemotron-3-ultra-550b-a55b',
-      governanceModel: 'nvidia/nemotron-3-ultra-550b-a55b',
-      fallbackModels: ['nvidia/nemotron-3-ultra-550b-a55b', 'azure_ai/genailab-maas-Llama-3.3-70B-Instruct']
+      apiKey: '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',
+      routerModel: 'meta/llama-3.1-70b-instruct',
+      resolverModel: 'meta/llama-3.1-70b-instruct',
+      synthesizerModel: 'meta/llama-3.1-70b-instruct',
+      governanceModel: 'meta/llama-3.1-70b-instruct',
+      fallbackModels: [
+        'meta/llama-3.1-70b-instruct',
+        'meta/llama-3.1-8b-instruct'
+      ]
     }
   };
 

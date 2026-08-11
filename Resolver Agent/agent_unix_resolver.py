@@ -18,9 +18,12 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ----------------------------------------------------
 # Configuration
 # ----------------------------------------------------
-ITSM_BASE_URL = "http://localhost:4000/api/v1"
-GENAI_LAB_URL = "https://genailab.tcs.in/v1"
-GENAI_API_KEY = "sk-RRoxANx2dKdNE3N5j0mbxQ"
+from dotenv import load_dotenv
+load_dotenv()
+
+ITSM_BASE_URL = os.getenv("ITSM_BASE_URL", "http://localhost:4000/api/v1")
+GENAI_LAB_URL = os.getenv("GENAI_LAB_URL", "https://genailab.tcs.in/v1")
+GENAI_API_KEY = os.getenv("GENAI_API_KEY", "")
 MODEL_NAME = "gemini-3.1-pro-preview"
 
 # CI & Credential details for Worker 1

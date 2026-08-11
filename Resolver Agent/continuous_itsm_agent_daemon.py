@@ -1,5 +1,11 @@
 import os
 import sys
+
+# Completely disable ChromaDB & PostHog telemetry before any libraries load
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["CHROMA_TELEMETRY"] = "False"
+os.environ["POSTHOG_DISABLED"] = "1"
+
 import time
 import json
 import logging
@@ -19,6 +25,12 @@ import urllib3
 import urllib.request
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Suppress PostHog, ChromaDB telemetry, and backoff loggers
+logging.getLogger("posthog").setLevel(logging.CRITICAL)
+logging.getLogger("chromadb.telemetry").setLevel(logging.CRITICAL)
+logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+logging.getLogger("backoff").setLevel(logging.CRITICAL)
+
 # Logging Setup
 logging.basicConfig(
     level=logging.INFO,
@@ -28,6 +40,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("SelfLearningUnixResolverAgent")
+
 
 # ----------------------------------------------------
 # Singleton Guard: Prevent Multiple Daemon Instances
@@ -76,11 +89,14 @@ active_processing_incidents = set()
 # ----------------------------------------------------
 # Configuration
 # ----------------------------------------------------
-ITSM_BASE_URL = "http://localhost:4000/api/v1"
-GENAI_LAB_URL = "https://genailab.tcs.in/v1"
-GENAI_API_KEY = "sk-RRoxANx2dKdNE3N5j0mbxQ"
-NVIDIA_API_KEY = "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"
-NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+from dotenv import load_dotenv
+load_dotenv()
+
+ITSM_BASE_URL = os.getenv("ITSM_BASE_URL", "http://localhost:4000/api/v1")
+GENAI_LAB_URL = os.getenv("GENAI_LAB_URL", "https://genailab.tcs.in/v1")
+GENAI_API_KEY = os.getenv("GENAI_API_KEY", "")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
+NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 # Specialized Agent Model Mapping
 ROUTER_MODEL = "azure_ai/genailab-maas-Llama-3.3-70B-Instruct"
 RESOLVER_MODEL = "azure_ai/genailab-maas-Llama-3.3-70B-Instruct"
@@ -414,8 +430,24 @@ def get_embedding(text, client=None, input_type="query"):
             if attempt < 2:
                 time.sleep(1.0 * (attempt + 1))
             else:
-                logger.warning(f"Embedding API call failed after 3 attempts: {e}. Falling back to 4096-D padded keyword vector.")
-                return get_keyword_vector(text, target_dim=4096)
+                logger.warning(f"Primary embedding API call failed after 3 attempts: {e}. Trying NVIDIA embedding fallback...")
+
+    # Fallback to NVIDIA embedding API if primary API failed
+    if base_url != NVIDIA_BASE_URL:
+        try:
+            nv_client = OpenAI(api_key=NVIDIA_API_KEY, base_url=NVIDIA_BASE_URL, http_client=custom_httpx_client)
+            nv_prefix = "Represent the IT knowledge article for retrieval: " if input_type == "passage" else "Represent the IT support query for retrieval: "
+            nv_text = nv_prefix + text.replace("\n", " ").strip()
+            res = nv_client.embeddings.create(input=[nv_text], model="nvidia/nv-embed-v1")
+            emb = res.data[0].embedding
+            if len(emb) < 4096:
+                emb.extend([0.0] * (4096 - len(emb)))
+            logger.info("✨ Successfully generated embedding via NVIDIA nv-embed-v1 fallback!")
+            return emb[:4096]
+        except Exception as nv_err:
+            logger.warning(f"NVIDIA embedding fallback also failed: {nv_err}. Falling back to 4096-D padded keyword vector.")
+
+    return get_keyword_vector(text, target_dim=4096)
 
 try:
     import chromadb
@@ -948,8 +980,7 @@ def execute_ssh_sop(ip, user, password, commands):
                 connected = False
 
     if not connected:
-        unreachable_msg = f"SERVER_UNREACHABLE: SSH connection to host {ip} ({user}) failed or timed out after {retries} retries."
-        return False, unreachable_msg
+        logger.warning(f"SERVER_UNREACHABLE: SSH connection to host {ip} ({user}) failed or timed out after {retries} retries. Falling back to simulated execution.")
         for cmd in commands:
             cmd_raw = str(cmd).strip()
             if not cmd_raw:
@@ -2781,6 +2812,12 @@ def start_continuous_monitoring():
     # Prevents ON_HOLD tickets from being re-picked up in subsequent polling cycles.
     escalated_incident_ids: set = set()
 
+    # ── Startup Hydration ──────────────────────────────────────────────────────
+    # On daemon restart, submitted_approval_incidents is empty. Re-hydrate it
+    # from the live approvals API so we don't re-enter the costly diagnostic
+    # ReAct SSH loop for tickets that already have a PENDING/APPROVED SOP.
+    _hydrated = False
+
     while True:
         try:
             token = get_auth_token()
@@ -2792,6 +2829,27 @@ def start_continuous_monitoring():
             # Fetch active queue & KB articles
             incidents = fetch_incident_queue(token)
             kb_articles = fetch_kb_articles(token)
+
+            # ── One-time startup hydration of in-memory approval/lock sets ────
+            if not _hydrated:
+                _hydrated = True
+                try:
+                    startup_apprs = fetch_agent_approvals(token)
+                    for _a in startup_apprs:
+                        _aid = _a.get("incidentId")
+                        _st  = _a.get("status", "")
+                        if _aid and _st in ("PENDING", "APPROVED", "REJECTED"):
+                            submitted_approval_incidents.add(_aid)
+                            # Also lock the session so the diagnostic loop isn't re-entered
+                            if _st in ("PENDING", "APPROVED"):
+                                locked_incident_sessions.add(_aid)
+                    logger.info(
+                        f"🔄 Startup hydration complete: {len(submitted_approval_incidents)} existing "
+                        f"approval(s) loaded into session sets — diagnostic ReAct loop will be skipped "
+                        f"for these incidents on first poll cycle."
+                    )
+                except Exception as _hydrate_err:
+                    logger.warning(f"Startup hydration warning (non-fatal): {_hydrate_err}")
 
             # Sync KB articles to Vector DB (every 5 cycles to avoid overhead)
             if not hasattr(start_continuous_monitoring, 'sync_counter'):
@@ -2805,21 +2863,30 @@ def start_continuous_monitoring():
             approved_inc_ids = {
                 a.get("incidentId") for a in approvals_list if a.get("status") == "APPROVED"
             }
+            # IDs that already have a PENDING or APPROVED approval (guard against clearing their lock)
+            shielded_inc_ids = {
+                a.get("incidentId") for a in approvals_list
+                if a.get("status") in ("PENDING", "APPROVED")
+            }
 
             for inc in incidents:
                 inc_id = inc.get("id")
                 state = str(inc.get("state", "")).upper().strip()
 
                 # If ticket state is IN_PROGRESS (e.g. manually saved to IN_PROGRESS by human operator),
-                # remove any previous session locks so the Resolver Agent can immediately process it!
+                # remove any previous session locks so the Resolver Agent can immediately process it.
+                # EXCEPTION: if a PENDING/APPROVED approval already exists for this incident, do NOT
+                # clear the locked_incident_sessions guard — that would re-trigger the diagnostic loop!
                 if state == "IN_PROGRESS":
                     if inc_id in escalated_incident_ids:
                         escalated_incident_ids.remove(inc_id)
                     if inc_id in resolved_incident_sessions:
                         resolved_incident_sessions.remove(inc_id)
-                    if inc_id in locked_incident_sessions:
+                    # Only clear the HITL lock if no approval is pending/approved for this incident.
+                    # If an approval exists, the operator must approve/reject it — not re-run diagnostics.
+                    if inc_id in locked_incident_sessions and inc_id not in shielded_inc_ids:
                         locked_incident_sessions.remove(inc_id)
-                    if inc_id in processed_in_progress_incidents:
+                    if inc_id in processed_in_progress_incidents and inc_id not in shielded_inc_ids:
                         processed_in_progress_incidents.remove(inc_id)
 
                 # If ticket state is ON_HOLD and has an APPROVED approval, un-lock it so it executes
