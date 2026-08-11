@@ -225,6 +225,24 @@ CI_CREDENTIALS = {
         "password": "root123",
         "os": "Unix / Linux"
     },
+    "worker2OL": {
+        "ip": "192.168.56.11",
+        "user": "root",
+        "password": "root123",
+        "os": "Unix / Linux"
+    },
+    "Worker2OL": {
+        "ip": "192.168.56.11",
+        "user": "root",
+        "password": "root123",
+        "os": "Unix / Linux"
+    },
+    "192.168.56.11": {
+        "ip": "192.168.56.11",
+        "user": "root",
+        "password": "root123",
+        "os": "Unix / Linux"
+    },
     "192.168.56.10": {
         "ip": "192.168.56.10",
         "user": "root",
@@ -1717,8 +1735,9 @@ CRITICAL OPERATIONAL RULES FOR MASTER SOP SYNTHESIS:
    - KUBERNETES / ARGOCD / POD TICKETS: If ticket involves Kubernetes, ArgoCD, pods, or deployments, output valid `kubectl` remediation commands (e.g. `kubectl rollout restart deployment/argocd-server -n argocd`, `kubectl delete pod -l app.kubernetes.io/name=argocd-server -n argocd`, `kubectl scale deployment --all --replicas=1 -n argocd`). NEVER treat hostnames or CI names like "control plane" as systemd services (`systemctl restart control-plane` IS STRICTLY FORBIDDEN AND INVALID)!
    - LINUX SYSTEM SERVICES: If ticket involves a Linux daemon, inspect actual service name (e.g. `nexacore`, `sssd`, `nginx`, `docker`) from diagnostic findings and use `systemctl restart <actual_service_name>`.
    - USER MANAGEMENT: If ticket involves user accounts, output `useradd` or `userdel` commands.
-2. NATIVE TARGET COMMANDS ONLY (NO SSH WRAPPERS):
-   - Format `resolution_steps` as direct shell commands executed ON target host. DO NOT prefix commands with `ssh root@ip`.
+2. NATIVE TARGET COMMANDS ONLY (NO SSH WRAPPERS & NO EXPLANATIONS):
+   - Format `resolution_steps` as direct, pure shell commands executed ON target host. DO NOT prefix commands with `ssh root@ip`.
+   - DO NOT include explanations, conversational text, or natural language inside the `resolution_steps` list. Every item in the list MUST be a raw, executable bash command ONLY.
 3. GENERIC MASTER SOP WITH PARAMETER PLACEHOLDERS:
    - Synthesize a Master SOP using appropriate placeholders if needed: {{namespace}}, {{deployment_name}}, {{username}}, {{service_name}}.
 4. KNOWLEDGE BASE ENRICHMENT & RAG COVERAGE RULE:
