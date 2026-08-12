@@ -213,57 +213,51 @@ export class KnowledgeService {
     const title = (article.title || '').toLowerCase();
     const summary = (article.summary || '').toLowerCase();
     const ci = (article.configurationItem || '').toLowerCase();
-    const text = `${title} ${summary}`;
+    const text = `${title} ${summary} ${ci}`;
     
-    // Very specific patterns - must match title/summary keywords exactly
+    // Specific domain categories
     const categories: [RegExp, string][] = [
+      // Cloud CLI & DevOps Tooling
+      [/(az|azure|aws|gcloud)\s+(cli|command|tool|install)/i, 'DevOps Tooling & Cloud CLI'],
+      [/(git|jenkins|docker|helm|terraform)\s+(install|setup|credential)/i, 'DevOps Tooling & Cloud CLI'],
+
       // User management - exact patterns
-      [/(create|provision|add)\s+(user|account|id)\s+(on|for|called)/i, 'User Account Creation & Provisioning'],
-      [/user\s+(delet|offboard|remov)\s+(on|from|account)/i, 'User Account Deletion & Offboarding'],
+      [/(create|provision|add)\s+(user|account|id|sudoers)/i, 'User Account Creation & Provisioning'],
+      [/user\s+(delet|offboard|remov|deprovision)\s+(on|from|account)/i, 'User Account Deletion & Offboarding'],
       [/(lock|unlock)\s+(account|user)\s+(on|linux)/i, 'User Account Lock & Unlock'],
       [/(password|passwd)\s+(reset|change)\s+(on|linux)/i, 'User Password Reset'],
       
-      // Dashboard - exact match
-      [/dashboard.*(worker1ol|192\.168\.56\.10)/i, 'ITSM Dashboard Recovery (Worker1OL)'],
-      
-      // Kubernetes - exact patterns
-      [/kubernetes.*(ingress|controller|high\s*cpu)/i, 'Kubernetes Ingress Recovery'],
-      [/kube.*(node|kubelet|notready)/i, 'Kubernetes Node Recovery'],
-      
-      // SSH - exact
-      [/(sshd|ssh\s+service).*(not\s+working|fail|down)/i, 'SSH Service Failure'],
+      // Kubernetes & ArgoCD
+      [/(argocd|kubernetes|k8s|kubelet|kubectl|pod|deployment)/i, 'Kubernetes & ArgoCD Infrastructure'],
       
       // Database - exact patterns
-      [/postgres.*(replication|lag|primary)/i, 'PostgreSQL Replication Recovery'],
+      [/(db2|ibm db2|cloudbeaver)/i, 'IBM DB2 Database Operations'],
+      [/(postgres|postgresql|pg_ctl)/i, 'PostgreSQL Database Operations'],
       [/(database|db).*(connection|timeout)/i, 'Database Connection Recovery'],
       
-      // Network - exact patterns
-      [/router.*(latency|high|slow)/i, 'Network Latency Recovery'],
-      [/(vpn|ipsec|certificate).*(expir|renew)/i, 'VPN Certificate Recovery'],
-      
-      // Application - exact patterns
+      // Application Services
+      [/nexacore/i, 'NexaCore Application Recovery'],
       [/(erp|sap).*(sso|auth|failure)/i, 'SAP ERP SSO Recovery'],
       [/(okta|mfa).*(webhook|timeout|fail)/i, 'Okta MFA Recovery'],
       [/(active\s*directory|ldap).*(sync|fail)/i, 'Active Directory LDAP Recovery'],
       [/(email|mail).*(gateway|queue|backlog)/i, 'Email Gateway Recovery'],
       
-      // Printer - exact
-      [/(printer|spooler).*(offline|fail)/i, 'Printer Spooler Recovery'],
+      // Network & VPN
+      [/router.*(latency|high|slow)/i, 'Network Latency Recovery'],
+      [/(vpn|ipsec|certificate).*(expir|renew)/i, 'VPN Certificate Recovery'],
       
-      // Server - exact patterns
-      [/(kernel|os).*(patch|panic)/i, 'Unix Kernel Panic Recovery'],
-      [/(sssd|ldap).*(connection|refuse)/i, 'SSSD LDAP Connection Recovery'],
-      
-      // Generic fallback - very broad
-      [/(cpu|memory).*(high|utilization)/i, 'System Performance Issue'],
-      [/(disk|storage).*(space|full)/i, 'Disk Space Issue'],
+      // System Performance
+      [/(cpu|memory|ram|heap).*(high|utilization|pressure|spike)/i, 'System Performance & Resource Utilization'],
+      [/(disk|storage).*(space|full)/i, 'Disk Space Management'],
+
+      // Python & Virtualenv
+      [/(python|virtualenv|venv|pip)/i, 'Python Environment Setup'],
     ];
     
     for (const [pattern, category] of categories) {
       if (pattern.test(title) || pattern.test(text)) return category;
     }
     
-    // Use existing category if no pattern matches
     return article.category || 'General IT Operations';
   }
 

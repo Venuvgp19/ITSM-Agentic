@@ -1521,6 +1521,7 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
     matched_kb = None
     similarity_score = 0.0
     top_match = None
+    next_best_info = ""  # Initialize here to avoid "referenced before assignment" when rag_results is empty
     
     q_low = query_text.lower()
     is_credential_task = any(k in q_low for k in ["credential", "password", "retrieve credentials", "get credentials", "login credentials", "admin password", "jenkins credentials", "argocd credentials", "jenkins server credentials"])
@@ -1673,37 +1674,42 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
         # 2. Invoke LLM to synthesize a GENERIC Master SOP based on Server Diagnosis + Ticket Requirement
         prompt = f"""
 You are a Senior L2 Systems & DevOps Administrator for Enterprise Infrastructure.
-No relevant SOP article was found in the database for the following incident.
+Synthesize a highly accurate, technical, and actionable Standard Operating Procedure (SOP) Knowledge Base Article to solve the EXACT request in the Incident Ticket below.
 
-FIRST: Review the live server diagnostic context & findings captured by the Read-Only Diagnostic ReAct Loop from {ci_name} ({ip}):
---- LIVE SERVER DIAGNOSTIC REACT LOOP OUTCOMES & FINDINGS ---
-{diag_logs[:3000]}
--------------------------------------------------------------
-
-CRITICAL OPERATIONAL RULES FOR MASTER SOP SYNTHESIS:
-1. DIAGNOSTIC FINDINGS & DOMAIN INTEGRATION:
-   - Carefully inspect the exact diagnostic findings above and the ticket intent.
-   - KUBERNETES / ARGOCD / POD TICKETS: If ticket involves Kubernetes, ArgoCD, pods, or deployments, output valid `kubectl` remediation commands (e.g. `kubectl rollout restart deployment/argocd-server -n argocd`, `kubectl delete pod -l app.kubernetes.io/name=argocd-server -n argocd`, `kubectl scale deployment --all --replicas=1 -n argocd`). NEVER treat hostnames or CI names like "control plane" as systemd services (`systemctl restart control-plane` IS STRICTLY FORBIDDEN AND INVALID)!
-   - LINUX SYSTEM SERVICES: If ticket involves a Linux daemon, inspect actual service name (e.g. `nexacore`, `sssd`, `nginx`, `docker`) from diagnostic findings and use `systemctl restart <actual_service_name>`.
-   - USER MANAGEMENT: If ticket involves user accounts, output `useradd` or `userdel` commands.
-2. NATIVE TARGET COMMANDS ONLY (NO SSH WRAPPERS):
-   - Format `resolution_steps` as direct shell commands executed ON target host. DO NOT prefix commands with `ssh root@ip`.
-3. GENERIC MASTER SOP WITH PARAMETER PLACEHOLDERS:
-   - Synthesize a Master SOP using appropriate placeholders if needed: {{namespace}}, {{deployment_name}}, {{username}}, {{service_name}}.
-4. KNOWLEDGE BASE ENRICHMENT & RAG COVERAGE RULE:
-   - Include 6-10 relevant symptoms, synonyms, and alternate phrasing patterns in "symptoms" matching the EXACT domain of the issue.
-
-Incident Details:
+INCIDENT TICKET REQUIREMENTS (HIGHEST PRIORITY):
 - Ticket Number: {ticket_number}
 - Short Description: {short_desc}
 - Description: {desc}
 - Target CI: {ci_name} ({ip})
 - Target OS: {target_os}
 
+LIVE SERVER DIAGNOSTIC CONTEXT (FOR ENVIRONMENT DETAILS & OS DISTRO ONLY):
+--- LIVE SERVER DIAGNOSTIC FINDINGS ---
+{diag_logs[:3000]}
+---------------------------------------
+
+MANDATORY RULES FOR HIGH QUALITY SOP SYNTHESIS:
+1. STRICT ADHERENCE TO TICKET REQUEST (NON-NEGOTIABLE):
+   - The SOP Title, Summary, and resolution_steps MUST directly perform and fulfill the specific task requested in Short Description: "{short_desc}".
+   - EXAMPLES:
+     * If ticket asks to "install az cli", the SOP title MUST be "Master SOP: Azure CLI Installation and Verification on Linux Node" and resolution_steps MUST be the exact shell commands to install and verify Azure CLI (e.g., `curl -sL https://aka.ms/InstallAzureCLIDeb | bash` or `apt-get update && apt-get install -y azure-cli`, `az --version`).
+     * If ticket asks to "install docker", the SOP resolution_steps MUST be `curl -fsSL https://get.docker.com | sh` or `apt-get install -y docker.io`, `systemctl enable --now docker`.
+     * If ticket asks to "create user", the SOP resolution_steps MUST use `useradd` / `passwd` / `sudoers`.
+     * If ticket asks for ArgoCD, the SOP resolution_steps MUST use `kubectl`.
+   - DO NOT change the topic or synthesize commands for unrelated software (like restarting ArgoCD or creating users) when the ticket is about installing CLI tools or software!
+
+2. DIRECT TARGET SHELL COMMANDS:
+   - Format `resolution_steps` as direct shell commands executed ON target host. DO NOT prefix commands with `ssh root@ip`.
+   - ALLOW valid official package download URLs (e.g. `https://aka.ms/InstallAzureCLIDeb`, official apt/yum repositories).
+
+3. HIGH QUALITY STRUCTURE:
+   - Synthesize 4-6 sequential, concrete, executable shell commands.
+   - Provide 4-6 specific symptoms and synonyms in "symptoms" matching the EXACT domain of "{short_desc}".
+
 Respond ONLY in JSON format:
 {{
-  "title": "Master SOP: [Domain-Specific Action Title]",
-  "summary": "Technical explanation based on live diagnostic findings and root cause",
+  "title": "Master SOP: [Action Title for {short_desc}]",
+  "summary": "Technical explanation of how to perform {short_desc} on target host {ci_name}",
   "symptoms": [
     "{short_desc}",
     "{desc}",
@@ -1717,7 +1723,7 @@ Respond ONLY in JSON format:
   "safety_checks": [
     "verification_command_1"
   ],
-  "reasoning": "Technical rationale derived strictly from live server diagnostic evidence."
+  "reasoning": "Technical rationale for executing these exact commands to solve {short_desc}."
 }}
 """
         plan = {}
@@ -1750,7 +1756,8 @@ Respond ONLY in JSON format:
                 continue
 
             # Strip hallucinated external download URLs or fake domain calls (curl/wget with example.com / gitlab)
-            if ("curl" in s_clean or "wget" in s_clean) and ("http://" in s_clean or "https://" in s_clean or "example.com" in s_clean or "gitlab" in s_clean):
+            # Skip sanitization for new use cases (new SOP generation) - preserve external URLs
+            if not is_new and ("curl" in s_clean or "wget" in s_clean) and ("http://" in s_clean or "https://" in s_clean or "example.com" in s_clean or "gitlab" in s_clean):
                 logger.warning(f"🧹 Sanitizing hallucinated external download URL from synthesized step: '{s_clean}'")
                 # Replace hallucinated curl/wget download step with standard L2 file touch / setup
                 s_clean = re.sub(r'(?:curl|wget)\s+[^\s]+\s+https?://[^\s]+\s+-o\s+([^\s]+)', r'touch \1', s_clean)
@@ -2072,15 +2079,16 @@ def run_read_only_diagnostic_react_loop(ip, user, password, short_desc, desc, nu
             "role": "system", 
             "content": (
                 "You are an expert IT Systems & Infrastructure Diagnostic Investigator.\n"
-                "A RAG Miss occurred for this incident. Your SOLE OBJECTIVE is to inspect the target host using READ-ONLY diagnostic commands to gather concrete context, logs, and root cause evidence.\n"
-                "SPECIAL INVESTIGATION GUIDELINES:\n"
-                "- JENKINS / CREDENTIALS / SECRETS: Check process status (`ps aux | grep -i jenkins`), listening ports (`ss -tulpn | grep 8080`), and inspect credential files (e.g. `cat /var/lib/jenkins/secrets/initialAdminPassword 2>/dev/null || cat /root/.jenkins/secrets/initialAdminPassword 2>/dev/null || find / -name initialAdminPassword 2>/dev/null`).\n"
-                "- KUBERNETES / ARGOCD: Inspect pods and deployments (`kubectl get pods -n argocd`, `kubectl get secret -n argocd`).\n"
-                "- SYSTEM SERVICES / PERFORMANCE: Inspect process lists, memory, logs, and service status.\n"
+                "A RAG Miss occurred for this incident. Your SOLE OBJECTIVE is to inspect the target host using READ-ONLY diagnostic commands to gather target environment context (OS release, package managers, architecture, existing service/binary status) relevant to the specific incident request.\n"
+                "INVESTIGATION GUIDELINES TAILORED TO INCIDENT:\n"
+                "- SOFTWARE / CLI INSTALLATION TASKS (e.g. az cli, docker, kubectl, helm): Check OS release (`cat /etc/os-release`), package manager (`which apt-get || which yum || which dnf`), architecture (`uname -m`), and binary presence (`which <tool>` or `<tool> --version`).\n"
+                "- KUBERNETES / ARGOCD TICKETS: Only inspect k8s resources (`kubectl get pods`, `kubectl get svc`) if the ticket explicitly mentions Kubernetes, ArgoCD, or container pods.\n"
+                "- JENKINS / CREDENTIAL TICKETS: Only inspect Jenkins processes or secrets if the ticket explicitly mentions Jenkins or credentials.\n"
+                "- SYSTEM SERVICES / PERFORMANCE: Inspect process lists, memory, logs, and service status relevant to the ticket topic.\n"
                 "STRICT READ-ONLY SAFETY RULES:\n"
-                "1. READ-ONLY COMMANDS ONLY: You may ONLY execute non-destructive diagnostic commands (e.g. `cat`, `grep`, `find`, `journalctl`, `ss`, `ps`, `ls`, `id`, `getent`, `systemctl status`, `kubectl get`).\n"
+                "1. READ-ONLY COMMANDS ONLY: You may ONLY execute non-destructive diagnostic commands (e.g. `cat`, `grep`, `find`, `journalctl`, `ss`, `ps`, `ls`, `id`, `getent`, `systemctl status`, `which`, `uname`, `dpkg -l`, `rpm -qa`).\n"
                 "2. NO MUTATING COMMANDS: ABSOLUTELY NO `rm`, `userdel`, `useradd`, `systemctl restart`, `systemctl stop`, `kill`, `chmod`, `sed -i`, `echo >`.\n"
-                "3. EFFICIENT 1-3 TURNS: Execute precise diagnostic probes, then summarize exact findings and captured secrets/context."
+                "3. EFFICIENT 1-3 TURNS: Execute precise diagnostic probes, then summarize exact findings."
             )
         },
         {"role": "user", "content": f"Target Host: {ip} ({ci_name})\nIncident Ticket: {number}\nShort Desc: {short_desc}\nFull Description Payload:\n{desc}"}
