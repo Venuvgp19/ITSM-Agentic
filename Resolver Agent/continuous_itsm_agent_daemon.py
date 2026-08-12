@@ -2222,7 +2222,8 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                 "2. COMPLETE APPLICATION STARTUP: If an application or service is down, you MUST execute the startup command AFTER clearing ports/processes.\n"
                 "3. BULK DELETION / OFFBOARDING RULE: If the incident requests deleting users, extract ALL usernames listed in the Incident Full Description payload (parse all username lines from /etc/passwd dumps or list: e.g. venu, asha, rajesh, ananya, priya, vikram, nexacore, Siva, user01..20, Pamsudo1..5, jboss, pamsudo1..5, ignio) and execute `userdel -r -f <username>` and `rm -f /etc/sudoers.d/*<username>*` for EVERY SINGLE USER listed!\n"
                 "4. ONE-PASS VERIFICATION: Once all operations are executed and verified, IMMEDIATELY STOP calling tools and output your final summary.\n"
-                "5. NATIVE SHELL ONLY: DO NOT prepend 'ssh root@ip' to commands."
+                "5. NATIVE SHELL ONLY: DO NOT prepend 'ssh root@ip' to commands.\n"
+                "6. NON-INTERACTIVE EXECUTION ONLY: Automated SSH sessions cannot accept interactive human inputs. NEVER execute interactive auth prompts like `az login --use-device-code`, `nano`, or `read -p`. For CLI tools like Azure CLI (`az`), run non-interactive verification (e.g. `az --version`, `which az`, setting up non-interactive config files or service principal auth `az login --service-principal`)."
             )
         },
         {"role": "user", "content": f"Target Host: {ip}\nIncident Short Desc: {short_desc}\nIncident Full Description:\n{desc}\n\nSOP Guide Commands:\n" + json.dumps(guide_commands)}
