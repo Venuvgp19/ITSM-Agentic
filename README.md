@@ -1,34 +1,35 @@
 # 🚀 Enterprise Autonomous ITSM Platform & Multi-Agent AI Resolver System
 
-An enterprise-grade, autonomous **IT Service Management (ITSM) Platform** powered by a **Multi-Agent Artificial Intelligence Engine**. 
+An enterprise-grade, autonomous **IT Service Management (ITSM) Platform** powered by a **Multi-Agent Artificial Intelligence Engine** and **NVIDIA NIM LLMs**. 
 
-The system automates helpdesk operations by autonomously triaging incoming IT tickets, executing Dense Vector RAG (ChromaDB 4096-D embeddings with **Dual-Vector Query Normalization Fusion**, **Action Direction Safety Guards**, and **Generic Intent Pattern Boosters**), running remote SSH remediation scripts on target servers using **Async Parallel Worker Pools**, parameterizing generic Master SOP runbooks, synthesizing new Master SOPs on RAG misses, and enforcing Human-in-the-Loop (HITL) governance through an Agent Control Tower Dashboard.
+The system automates helpdesk operations by autonomously triaging incoming IT tickets, executing Dense Vector RAG (ChromaDB 4096-D NV-Embed-v1 embeddings with **Dual-Vector Query Normalization Fusion**, **Action Direction Safety Guards**, and **Generic Intent Pattern Boosters**), running remote SSH remediation scripts on target infrastructure using **Async Parallel Worker Pools**, parameterizing generic Master SOP runbooks, synthesizing new Master SOPs on RAG misses, and enforcing Human-in-the-Loop (HITL) governance through a redesigned **Agent Control Tower Dashboard** with live execution abort controls.
 
 ---
 
 ## 📋 Table of Contents
 1. [Project Overview & Key Capabilities](#-project-overview--key-capabilities)
 2. [Generic Master SOP & Parameterization Architecture](#-generic-master-sop--parameterization-architecture)
-3. [System Requirements & Prerequisites](#-system-requirements--prerequisites)
-4. [Architecture & Data Flow Diagram](#-architecture--data-flow-diagram)
-5. [Database & Vector Store Dump Restoration](#-database--vector-store-dump-restoration)
-6. [Step-by-Step Installation & Application Startup Sequence](#-step-by-step-installation--application-startup-sequence)
-7. [Active Service URLs & Port Reference](#-active-service-urls--port-reference)
-8. [Verification & System Testing](#-verification--system-testing)
-9. [Repository Structure](#-repository-structure)
-10. [License](#-license)
+3. [NVIDIA NIM & AI Model Suite](#-nvidia-nim--ai-model-suite)
+4. [System Requirements & Prerequisites](#-system-requirements--prerequisites)
+5. [Architecture & Data Flow Diagram](#-architecture--data-flow-diagram)
+6. [Database & Vector Store Dump Restoration](#-database--vector-store-dump-restoration)
+7. [Step-by-Step Installation & Application Startup Sequence](#-step-by-step-installation--application-startup-sequence)
+8. [Active Service URLs & Port Reference](#-active-service-urls--port-reference)
+9. [Verification & System Testing](#-verification--system-testing)
+10. [Repository Structure](#-repository-structure)
+11. [License](#-license)
 
 ---
 
 ## 🌟 Project Overview & Key Capabilities
 
 - **Automated Incident Triage & AI Routing**: AI Router Service continuously scans new helpdesk tickets, evaluates priority (P1 Critical to P4 Low), predicts operational assignment groups with high confidence (≥ 85%), and assigns tickets for automated resolution.
-- **Dense Vector RAG Engine**: Persistent ChromaDB vector store powered by 4096-dimensional embeddings with Dual-Vector Query Normalization (HyDE - Hypothetical Document Embeddings) to map noisy ticket descriptions to standardized Master SOPs.
+- **Dense Vector RAG Engine**: Persistent ChromaDB vector store powered by 4096-dimensional `nvidia/nv-embed-v1` passage embeddings with Dual-Vector Query Normalization (HyDE - Hypothetical Document Embeddings) to map noisy ticket descriptions to standardized Master SOPs.
 - **Action Direction & Quantity Safety Filter Guards**: Intelligently prevents Action Mismatches (e.g. Credential Retrieval tickets matching User Creation SOPs, or User Deletion tickets matching User Creation SOPs) and Quantity Mismatches (single-user requests matching bulk 20-user SOPs).
-- **System-Wide Generic Intent Pattern Booster**: Boosts core IT domain intents (User Provisioning, User Deprovisioning, Python Virtual Environments, Kubernetes/ArgoCD, Jenkins Credentials, IBM DB2, System Performance) to direct RAG hits (Score `0.8800`), eliminating duplicate SOP generation across the platform.
+- **System-Wide Generic Intent Pattern Booster**: Boosts core IT domain intents (User Provisioning, User Deprovisioning, Cloud CLI/Azure CLI Installation, Python Virtual Environments, Kubernetes/ArgoCD, Jenkins Credentials, IBM DB2, System Performance) to direct RAG hits (Score `0.8800`), eliminating duplicate SOP generation across the platform.
 - **Dynamic SOP Parameterization Engine**: Parameterizes generic Master SOP placeholders (`{venv_name}`, `{packages}`, `{username}`, `{password}`, `{target_ns}`) on the fly based on incoming ticket requirements.
-- **Live SSH Server Diagnosis Probe & Self-Learning SOP Generator**: On RAG misses, the daemon probes target infrastructure (`uname -a`, `cat /etc/os-release`, `ss -tulpn`, `ps aux`), captures diagnostic telemetry, and invokes Nemotron LLMs to synthesize generic, parameterizable Master SOPs.
-- **Agent Control Tower Dashboard**: Real-time React/Vite HITL dashboard for human operators to inspect, review, approve, or reject AI-synthesized SOP runbooks.
+- **Intent-Driven Read-Only Diagnosis Probe & Self-Learning SOP Generator**: On RAG misses, the daemon probes target infrastructure (`cat /etc/os-release`, package managers `apt`/`yum`, binary presence `which az`), captures diagnostic telemetry, and synthesizes generic, parameterizable Master SOPs.
+- **Redesigned Agent Control Tower Dashboard**: Real-time React/Vite HITL dashboard featuring 4 Categorized Command Suites (**Operations & Governance**, **Analysis Agents**, **Intelligence & Vector**, **Engine Config**) and live **Stop Execution Cycle** abort controls for active SSH cycles.
 - **Dynamic SSH ReAct Execution Pool**: Executes shell payloads concurrently across target nodes (`ControlPlane`, `WorkerNode1HL`), captures execution proofs, and verifies service health via physical HTTP & TCP port probes.
 
 ---
@@ -39,6 +40,7 @@ Instead of synthesizing duplicate KB articles for every slight variation in user
 
 | IT Domain | Generic Master SOP | Parameter Placeholders | Intent Keywords |
 | :--- | :--- | :--- | :--- |
+| **DevOps Tooling & Cloud CLI** | **`KB0000045`**: *Master SOP: Azure CLI Installation and Verification on Linux Control Plane Node* | `{ci_name}`, `{os_type}` | `"install az cli"`, `"az command not found"`, `"azure cli"`, `"which az"` |
 | **Python Virtual Environments** | **`KB0000019`**: *Master SOP: Create Python Virtual Environment and Install Required Packages* | `{venv_name}`, `{packages}` | `"python virtual environment"`, `"python venv"`, `"virtualenv"`, `"pip install"` |
 | **User Account Creation** | **`KB0000028`**: *Master SOP: Linux User Account Provisioning & Sudo Access Runbook* | `{username}`, `{password}`, `{group}` | `"create user"`, `"useradd"`, `"provision user"`, `"pamsudo"` |
 | **User Account Deprovisioning** | **`KB0000038`**: *Master SOP: Bulk & Single Linux User Account Deprovisioning & Deletion* | `{username_list}`, `{username}` | `"delete user"`, `"userdel"`, `"remove user"`, `"offboard user"` |
@@ -46,6 +48,22 @@ Instead of synthesizing duplicate KB articles for every slight variation in user
 | **Kubernetes & ArgoCD** | **`KB0000039`**: *Master SOP: Kubernetes & ArgoCD Service Health Restoration* | `{target_ns}`, `{deployment_name}` | `"argocd"`, `"kubernetes cluster"`, `"kubectl get pods"`, `"rollout restart"` |
 | **Jenkins & Secrets** | **`KB0000041`**: *Master SOP: Jenkins Credential Retrieval & Service Verification* | `{service_name}`, `{secret_path}` | `"jenkins credentials"`, `"initialadminpassword"`, `"retrieve credentials"` |
 | **System Performance** | **`KB0468210`**: *Master SOP: System Performance & Resource Utilization Runbook* | `{ci_name}`, `{threshold_type}` | `"cpu 100"`, `"memory 100"`, `"high cpu utilization"`, `"high memory"` |
+
+---
+
+## 🤖 NVIDIA NIM & AI Model Suite
+
+The platform defaults to high-speed, zero-timeout NVIDIA NIM models via `https://integrate.api.nvidia.com/v1`:
+
+| Agent Role | Active Model | Provider Endpoint | Latency / Throughput |
+| :--- | :--- | :--- | :--- |
+| **AI Ticket Router** | `meta/llama-3.3-70b-instruct` | NVIDIA NIM (`integrate.api.nvidia.com`) | Subsecond (<1.2s) |
+| **SOP Resolver Agent** | `meta/llama-3.3-70b-instruct` | NVIDIA NIM (`integrate.api.nvidia.com`) | Subsecond (<1.5s) |
+| **SOP Synthesizer Agent** | `meta/llama-3.3-70b-instruct` | NVIDIA NIM (`integrate.api.nvidia.com`) | Fast (<2.0s) |
+| **Dense Vector RAG Embeddings** | `nvidia/nv-embed-v1` | NVIDIA NIM (`integrate.api.nvidia.com`) | 4096-Dimensional Embeddings |
+
+*Fallback Models*: `nvidia/llama-3.1-nemotron-70b-instruct`, `nvidia/nemotron-3-ultra-550b-a55b`, `azure_ai/genailab-maas-Llama-3.3-70B-Instruct`, `genailab-maas-gpt-4o`.
+
 
 ---
 
@@ -154,16 +172,22 @@ flowchart TD
 
 ## 💾 Database & Vector Store Dump Restoration
 
-The repository contains a pre-seeded native PostgreSQL SQL database dump (`itsm_db_dump.sql`) so anyone cloning the repo can immediately restore the complete state:
+The repository contains a pre-seeded native PostgreSQL database dump (`database_dump.sql`) and complete ChromaDB vector database files so anyone cloning the repository can immediately run from the exact same state:
 
-- **[`itsm_db_dump.sql`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/itsm_db_dump.sql)**: Native PostgreSQL SQL Dump containing **934 Incidents**, **41 Master SOP Knowledge Articles**, **85 Agent Approvals**, and **50 Problems**.
-- **[`Resolver Agent/chroma_db`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/Resolver%20Agent/chroma_db)**: Persistent ChromaDB HNSW vector index files for all 41 Master SOPs.
-- **[`import_repo_data_dump.py`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/import_repo_data_dump.py)**: 1-Click Restoration script.
+- **[`database_dump.sql`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/database_dump.sql)**: Native PostgreSQL SQL Dump (~4 MB) containing **947 Incidents**, **42 Master SOP Knowledge Articles**, **90 Agent Approvals**, **306 Execution Audit Logs**, and **50 Problems**.
+- **[`Resolver Agent/chroma_db`](file:///C:/Users/praka/OneDrive/Desktop/ITSM-Agentic/Resolver%20Agent/chroma_db)**: Persistent ChromaDB HNSW vector index files (`chroma.sqlite3`, `data_level0.bin`, `header.bin`, `length.bin`, `link_lists.bin`) for all 42 Master SOPs.
 
-To restore the complete environment after cloning:
-```bash
-python import_repo_data_dump.py
-```
+### To Restore on a New Machine:
+
+1. **Ensure PostgreSQL Database `itsm_db` Exists**:
+   ```sql
+   CREATE DATABASE itsm_db;
+   ```
+
+2. **Restore Database from `database_dump.sql`**:
+   ```bash
+   psql -U postgres -d itsm_db -f database_dump.sql
+   ```
 
 ---
 
@@ -210,12 +234,12 @@ Whenever launching or restarting the application stack, execute the following st
 
 | Service | Protocol | Host / Port | URL | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **Next.js Helpdesk Portal** | HTTP | `localhost:3000` | [http://localhost:3000](http://localhost:3000) | Helpdesk console & ticket stream (934 incidents) |
-| **Agent Control Tower Dashboard** | HTTP | `localhost:5173` | [http://localhost:5173](http://localhost:5173) | Real-time HITL approval cards & governance |
+| **Next.js Helpdesk Portal** | HTTP | `localhost:3000` | [http://localhost:3000](http://localhost:3000) | Helpdesk console & ticket stream (947 incidents) |
+| **Agent Control Tower Dashboard** | HTTP | `localhost:5173` | [http://localhost:5173](http://localhost:5173) | Real-time HITL approvals & 4 Categorized Command Suites |
 | **NestJS REST API Server** | HTTP | `localhost:4000` | [http://localhost:4000/api/v1](http://localhost:4000/api/v1) | Backend REST API & continuous AI Router Service |
 | **Swagger API Docs** | HTTP | `localhost:4000` | [http://localhost:4000/api/docs](http://localhost:4000/api/docs) | Interactive OpenAPI documentation |
 | **PostgreSQL Database** | TCP | `localhost:5432` | `postgresql://localhost:5432/itsm_db` | Core relational data store |
-| **ChromaDB Vector Database** | Local / SQLite | Persistent Directory | `Resolver Agent/chroma_db` | Dense 4096-D HNSW Vector Store |
+| **ChromaDB Vector Database** | Local / SQLite | Persistent Directory | `Resolver Agent/chroma_db` | Dense 4096-D NV-Embed-v1 Vector Store |
 
 ---
 
@@ -226,13 +250,13 @@ Whenever launching or restarting the application stack, execute the following st
 curl http://localhost:4000/api/v1/health
 ```
 
-### 2. Test Python Virtual Environment Creation & Parameterization (`KB0000019`)
+### 2. Test Azure CLI SOP Match & Parameterization (`KB0000045`)
 ```powershell
 $inc = @{
-    title = "create a python virtual environment called codex on WorkerNode1HL and install chromadb"
-    shortDescription = "create a python virtual environment called codex no workernode1HL and install chromadb"
-    description = "create a python virtual environment called codex no workernode1HL and install chromadb"
-    category = "Unix - OS & System Service"
+    title = "install az cli on WorkerNode1HL node"
+    shortDescription = "install az cli on WorkerNode1HL node"
+    description = "Azure CLI tool is missing on WorkerNode1HL host. Please install and verify az command."
+    category = "DevOps Tooling & Cloud CLI"
     configurationItem = "WorkerNode1HL"
     priority = "P3"
     state = "IN_PROGRESS"
@@ -253,13 +277,11 @@ ITSM-Agentic/
 ├── packages/
 │   └── mcp-server/                   # ITSM Model Context Protocol (MCP) Server
 ├── Resolver Agent/
-│   ├── agent-approval-dashboard/     # HITL Control Tower Dashboard (Port 5173)
+│   ├── agent-approval-dashboard/     # Redesigned HITL Control Tower Dashboard (Port 5173)
 │   ├── continuous_itsm_agent_daemon.py # Python Async Parallel Worker Daemon
-│   ├── chroma_db/                    # Persistent Vector Database (4096-D Embeddings)
+│   ├── chroma_db/                    # Persistent Vector Database (4096-D NV-Embed-v1)
 │   └── requirements.txt              # Python Agent Dependencies
-├── db_data_dump.json                 # Complete PostgreSQL Seed Dump (934 Incidents, 41 KBs)
-├── chroma_vector_dump.json           # ChromaDB Vector Store Metadata Dump
-├── import_repo_data_dump.py          # 1-Click Environment Restoration Script
+├── database_dump.sql                 # Complete PostgreSQL Clean SQL Dump (947 Incidents, 42 KBs)
 ├── .env.example                      # Environment Variable Template
 ├── package.json                      # Workspace Root Config
 └── README.md                         # Architecture & Technical Documentation
@@ -270,3 +292,4 @@ ITSM-Agentic/
 ## 📄 License
 
 Distributed under the **MIT License**. Standard enterprise ITSM automation system.
+
