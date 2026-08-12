@@ -242,10 +242,38 @@ export class AgentGovernanceService implements OnModuleInit {
       data: { status: 'APPROVED', details }
     });
 
+    // Auto-promote approved AI-synthesized SOPs to KnowledgeArticle table so they are indexed into RAG
+    if (details.synthesizerOutput || (details.proposedCommands && details.proposedCommands.length > 0)) {
+      const title = details.kbTitle || details.synthesizerOutput?.kbTitle || `Master SOP: Approved Remediation Runbook for ${details.incidentTitle || record.summary}`;
+      const steps = details.proposedCommands || details.synthesizerOutput?.resolutionSteps || [];
+      const kbNumber = `KB${Math.floor(1000000 + Math.random() * 9000000)}`;
+      
+      try {
+        await this.prisma.knowledgeArticle.create({
+          data: {
+            id: kbNumber,
+            number: kbNumber,
+            tenantId: 'tenant_acme_01',
+            title: title,
+            category: details.department || 'Automated Remediation',
+            content: `# ${title}\n\n## Approved Remediation Steps\n` + steps.map((s: string) => `- \`${s}\``).join('\n'),
+            summary: details.summary || details.aiReasoning || title,
+            author: `🛡️ HITL Operator (${approverName})`,
+            resolutionSteps: steps,
+            rating: 5.0
+          }
+        });
+        console.log(`[GovernanceService] 📚 Auto-saved newly approved Master SOP ${kbNumber}: "${title}"`);
+      } catch (e: any) {
+        console.warn(`[GovernanceService] Auto-save KnowledgeArticle note: ${e.message}`);
+      }
+    }
+
     await this.updateIncidentToInProgress(record.entityId, approverName);
 
     return { approval: this.mapApprovalToDTO(updated), historyEntry: null as any };
   }
+
 
   async rejectRequest(id: string, rejectionReason: string, rejectorName: string = 'System Admin') {
     const cleanId = id.toUpperCase();

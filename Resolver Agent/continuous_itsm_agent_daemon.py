@@ -1641,8 +1641,14 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                          (cand_number == "KB0000042" and _db2_delete_intent) or \
                          (is_db2_intent and "db2" in kb_text and cand_number in ["KB0000025", "KB0000042"])
 
+            is_external_access_intent = any(k in q_low for k in ["external access", "external world", "cannot access from external", "firewall", "ingress", "nodeport external", "outside world"])
             is_k8s_intent = any(k in q_low for k in ["argocd", "kubernetes", "k8s", "kubectl", "pod", "namespace", "deployment"])
-            is_k8s_sop = cand_number in ["KB0000039", "KB0000026", "KB0000040"] or any(k in kb_text for k in ["argocd", "kubernetes", "kubelet"])
+            
+            # If external access intent, target KB0000046 specifically and suppress generic pod restart SOPs
+            is_k8s_external_sop = cand_number == "KB0000046" or "external firewall" in kb_text
+            is_k8s_internal_sop = cand_number in ["KB0000039", "KB0000026", "KB0000040"] and not is_external_access_intent
+
+            is_k8s_sop = (is_external_access_intent and is_k8s_external_sop) or (not is_external_access_intent and is_k8s_internal_sop)
 
             is_jenkins_intent = is_credential_task or any(k in q_low for k in ["jenkins", "initialadminpassword"])
             is_jenkins_sop = cand_number == "KB0000041" or "jenkins" in kb_text
@@ -1660,6 +1666,7 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                 if cand_score >= 0.25:
                     logger.info(f"✨ System-wide Intent Booster: Boosted Master SOP [{cand_number}] '{cand_art.get('title', '')}' score from {cand_score:.4f} to 0.8800 (Domain Intent Match).")
                     cand_score = 0.8800
+
 
             if cand_score < RAG_SIMILARITY_THRESHOLD:
                 logger.info(f"   ↳ Inspected next best candidate [{cand_number}] '{cand_art.get('title', '')}' — Score {cand_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold.")
