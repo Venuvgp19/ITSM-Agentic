@@ -1,4 +1,5 @@
 import os
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
 import sys
 import time
 import json
@@ -236,6 +237,24 @@ CI_CREDENTIALS = {
         "password": "root123",
         "os": "Unix / Linux"
     },
+    "worker2OL": {
+        "ip": "192.168.56.11",
+        "user": "root",
+        "password": "root123",
+        "os": "Unix / Linux"
+    },
+    "Worker 2": {
+        "ip": "192.168.56.11",
+        "user": "root",
+        "password": "root123",
+        "os": "Unix / Linux"
+    },
+    "192.168.56.11": {
+        "ip": "192.168.56.11",
+        "user": "root",
+        "password": "root123",
+        "os": "Unix / Linux"
+    },
     "control plane": {
         "ip": "192.168.100.101",
         "user": "root",
@@ -452,7 +471,10 @@ class ChromaVectorDB:
         self.collection = None
         if CHROMADB_AVAILABLE:
             try:
-                self.client = chromadb.PersistentClient(path=self.db_dir)
+                self.client = chromadb.PersistentClient(
+                    path=self.db_dir,
+                    settings=chromadb.config.Settings(anonymized_telemetry=False)
+                )
                 self.collection = self.client.get_or_create_collection(
                     name="itsm_knowledge_articles",
                     metadata={"hnsw:space": "cosine"}
@@ -1479,17 +1501,25 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
     raw_query = f"{short_desc} {desc}"
     query_text = raw_query
     
-    # Abstract query into clean L2 Operational Intent for vector search matching
+    # Abstract query into clean L2 Operational Intent using short_desc to prevent matching raw description log output warnings
     norm_query = raw_query
-    q_low = raw_query.lower()
-    if any(k in q_low for k in ["delete", "remove", "offboard", "userdel", "deprovision", "deactivate", "delete all"]):
+    s_low = short_desc.lower()
+
+    # Helper to check for exact word boundary match for short terms like "id"
+    def has_exact_word(word, text):
+        return any(w.strip(".,;:!?()[]{}'\"") == word for w in text.split())
+
+    has_user = any(k in s_low for k in ["user", "useradd", "account", "pamsudo", "sudo", "privilege", "permission"])
+    has_id = has_exact_word("id", s_low)
+
+    if any(k in s_low for k in ["delete", "remove", "offboard", "userdel", "deprovision", "deactivate", "delete all"]):
         norm_query = "Master SOP: Bulk Linux User Account Deprovisioning & Deletion"
-    elif any(k in q_low for k in ["user", "id", "account", "pamsudo", "sudo", "privilege", "permission", "useradd"]):
-        if any(k in q_low for k in ["su -", "systemctl", "sudoers", "drop-in", "execute"]):
+    elif has_user or has_id:
+        if any(k in s_low for k in ["su -", "systemctl", "sudoers", "drop-in", "execute"]):
             norm_query = "Provision Linux user account with restricted sudoers drop-in permission for systemctl command execution"
         else:
             norm_query = "Linux User Account Provisioning & Passwordless Sudo Access Runbook"
-    elif any(k in q_low for k in ["nexacore", "port 8080", "502", "bad gateway", "connection refused"]):
+    elif any(k in s_low for k in ["nexacore", "port 8080", "502", "bad gateway", "connection refused"]):
         norm_query = "SOP: NexaCore Port 8080 Firewalld Unblock and Subprocess Restart"
 
     try:
@@ -2704,7 +2734,11 @@ Respond ONLY in valid JSON format:
 
     # HARD PHYSICAL PROBE GUARD: Only physically test HTTP endpoint for Application Outage / Service Restart tickets!
     is_user_ticket = any(k in short_desc.lower() for k in ["user", "id", "account", "pamsudo", "sudo", "privilege", "permission", "useradd", "provision"])
-    is_app_outage = any(k in short_desc.lower() for k in ["down", "unreachable", "crash", "502", "bad gateway", "service down", "outage", "8080"])
+    # Avoid substring matching for "download" triggering "down"
+    is_app_outage = any(
+        (k in short_desc.lower() and (k != "down" or "download" not in short_desc.lower()))
+        for k in ["down", "unreachable", "crash", "502", "bad gateway", "service down", "outage", "8080"]
+    )
 
     if is_app_outage and not is_user_ticket:
         time.sleep(3)  # Give background process time to complete socket bind
