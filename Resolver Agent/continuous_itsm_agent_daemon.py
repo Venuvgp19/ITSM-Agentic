@@ -82,10 +82,10 @@ GENAI_API_KEY = "sk-RRoxANx2dKdNE3N5j0mbxQ"
 NVIDIA_API_KEY = "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"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 # Specialized Agent Model Mapping
-ROUTER_MODEL = "azure_ai/genailab-maas-Llama-3.3-70B-Instruct"
-RESOLVER_MODEL = "azure_ai/genailab-maas-Llama-3.3-70B-Instruct"
-SYNTHESIZER_MODEL = "azure_ai/genailab-maas-DeepSeek-R1"
-GOVERNANCE_MODEL = "genailab-maas-gpt-4o"
+ROUTER_MODEL = "meta/llama-3.3-70b-instruct"
+RESOLVER_MODEL = "meta/llama-3.3-70b-instruct"
+SYNTHESIZER_MODEL = "meta/llama-3.3-70b-instruct"
+GOVERNANCE_MODEL = "meta/llama-3.3-70b-instruct"
 
 RAG_SIMILARITY_THRESHOLD = 0.65
 
@@ -132,10 +132,26 @@ TOKEN_USAGE_SESSION = {
 
 # Tracks which incident is currently being processed (set by solve_in_progress_incident)
 CURRENT_INCIDENT_TOKEN_SNAPSHOT = {}
+FALLBACK_MODELS = [
+    "meta/llama-3.3-70b-instruct",
+    "nvidia/llama-3.1-nemotron-70b-instruct",
+    "nvidia/nemotron-3-ultra-550b-a55b",
+    "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
+    "genailab-maas-gpt-4o"
+]
 
-def invoke_llm_with_fallback(messages, response_format=None, call_label="LLM Call", tools=None, return_message=False):
+def get_current_model_config():
+    try:
+        res = requests.get(f"{ITSM_BASE_URL}/agent/config", timeout=2)
+        if res.status_code in [200, 201]:
+            return res.json()
+    except Exception:
+        pass
+    return None
+
+def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_format=None, tools=None, return_message=False):
     """
-    Invokes LLM with automatic fallback to NVIDIA Nemotron 3 Ultra or high-performing MaaS models.
+    Invokes LLM with automatic fallback to high-performing NVIDIA NIM or TCS GenAI Lab models.
     Captures and accumulates token usage from every API response.
     """
     config = get_current_model_config()
@@ -151,8 +167,10 @@ def invoke_llm_with_fallback(messages, response_format=None, call_label="LLM Cal
 
     for model in fallback_models:
         try:
-            m_key = NVIDIA_API_KEY if ("nvidia" in model.lower() or "nemotron" in model.lower()) else default_api_key
-            m_url = NVIDIA_BASE_URL if ("nvidia" in model.lower() or "nemotron" in model.lower()) else default_base_url
+            # Route NVIDIA NIM models vs Corporate GenAI Lab models accurately
+            is_nvidia_nim = any(kw in model.lower() for kw in ["nvidia/", "nemotron", "meta/", "mistral", "deepseek"])
+            m_key = NVIDIA_API_KEY if is_nvidia_nim else default_api_key
+            m_url = NVIDIA_BASE_URL if is_nvidia_nim else default_base_url
 
             client = OpenAI(
                 api_key=m_key,
@@ -160,12 +178,15 @@ def invoke_llm_with_fallback(messages, response_format=None, call_label="LLM Cal
                 http_client=custom_httpx_client
             )
             kwargs = {"model": model, "messages": messages}
-            if response_format and "nvidia" not in model.lower():
+            if response_format and not is_nvidia_nim:
                 kwargs["response_format"] = response_format
             if tools:
                 kwargs["tools"] = tools
-            if "nvidia" in model.lower() or "nemotron" in model.lower():
-                kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 16384}
+            
+            # Disable huge reasoning budgets that cause 60s timeouts on Nemotron 550b
+            if "nemotron-3-ultra" in model.lower():
+                kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+            
             res = client.chat.completions.create(**kwargs)
 
             # ── Token tracking ────────────────────────────────────────────

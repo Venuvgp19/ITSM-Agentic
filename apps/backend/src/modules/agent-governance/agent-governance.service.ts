@@ -516,15 +516,16 @@ export class AgentGovernanceService implements OnModuleInit {
     environment: 'nvidia',
     baseUrl: 'https://integrate.api.nvidia.com/v1',
     apiKey: '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',
-    routerModel: 'nvidia/nemotron-3-ultra-550b-a55b',
-    resolverModel: 'nvidia/nemotron-3-ultra-550b-a55b',
-    synthesizerModel: 'azure_ai/genailab-maas-Llama-4-Maverick-17B-128E-Instruct-FP8',
-    governanceModel: 'genailab-maas-gpt-4o',
+    routerModel: 'meta/llama-3.3-70b-instruct',
+    resolverModel: 'meta/llama-3.3-70b-instruct',
+    synthesizerModel: 'meta/llama-3.3-70b-instruct',
+    governanceModel: 'meta/llama-3.3-70b-instruct',
     fallbackModels: [
-      'azure/genailab-maas-gpt-4.1-mini',
-      'azure_ai/genailab-maas-Llama-4-Maverick-17B-128E-Instruct-FP8',
-      'gemini-2.5-flash',
-      'nvidia/nemotron-3-ultra-550b-a55b'
+      'meta/llama-3.3-70b-instruct',
+      'nvidia/llama-3.1-nemotron-70b-instruct',
+      'nvidia/nemotron-3-ultra-550b-a55b',
+      'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
+      'genailab-maas-gpt-4o'
     ]
   };
 
