@@ -681,4 +681,69 @@ export class AgentGovernanceService implements OnModuleInit {
       steps: meta.steps || []
     };
   }
+
+  async cancelExecution(id: string, reason?: string) {
+    try {
+      let record = await this.prisma.agentHistory.findFirst({
+        where: {
+          type: 'TIMELINE',
+          OR: [
+            { id: id },
+            { incidentId: id }
+          ]
+        }
+      });
+
+      if (record) {
+        const meta = (record.metadata as any) || {};
+        meta.status = 'FAILED';
+        meta.endTime = new Date().toISOString();
+        meta.steps = meta.steps || [];
+        meta.steps.push({
+          id: `step-cancel-${Date.now()}`,
+          name: '🛑 Manual Cycle Abort',
+          status: 'FAILED',
+          timestamp: new Date().toLocaleTimeString(),
+          details: reason || 'Action cycle manually stopped by Human Operator via Control Tower Dashboard.'
+        });
+
+        await this.prisma.agentHistory.update({
+          where: { id: record.id },
+          data: { metadata: meta }
+        });
+      }
+
+      const inc = await this.prisma.incident.findFirst({
+        where: {
+          OR: [
+            { id: id },
+            { number: id }
+          ]
+        }
+      });
+
+      if (inc) {
+        await this.prisma.incident.update({
+          where: { id: inc.id },
+          data: {
+            state: 'ON_HOLD'
+          }
+        });
+      }
+
+
+      return {
+        success: true,
+        message: `Execution cycle [${id}] stopped successfully.`,
+        timestamp: new Date().toISOString()
+      };
+    } catch (e: any) {
+      return {
+        success: false,
+        message: `Failed to cancel execution cycle: ${e.message}`,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
 }
+

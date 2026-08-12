@@ -130,4 +130,12 @@ export class AgentGovernanceController {
   clearApprovals() {
     return this.governanceService.clearAllApprovals();
   }
+
+  @Public()
+  @Post('cancel-execution')
+  @ApiOperation({ summary: 'Cancel/Stop running agent execution cycle for an incident' })
+  cancelExecution(@Body() body: { incidentId: string; reason?: string }) {
+    return this.governanceService.cancelExecution(body.incidentId, body.reason);
+  }
 }
+

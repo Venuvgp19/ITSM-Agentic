@@ -13,7 +13,9 @@ import {
   ChevronUp,
   Activity,
   Layers,
-  ArrowRight
+  ArrowRight,
+  AlertTriangle,
+  XCircle
 } from 'lucide-react';
 
 interface TimelineStep {
@@ -39,6 +41,7 @@ export function AgentExecutionTimelineView() {
   const [executions, setExecutions] = useState<AgentExecution[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
   const [autoPoll, setAutoPoll] = useState<boolean>(true);
 
@@ -56,6 +59,30 @@ export function AgentExecutionTimelineView() {
       console.error('Failed to fetch agent execution timeline:', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCancelExecution = async (id: string, incidentNumber: string) => {
+    if (!window.confirm(`Are you sure you want to stop and cancel the running action cycle for ticket [${incidentNumber}]?`)) {
+      return;
+    }
+    setCancellingId(id);
+    try {
+      await fetch('http://localhost:4000/api/v1/agent/cancel-execution', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          incidentId: id,
+          reason: 'Human Operator manually stopped active action cycle via Control Tower Dashboard.'
+        })
+      });
+      // Force unlock agent queues
+      await fetch('http://localhost:4000/api/v1/agent/reset-locks', { method: 'POST' });
+      await fetchTimeline();
+    } catch (e) {
+      console.error('Failed to cancel execution:', e);
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -90,7 +117,7 @@ export function AgentExecutionTimelineView() {
       case 'FAILED':
         return (
           <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black tracking-wide uppercase bg-rose-950/80 text-rose-400 border border-rose-800/40">
-            <AlertCircle className="w-3 h-3" /> FAILED
+            <AlertCircle className="w-3 h-3" /> STOPPED / FAILED
           </span>
         );
       case 'PENDING_APPROVAL':
@@ -151,13 +178,13 @@ export function AgentExecutionTimelineView() {
           </div>
           <div>
             <h2 className="text-lg font-black text-slate-100 uppercase tracking-wide flex items-center gap-2">
-              ⚡ AGENT EXECUTION TIMELINE
+              ⚡ AGENT EXECUTION TIMELINE & CONTROL
               <span className="text-[10px] font-black bg-emerald-950 text-emerald-400 border border-emerald-700/40 px-2 py-0.5 rounded uppercase tracking-wider">
                 Real-Time Telemetry
               </span>
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Monitor active resolving agent subprocess cycles, SSH terminals, and health verification outputs.
+              Monitor active resolving agent subprocess cycles, SSH terminals, and stop/cancel running action cycles on demand.
             </p>
           </div>
         </div>
@@ -203,10 +230,10 @@ export function AgentExecutionTimelineView() {
           ) : (
             <div className="space-y-3 overflow-y-auto pr-1 flex-1">
               {executions.map((ex) => (
-                <button
+                <div
                   key={ex.id}
                   onClick={() => setSelectedId(ex.id)}
-                  className={`w-full text-left p-4 rounded-2xl border transition-all duration-200 flex flex-col gap-2.5 active:scale-[0.98] ${
+                  className={`w-full text-left p-4 rounded-2xl border transition-all duration-200 flex flex-col gap-2.5 cursor-pointer ${
                     selectedId === ex.id
                       ? 'bg-slate-900 border-cyan-500/50 shadow-md shadow-cyan-950/20'
                       : 'bg-slate-950/50 border-slate-800/60 hover:bg-slate-900/40 hover:border-slate-800'
@@ -230,11 +257,25 @@ export function AgentExecutionTimelineView() {
                       <Clock className="w-3 h-3" />
                       {new Date(ex.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                    <span className="text-cyan-500 font-black flex items-center gap-0.5 hover:translate-x-0.5 transition-transform">
-                      VIEW PROGRESS <ArrowRight className="w-3 h-3" />
-                    </span>
+                    {(ex.status === 'RUNNING' || ex.status === 'PENDING_APPROVAL') ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCancelExecution(ex.id, ex.incidentNumber);
+                        }}
+                        disabled={cancellingId === ex.id}
+                        className="px-2 py-0.5 rounded bg-rose-950 text-rose-400 hover:bg-rose-900 border border-rose-800/60 font-black text-[9px] flex items-center gap-1 transition"
+                      >
+                        <AlertTriangle className="w-2.5 h-2.5 animate-pulse" />
+                        STOP ACTION
+                      </button>
+                    ) : (
+                      <span className="text-cyan-500 font-black flex items-center gap-0.5 hover:translate-x-0.5 transition-transform">
+                        VIEW PROGRESS <ArrowRight className="w-3 h-3" />
+                      </span>
+                    )}
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
@@ -244,8 +285,8 @@ export function AgentExecutionTimelineView() {
         <div className="bg-[#111827]/40 border border-slate-800/60 rounded-3xl p-5 lg:col-span-2 flex flex-col min-h-[500px]">
           {selectedRun ? (
             <div className="space-y-6 flex-1 flex flex-col">
-              {/* Target Runner Stats */}
-              <div className="bg-[#0b0f19]/80 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row justify-between gap-4">
+              {/* Target Runner Stats Header with Stop Option */}
+              <div className="bg-[#0b0f19]/80 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-lg">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-black text-cyan-400 uppercase tracking-wider">{selectedRun.incidentNumber}</span>
@@ -260,8 +301,21 @@ export function AgentExecutionTimelineView() {
                     )}
                   </div>
                 </div>
-                <div className="shrink-0 self-start md:self-center">
+                
+                <div className="flex items-center gap-3 shrink-0">
                   {getStatusBadge(selectedRun.status)}
+                  
+                  {(selectedRun.status === 'RUNNING' || selectedRun.status === 'PENDING_APPROVAL') && (
+                    <button
+                      onClick={() => handleCancelExecution(selectedRun.id, selectedRun.incidentNumber)}
+                      disabled={cancellingId === selectedRun.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800/80 shadow-md shadow-rose-950/50 active:scale-95 transition disabled:opacity-50"
+                      title="Stop and abort this active running action cycle immediately"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+                      {cancellingId === selectedRun.id ? 'ABORTING...' : 'STOP RUNNING ACTION'}
+                    </button>
+                  )}
                 </div>
               </div>
 
