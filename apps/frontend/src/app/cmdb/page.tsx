@@ -10,6 +10,7 @@ const initialCis = [
   { id: 'CI004', name: 'api-gateway-envoy-v2', ciClass: 'API Gateway', status: 'OPERATIONAL', ip: '10.240.2.14', env: 'Production', category: 'Middleware' },
   { id: 'CI005', name: 'control plane', ciClass: 'Virtual Machine', status: 'OPERATIONAL', ip: '192.168.100.101', env: 'Production', category: 'Cloud Infrastructure' },
   { id: 'CI006', name: 'WorkerNode1HL', ciClass: 'Worker Node', status: 'OPERATIONAL', ip: '192.168.100.102', env: 'Production', category: 'Cloud Infrastructure' },
+  { id: 'CI007', name: 'worker2OL', ciClass: 'Worker Node', status: 'OPERATIONAL', ip: '192.168.56.11', env: 'Production', category: 'Cloud Infrastructure' },
 ];
 
 export default function CmdbPage() {
