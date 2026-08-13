@@ -543,19 +543,20 @@ export class AgentGovernanceService implements OnModuleInit {
   private modelConfig: any = {
     environment: 'nvidia',
     baseUrl: 'https://integrate.api.nvidia.com/v1',
-    apiKey: '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',
-    routerModel: 'meta/llama-3.3-70b-instruct',
-    resolverModel: 'meta/llama-3.3-70b-instruct',
-    synthesizerModel: 'meta/llama-3.3-70b-instruct',
-    governanceModel: 'meta/llama-3.3-70b-instruct',
+    apiKey: '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',
+    routerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    resolverModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    synthesizerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    governanceModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
     fallbackModels: [
+      'nvidia/nemotron-3.5-lightning-30b-a3b',
       'meta/llama-3.3-70b-instruct',
       'nvidia/llama-3.1-nemotron-70b-instruct',
-      'nvidia/nemotron-3-ultra-550b-a55b',
-      'azure_ai/genailab-maas-Llama-3.3-70B-Instruct',
-      'genailab-maas-gpt-4o'
+      'mistralai/mistral-7b-instruct-v0.3',
+      'deepseek-ai/deepseek-r1'
     ]
   };
+
 
   async getModelConfig(): Promise<any> {
     try {

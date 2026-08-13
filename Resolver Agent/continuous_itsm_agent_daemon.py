@@ -80,13 +80,13 @@ active_processing_incidents = set()
 ITSM_BASE_URL = "http://localhost:4000/api/v1"
 GENAI_LAB_URL = "https://genailab.tcs.in/v1"
 GENAI_API_KEY = "sk-RRoxANx2dKdNE3N5j0mbxQ"
-NVIDIA_API_KEY = "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"
+NVIDIA_API_KEY = "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"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 # Specialized Agent Model Mapping
-ROUTER_MODEL = "meta/llama-3.3-70b-instruct"
-RESOLVER_MODEL = "meta/llama-3.3-70b-instruct"
-SYNTHESIZER_MODEL = "meta/llama-3.3-70b-instruct"
-GOVERNANCE_MODEL = "meta/llama-3.3-70b-instruct"
+ROUTER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
+RESOLVER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
+SYNTHESIZER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
+GOVERNANCE_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
 RAG_SIMILARITY_THRESHOLD = 0.65
 
@@ -103,11 +103,11 @@ INTENT_BOOST_MIN_SCORE = 0.25    # minimum pre-boost cosine score for booster to
 MODEL_NAME = ROUTER_MODEL
 POLL_INTERVAL_SECONDS = 15
 FALLBACK_MODELS = [
-    "nvidia/nemotron-3-ultra-550b-a55b",
-    "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
-    "azure_ai/genailab-maas-DeepSeek-R1",
-    "genailab-maas-gpt-4o",
-    "gemini-2.5-pro"
+    "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "meta/llama-3.3-70b-instruct",
+    "nvidia/llama-3.1-nemotron-70b-instruct",
+    "mistralai/mistral-7b-instruct-v0.3",
+    "deepseek-ai/deepseek-r1"
 ]
 
 def get_current_model_config():
@@ -131,24 +131,6 @@ TOKEN_USAGE_SESSION = {
     "total_tokens": 0,
 }
 
-# Tracks which incident is currently being processed (set by solve_in_progress_incident)
-FALLBACK_MODELS = [
-    "meta/llama-3.3-70b-instruct",
-    "nvidia/llama-3.1-nemotron-70b-instruct",
-    "mistralai/mistral-7b-instruct-v0.3",
-    "deepseek-ai/deepseek-r1",
-    "nvidia/nemotron-3-ultra-550b-a55b"
-]
-
-def get_current_model_config():
-    try:
-        res = requests.get(f"{ITSM_BASE_URL}/agent/config", timeout=2)
-        if res.status_code in [200, 201]:
-            return res.json()
-    except Exception:
-        pass
-    return None
-
 def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_format=None, tools=None, return_message=False):
     """
     Invokes LLM with automatic retry (3x) per model and fallback across high-performing NVIDIA NIM & GenAI models.
@@ -166,7 +148,7 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
         custom_fallbacks = config.get("fallbackModels")
         if custom_fallbacks:
             # Prepend high-performing NVIDIA NIM models to custom fallbacks
-            fallback_models = list(dict.fromkeys(["meta/llama-3.3-70b-instruct", "nvidia/llama-3.1-nemotron-70b-instruct"] + custom_fallbacks))
+            fallback_models = list(dict.fromkeys(["nvidia/nemotron-3.5-lightning-30b-a3b", "meta/llama-3.3-70b-instruct"] + custom_fallbacks))
 
     for model in fallback_models:
         # Retry up to 3 times per model for transient network glitches
@@ -181,7 +163,7 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                     api_key=m_key,
                     base_url=m_url,
                     http_client=custom_httpx_client,
-                    timeout=25.0
+                    timeout=30.0
                 )
                 kwargs = {"model": model, "messages": messages}
                 if response_format and not is_nvidia_nim:
@@ -189,11 +171,17 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                 if tools:
                     kwargs["tools"] = tools
                 
-                # Disable huge reasoning budgets that cause 60s timeouts on Nemotron 550b
-                if "nemotron-3-ultra" in model.lower():
+                # Configure reasoning parameters for NVIDIA Nemotron 3.5 Lightning
+                if "nemotron-3.5-lightning" in model.lower():
+                    kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 16384}
+                    kwargs["temperature"] = 1.0
+                    kwargs["top_p"] = 0.95
+                    kwargs["max_tokens"] = 16384
+                elif "nemotron-3-ultra" in model.lower():
                     kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
                 
                 res = client.chat.completions.create(**kwargs)
+
 
                 # ── Token tracking ────────────────────────────────────────────
                 usage = getattr(res, "usage", None)

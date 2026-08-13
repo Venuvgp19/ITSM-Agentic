@@ -172,9 +172,9 @@ Output your analysis in strict JSON format with keys:
           const errText = await response.text();
           this.logger.warn(`${provider} API HTTP ${response.status}: ${errText}. Retrying with fallback model...`);
           if (attempt === 1) {
-            const nvidiaModel = 'nvidia/nemotron-3-ultra-550b-a55b';
+            const nvidiaModel = 'nvidia/nemotron-3.5-lightning-30b-a3b';
             const nvidiaBaseUrl = 'https://integrate.api.nvidia.com/v1';
-            const nvidiaApiKey = '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';
+            const nvidiaApiKey = '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';
             try {
               const headers: Record<string, string> = {
                 'Content-Type': 'application/json',
@@ -192,11 +192,17 @@ Output your analysis in strict JSON format with keys:
                     },
                     { role: 'user', content: prompt },
                   ],
-                  temperature: 0.2,
-                  max_tokens: 1024,
+                  temperature: 1.0,
+                  top_p: 0.95,
+                  max_tokens: 16384,
+                  extra_body: {
+                    chat_template_kwargs: { enable_thinking: true },
+                    reasoning_budget: 16384
+                  }
                 }),
                 signal: AbortSignal.timeout(60000),
               });
+
               if (nvidiaResponse.ok) {
                 const data: any = await nvidiaResponse.json();
                 const rawContent = data.choices?.[0]?.message?.content || '';
