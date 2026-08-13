@@ -18,14 +18,17 @@ export function ModelConfigView() {
   const [config, setConfig] = useState<ModelConfig>({
     environment: 'nvidia',
     baseUrl: 'https://integrate.api.nvidia.com/v1',
-    apiKey: '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',
-    routerModel: 'meta/llama-3.1-70b-instruct',
-    resolverModel: 'meta/llama-3.1-70b-instruct',
-    synthesizerModel: 'meta/llama-3.1-70b-instruct',
-    governanceModel: 'meta/llama-3.1-70b-instruct',
+    apiKey: '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',
+    routerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    resolverModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    synthesizerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    governanceModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
     fallbackModels: [
-      'meta/llama-3.1-70b-instruct',
-      'meta/llama-3.1-8b-instruct'
+      'nvidia/nemotron-3.5-lightning-30b-a3b',
+      'meta/llama-3.3-70b-instruct',
+      'nvidia/llama-3.1-nemotron-70b-instruct',
+      'mistralai/mistral-7b-instruct-v0.3',
+      'deepseek-ai/deepseek-r1'
     ]
   });
 
@@ -35,31 +38,34 @@ export function ModelConfigView() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const availableModels = [
-    { value: 'meta/llama-3.1-70b-instruct', label: 'Meta Llama-3.1 70B Instruct (NVIDIA API - Active & Verified)' },
-    { value: 'meta/llama-3.1-8b-instruct', label: 'Meta Llama-3.1 8B Instruct (NVIDIA API - Fast Execution)' },
+    { value: 'nvidia/nemotron-3.5-lightning-30b-a3b', label: 'NVIDIA Nemotron 3.5 Lightning 30B (NVIDIA NIM - Active & Thinking Enabled)' },
+    { value: 'meta/llama-3.3-70b-instruct', label: 'Meta Llama-3.3 70B Instruct (NVIDIA NIM - Active & Verified)' },
+    { value: 'nvidia/llama-3.1-nemotron-70b-instruct', label: 'NVIDIA Llama 3.1 Nemotron 70B Instruct' },
+    { value: 'mistralai/mistral-7b-instruct-v0.3', label: 'Mistral 7B Instruct v0.3' },
+    { value: 'deepseek-ai/deepseek-r1', label: 'DeepSeek R1 (NVIDIA NIM)' },
     { value: 'genailab-maas-gpt-4o', label: 'OpenAI GPT-4o (GenAI Lab)' },
-    { value: 'gemini-2.5-pro', label: 'Google Gemini 2.5 Pro' },
-    { value: 'gemini-2.5-flash', label: 'Google Gemini 2.5 Flash' }
+    { value: 'gemini-2.5-pro', label: 'Google Gemini 2.5 Pro' }
   ];
 
   const presets = {
     nvidia: {
       environment: 'nvidia' as const,
       baseUrl: 'https://integrate.api.nvidia.com/v1',
-      apiKey: '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',
-      routerModel: 'meta/llama-3.1-70b-instruct',
-      resolverModel: 'meta/llama-3.1-70b-instruct',
-      synthesizerModel: 'meta/llama-3.1-70b-instruct',
-      governanceModel: 'meta/llama-3.1-70b-instruct',
+      apiKey: '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',
+      routerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      resolverModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      synthesizerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      governanceModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
       fallbackModels: [
-        'meta/llama-3.1-70b-instruct',
-        'meta/llama-3.1-8b-instruct'
+        'nvidia/nemotron-3.5-lightning-30b-a3b',
+        'meta/llama-3.3-70b-instruct',
+        'nvidia/llama-3.1-nemotron-70b-instruct'
       ]
     },
     genai_lab: {
       environment: 'genai_lab' as const,
       baseUrl: 'https://genailab.tcs.in/v1',
-      apiKey: 'sk-i2uZFN4LB9XrmFr8hMKJag',
+      apiKey: 'sk-RRoxANx2dKdNE3N5j0mbxQ',
       routerModel: 'genailab-maas-gpt-4o',
       resolverModel: 'genailab-maas-gpt-4o',
       synthesizerModel: 'genailab-maas-gpt-4o',
@@ -72,17 +78,18 @@ export function ModelConfigView() {
     production_azure: {
       environment: 'production_azure' as const,
       baseUrl: 'https://integrate.api.nvidia.com/v1',
-      apiKey: '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',
-      routerModel: 'meta/llama-3.1-70b-instruct',
-      resolverModel: 'meta/llama-3.1-70b-instruct',
-      synthesizerModel: 'meta/llama-3.1-70b-instruct',
-      governanceModel: 'meta/llama-3.1-70b-instruct',
+      apiKey: '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',
+      routerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      resolverModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      synthesizerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      governanceModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
       fallbackModels: [
-        'meta/llama-3.1-70b-instruct',
-        'meta/llama-3.1-8b-instruct'
+        'nvidia/nemotron-3.5-lightning-30b-a3b',
+        'meta/llama-3.3-70b-instruct'
       ]
     }
   };
+
 
   const fetchConfig = async () => {
     setLoading(true);
