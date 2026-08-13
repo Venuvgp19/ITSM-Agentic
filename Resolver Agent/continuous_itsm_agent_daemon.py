@@ -1008,137 +1008,129 @@ def save_new_kb_article_to_storage(new_article_data):
 # ----------------------------------------------------
 # SSH Engine
 # ----------------------------------------------------
-def execute_ssh_sop(ip, user, password, commands):
-    import re
-    logger.info(f"Connecting to host {ip} via SSH as user '{user}'...")
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+def strip_ssh_wrapper(cmd_raw, target_ip=""):
+    cmd_raw = str(cmd_raw).strip()
+    if not cmd_raw:
+        return ""
     
-    execution_log = ""
-    connected = False
-    retries = 3
-    for attempt in range(retries):
+    ssh_quoted = r"^ssh\s+(?:-[a-zA-Z0-9\=\-]+\s+)*(?:[a-zA-Z0-9\-\_]+@)?[0-9a-zA-Z\.\-_]+\s+['\"](.*?)['\"]$"
+    match_quoted = re.match(ssh_quoted, cmd_raw, re.DOTALL)
+    ssh_unquoted = r"^ssh\s+(?:-[a-zA-Z0-9\=\-]+\s+)*(?:[a-zA-Z0-9\-\_]+@)?[0-9a-zA-Z\.\-_]+\s+(.+)$"
+    match_unquoted = re.match(ssh_unquoted, cmd_raw)
+
+    if match_quoted:
+        cmd_to_run = match_quoted.group(1).strip()
+    elif match_unquoted and not re.match(r"^ssh\s+[a-zA-Z0-9\-\_]+@[0-9a-zA-Z\.\-_]+$", cmd_raw, re.IGNORECASE):
+        cmd_to_run = match_unquoted.group(1).strip()
+    elif re.match(r"^ssh\s+.*$", cmd_raw, re.IGNORECASE) and not any(c in cmd_raw for c in ['"', "'", " "]):
+        return ""
+    else:
+        cmd_to_run = cmd_raw
+
+    if not cmd_to_run or cmd_to_run.lower() in [f"ssh root@{target_ip}", "ssh root@192.168.100.101"]:
+        return ""
+        
+    return cmd_to_run
+
+
+class PersistentSSHSession:
+    """
+    Holds a single, persistent SSH connection for the entire duration of a ReAct Loop or SOP execution.
+    Eliminates SSH reconnect overhead across multiple ReAct turns.
+    """
+    def __init__(self, ip, user, password, timeout=10):
+        self.ip = ip
+        self.user = user
+        self.password = password
+        self.timeout = timeout
+        self.ssh = None
+
+    def get_connection(self):
+        if self.ssh is None or not self.ssh.get_transport() or not self.ssh.get_transport().is_active():
+            logger.info(f"🔌 [SSH SESSION HOLDING] Establishing persistent SSH session to {self.ip} as user '{self.user}'...")
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            connected = False
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    client.connect(
+                        self.ip,
+                        username=self.user,
+                        password=self.password,
+                        look_for_keys=False,
+                        allow_agent=False,
+                        banner_timeout=5,
+                        timeout=self.timeout
+                    )
+                    connected = True
+                    break
+                except Exception as e:
+                    if attempt < retries - 1:
+                        logger.warning(f"SSH connection attempt {attempt+1} to {self.ip} failed: {e}. Retrying in 1 second...")
+                        time.sleep(1)
+                    else:
+                        raise Exception(f"SERVER_UNREACHABLE: SSH connection to host {self.ip} ({self.user}) failed or timed out after {retries} retries.")
+            self.ssh = client
+            logger.info(f"✅ [SSH SESSION HELD] Persistent SSH connection active for {self.ip}")
+        return self.ssh
+
+    def exec_command(self, cmd_raw):
+        cmd_to_run = strip_ssh_wrapper(cmd_raw, self.ip)
+        if not cmd_to_run:
+            logger.info(f"🔑 Executing SSH connection handshake step: '{cmd_raw}'")
+            return True, f"=== [CMD: {cmd_raw}] ===\nSTDOUT:\nConnected to {self.ip} as {self.user} via persistent SSH session.\nSTDERR:\n\n"
+
         try:
-            ssh.connect(
-                ip,
-                username=user,
-                password=password,
-                look_for_keys=False,
-                allow_agent=False,
-                banner_timeout=5,
-                timeout=3
-            )
-            connected = True
-            break
-        except Exception as e:
-            if attempt < retries - 1:
-                logger.warning(f"SSH execution connection attempt {attempt+1} to {ip} failed: {e}. Retrying in 1 second...")
-                time.sleep(1)
-            else:
-                logger.error(f"❌ SSH connection to server {ip} failed after {retries} attempts. Server is unreachable.")
-                connected = False
-
-    if not connected:
-        unreachable_msg = f"SERVER_UNREACHABLE: SSH connection to host {ip} ({user}) failed or timed out after {retries} retries."
-        return False, unreachable_msg
-        for cmd in commands:
-            cmd_raw = str(cmd).strip()
-            if not cmd_raw:
-                continue
-
-            ssh_quoted = r"^ssh\s+(?:-[a-zA-Z0-9\=\-]+\s+)*(?:[a-zA-Z0-9\-\_]+@)?[0-9a-zA-Z\.\-_]+\s+['\"](.*?)['\"]$"
-            match_quoted = re.match(ssh_quoted, cmd_raw, re.DOTALL)
-            ssh_unquoted = r"^ssh\s+(?:-[a-zA-Z0-9\=\-]+\s+)*(?:[a-zA-Z0-9\-\_]+@)?[0-9a-zA-Z\.\-_]+\s+(.+)$"
-            match_unquoted = re.match(ssh_unquoted, cmd_raw)
-
-            if match_quoted:
-                cmd_to_run = match_quoted.group(1).strip()
-            elif match_unquoted and not re.match(r"^ssh\s+[a-zA-Z0-9\-\_]+@[0-9a-zA-Z\.\-_]+$", cmd_raw, re.IGNORECASE):
-                cmd_to_run = match_unquoted.group(1).strip()
-            else:
-                cmd_to_run = cmd_raw
-
-            if not cmd_to_run or cmd_to_run.lower() in [f"ssh root@{ip}", "ssh root@192.168.100.101"]:
-                execution_log += f"=== [CMD: {cmd_raw}] ===\nSTDOUT:\nConnected to {ip} as root via SSH.\nSTDERR:\n\n"
-                continue
-
-            logger.info(f"⚡ [SIMULATED EXECUTION] Executing payload command on {ip}: '{cmd_to_run}'")
-            
-            # Generate clean stdout based on command payload
-            if "useradd" in cmd_to_run or "chage" in cmd_to_run or "passwd" in cmd_to_run:
-                stdout_sim = f"User provisioning command executed successfully on {ip}.\nUser account created with bash shell and home directory."
-            elif "mkdir" in cmd_to_run or "chmod" in cmd_to_run or "chown" in cmd_to_run:
-                stdout_sim = f"Permissions & directories updated on {ip}: OK."
-            elif "sudoers" in cmd_to_run or "visudo" in cmd_to_run:
-                stdout_sim = f"Sudoers entry validated and applied to /etc/sudoers.d/: syntax OK."
-            else:
-                stdout_sim = f"Command '{cmd_to_run}' executed successfully with return code 0."
-                
-            execution_log += f"=== [CMD: {cmd_to_run}] ===\nSTDOUT:\n{stdout_sim}\nSTDERR:\n\n"
-
-        return True, execution_log
-
-    try:
-        logger.info(f"SSH Session established on {ip}.")
-
-        for cmd in commands:
-            cmd_raw = str(cmd).strip()
-            if not cmd_raw:
-                continue
-
-            # Check if command has ssh wrapper like: ssh root@192.168.100.101 "useradd -m -s /bin/bash rohan"
-            ssh_quoted = r"^ssh\s+(?:-[a-zA-Z0-9\=\-]+\s+)*(?:[a-zA-Z0-9\-\_]+@)?[0-9a-zA-Z\.\-_]+\s+['\"](.*?)['\"]$"
-            match_quoted = re.match(ssh_quoted, cmd_raw, re.DOTALL)
-            
-            ssh_unquoted = r"^ssh\s+(?:-[a-zA-Z0-9\=\-]+\s+)*(?:[a-zA-Z0-9\-\_]+@)?[0-9a-zA-Z\.\-_]+\s+(.+)$"
-            match_unquoted = re.match(ssh_unquoted, cmd_raw)
-
-            if match_quoted:
-                cmd_to_run = match_quoted.group(1).strip()
-            elif match_unquoted and not re.match(r"^ssh\s+[a-zA-Z0-9\-\_]+@[0-9a-zA-Z\.\-_]+$", cmd_raw, re.IGNORECASE):
-                cmd_to_run = match_unquoted.group(1).strip()
-            elif re.match(r"^ssh\s+.*$", cmd_raw, re.IGNORECASE) and not any(c in cmd_raw for c in ['"', "'", " "]):
-                # Pure SSH connection step without command payload
-                logger.info(f"🔑 Executing SSH connection step: '{cmd_raw}'")
-                execution_log += f"=== [CMD: {cmd_raw}] ===\nSTDOUT:\nConnected to {ip} as root via SSH.\nSTDERR:\n\n"
-                continue
-            else:
-                cmd_to_run = cmd_raw
-
-            if not cmd_to_run or cmd_to_run.lower() in [f"ssh root@{ip}", "ssh root@192.168.100.101"]:
-                logger.info(f"🔑 Executing SSH connection step: '{cmd_raw}'")
-                execution_log += f"=== [CMD: {cmd_raw}] ===\nSTDOUT:\nConnected to {ip} as root via SSH.\nSTDERR:\n\n"
-                continue
-
-            logger.info(f"Executing SOP payload command on {ip}: '{cmd_to_run}'")
+            ssh = self.get_connection()
+            logger.info(f"⚡ [PERSISTENT SSH EXECUTION] Executing on {self.ip}: '{cmd_to_run}'")
             stdin, stdout, stderr = ssh.exec_command(cmd_to_run)
-
+            
             is_backgrounded = cmd_to_run.rstrip().endswith('&')
-
             if is_backgrounded:
                 stdout.channel.settimeout(10.0)
-                try:
-                    out = stdout.channel.recv(4096).decode('utf-8', 'ignore')
-                except Exception:
-                    out = ""
-                try:
-                    err = stderr.channel.recv(4096).decode('utf-8', 'ignore')
-                except Exception:
-                    err = ""
-                logger.info(f"Backgrounded command detected — skipping blocking read. Output: {out.strip()}")
+                try: out = stdout.channel.recv(4096).decode('utf-8', 'ignore')
+                except Exception: out = ""
+                try: err = stderr.channel.recv(4096).decode('utf-8', 'ignore')
+                except Exception: err = ""
             else:
                 stdout.channel.settimeout(120.0)
                 out = stdout.read().decode('utf-8', 'ignore')
                 err = stderr.read().decode('utf-8', 'ignore')
 
-            execution_log += f"=== [CMD: {cmd_to_run}] ===\nSTDOUT:\n{out}\nSTDERR:\n{err}\n\n"
-        
-        ssh.close()
-        return True, execution_log
-    except Exception as e:
-        err_msg = f"SSH Execution Error on {ip}: {str(e)}"
-        logger.error(err_msg)
-        return False, err_msg
+            log = f"=== [CMD: {cmd_to_run}] ===\nSTDOUT:\n{out}\nSTDERR:\n{err}\n\n"
+            return True, log
+        except Exception as e:
+            err_msg = f"SSH Execution Error on {self.ip}: {str(e)}"
+            logger.error(err_msg)
+            return False, err_msg
+
+    def close(self):
+        if self.ssh:
+            try:
+                self.ssh.close()
+                logger.info(f"🔌 [SSH SESSION CLOSED] Released persistent SSH connection for {self.ip}")
+            except Exception:
+                pass
+            self.ssh = None
+
+
+def execute_ssh_sop(ip, user, password, commands):
+    session = PersistentSSHSession(ip, user, password)
+    execution_log = ""
+    is_success = True
+    try:
+        for cmd in commands:
+            ok, out_log = session.exec_command(cmd)
+            execution_log += out_log
+            if not ok:
+                is_success = False
+                break
+        return is_success, execution_log
+    finally:
+        session.close()
+
 
 # ----------------------------------------------------
 # Log Formatting Helpers
@@ -2215,64 +2207,58 @@ def run_read_only_diagnostic_react_loop(ip, user, password, short_desc, desc, nu
         r">\s*/(?!dev/null)", r">\s*[a-zA-Z0-9_\.]"
     ]
 
-    while turn < max_turns:
-        turn += 1
-        logger.info(f"🔍 Read-Only Diagnostic ReAct Loop Turn {turn} for {number}...")
-        try:
-            msg, used_model = invoke_llm_with_fallback(
-                messages=messages,
-                tools=tools,
-                return_message=True,
-                call_label=f"Diagnostic ReAct Turn {turn}"
-            )
-            
-            if not msg:
-                break
+    session = PersistentSSHSession(ip, user, password)
+    try:
+        while turn < max_turns:
+            turn += 1
+            logger.info(f"🔍 Read-Only Diagnostic ReAct Loop Turn {turn} for {number}...")
+            try:
+                msg, used_model = invoke_llm_with_fallback(
+                    messages=messages,
+                    tools=tools,
+                    return_message=True,
+                    call_label=f"Diagnostic ReAct Turn {turn}"
+                )
                 
-            messages.append(msg)
+                if not msg:
+                    break
+                    
+                messages.append(msg)
 
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    if tc.function.name == "execute_ssh_command":
-                        try:
-                            args_dict = json.loads(tc.function.arguments)
-                            cmd_to_run = args_dict.get("command", "").strip()
-                        except:
-                            cmd_to_run = ""
-                        
-                        is_forbidden = any(re.search(pat, cmd_to_run, re.IGNORECASE) for pat in forbidden_patterns)
-                        if is_forbidden:
-                            logger.warning(f"🛡️ READ-ONLY SAFETY BLOCK: Blocked mutating command '{cmd_to_run}' during Diagnostic Loop.")
-                            output_text = f"SECURITY ERROR: Command '{cmd_to_run}' blocked by Read-Only Diagnostic Guard. Only non-destructive diagnostic commands are allowed."
-                        else:
-                            logger.info(f"🛠️ Executing Read-Only Diagnostic Command: '{cmd_to_run}'")
-                            ssh = paramiko.SSHClient()
-                            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        if tc.function.name == "execute_ssh_command":
                             try:
-                                ssh.connect(ip, username=user, password=password, timeout=10)
-                                stdin, stdout, stderr = ssh.exec_command(cmd_to_run)
-                                out = stdout.read().decode('utf-8', 'ignore')
-                                err = stderr.read().decode('utf-8', 'ignore')
-                                ssh.close()
-                                output_text = f"STDOUT:\n{out}\nSTDERR:\n{err}" if err else out
-                            except Exception as ssh_err:
-                                output_text = f"SSH Diagnostic Command Execution Failed: {ssh_err}"
+                                args_dict = json.loads(tc.function.arguments)
+                                cmd_to_run = args_dict.get("command", "").strip()
+                            except:
+                                cmd_to_run = ""
+                            
+                            is_forbidden = any(re.search(pat, cmd_to_run, re.IGNORECASE) for pat in forbidden_patterns)
+                            if is_forbidden:
+                                logger.warning(f"🛡️ READ-ONLY SAFETY BLOCK: Blocked mutating command '{cmd_to_run}' during Diagnostic Loop.")
+                                output_text = f"SECURITY ERROR: Command '{cmd_to_run}' blocked by Read-Only Diagnostic Guard. Only non-destructive diagnostic commands are allowed."
+                            else:
+                                logger.info(f"🛠️ Executing Read-Only Diagnostic Command: '{cmd_to_run}'")
+                                ok, output_text = session.exec_command(cmd_to_run)
 
-                        full_diag_log += f"\nCommand: {cmd_to_run}\nOutput:\n{output_text}\n"
+                            full_diag_log += f"\nCommand: {cmd_to_run}\nOutput:\n{output_text}\n"
 
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": output_text
-                        })
-            else:
-                summary = msg.content or ""
-                logger.info(f"✅ Read-Only Diagnostic Loop completed for {number}: {summary[:200]}...")
-                full_diag_log += f"\n=== DIAGNOSTIC SUMMARY ===\n{summary}\n"
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tc.id,
+                                "content": output_text
+                            })
+                else:
+                    summary = msg.content or ""
+                    logger.info(f"✅ Read-Only Diagnostic Loop completed for {number}: {summary[:200]}...")
+                    full_diag_log += f"\n=== DIAGNOSTIC SUMMARY ===\n{summary}\n"
+                    break
+            except Exception as e:
+                logger.error(f"Read-Only Diagnostic ReAct Loop Error: {e}")
                 break
-        except Exception as e:
-            logger.error(f"Read-Only Diagnostic ReAct Loop Error: {e}")
-            break
+    finally:
+        session.close()
 
     return full_diag_log
 
@@ -2322,60 +2308,65 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
     max_turns = 5
     turn = 0
     
-    while turn < max_turns:
-        turn += 1
-        logger.info(f"🔄 ReAct Loop Turn {turn} for {number}...")
-        
-        try:
-            msg, used_model = invoke_llm_with_fallback(
-                messages=messages, 
-                tools=tools, 
-                return_message=True, 
-                call_label=f"ReAct Loop Turn {turn}"
-            )
-            if not msg:
-                raise Exception("All fallback models failed to return a valid response.")
-            # Append the message to the conversation correctly
-            messages.append(msg)
+    session = PersistentSSHSession(ip, user, password)
+    try:
+        while turn < max_turns:
+            turn += 1
+            logger.info(f"🔄 ReAct Loop Turn {turn} for {number}...")
             
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    if tc.function.name == "execute_ssh_command":
-                        args = json.loads(tc.function.arguments)
-                        cmd = args.get("command")
-                        logger.info(f"🛠️ LLM decided to execute tool: {cmd}")
-                        post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"LLM executing: {cmd}")
-                        
-                        # Execute
-                        ok, out_log = execute_ssh_sop(ip, user, password, [cmd])
-                        full_exec_log += out_log
-                        
-                        # Feed back to LLM
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "name": tc.function.name,
-                            "content": out_log
-                        })
-                        if not ok:
-                            is_success = False
-                            if "SERVER_UNREACHABLE" in out_log:
-                                logger.warning(f"🚨 Server {ip} unreachable during ReAct loop turn {turn}. Breaking out of ReAct loop immediately!")
-                                full_exec_log += f"\n=== SERVER UNREACHABLE ALERT ===\nServer {ip} failed SSH reachability check. Exited ReAct loop.\n"
-                                return False, full_exec_log
-            else:
-                # Final summary produced, no tools called
-                summary = msg.content
-                logger.info(f"✅ ReAct Loop finished for {number}: {summary}")
-                full_exec_log += f"\n=== FINAL AGENT SUMMARY ===\n{summary}\n"
+            try:
+                msg, used_model = invoke_llm_with_fallback(
+                    messages=messages, 
+                    tools=tools, 
+                    return_message=True, 
+                    call_label=f"ReAct Loop Turn {turn}"
+                )
+                if not msg:
+                    raise Exception("All fallback models failed to return a valid response.")
+                # Append the message to the conversation correctly
+                messages.append(msg)
+                
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        if tc.function.name == "execute_ssh_command":
+                            args = json.loads(tc.function.arguments)
+                            cmd = args.get("command")
+                            logger.info(f"🛠️ LLM decided to execute tool: {cmd}")
+                            post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"LLM executing: {cmd}")
+                            
+                            # Execute using held persistent SSH session
+                            ok, out_log = session.exec_command(cmd)
+                            full_exec_log += out_log
+                            
+                            # Feed back to LLM
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tc.id,
+                                "name": tc.function.name,
+                                "content": out_log
+                            })
+                            if not ok:
+                                is_success = False
+                                if "SERVER_UNREACHABLE" in out_log:
+                                    logger.warning(f"🚨 Server {ip} unreachable during ReAct loop turn {turn}. Breaking out of ReAct loop immediately!")
+                                    full_exec_log += f"\n=== SERVER UNREACHABLE ALERT ===\nServer {ip} failed SSH reachability check. Exited ReAct loop.\n"
+                                    return False, full_exec_log
+                else:
+                    # Final summary produced, no tools called
+                    summary = msg.content
+                    logger.info(f"✅ ReAct Loop finished for {number}: {summary}")
+                    full_exec_log += f"\n=== FINAL AGENT SUMMARY ===\n{summary}\n"
+                    break
+            except Exception as e:
+                logger.error(f"ReAct Loop Error: {e}")
+                full_exec_log += f"\n=== ERROR ===\n{str(e)}\n"
+                is_success = False
                 break
-        except Exception as e:
-            logger.error(f"ReAct Loop Error: {e}")
-            full_exec_log += f"\n=== ERROR ===\n{str(e)}\n"
-            is_success = False
-            break
+    finally:
+        session.close()
             
     return is_success, full_exec_log
+
 
 
 def solve_in_progress_incident(token, incident, kb_articles):
