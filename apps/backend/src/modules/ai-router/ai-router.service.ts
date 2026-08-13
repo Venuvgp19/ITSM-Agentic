@@ -155,13 +155,14 @@ export class AiRouterService implements OnModuleInit {
       });
 
       if (this.config.autoWorkNoteEnabled) {
-        const badge = '🤖 Agentic AI Router (NVIDIA Nemotron 3 550B LLM)';
+        const badge = '🤖 Agentic AI Router (NVIDIA Nemotron 3.5 Lightning)';
 
         await this.incidentService.addActivity(tenantId, cleanId, 'ai_router_agent', {
           comment: `${badge}: Auto-assigned ticket to "${targetDept}" (${assignedTechnician}) with ${analysis.confidenceScore}% confidence.\nReasoning: ${analysis.reasoningText}`,
           isWorkNote: true,
         });
       }
+
 
       const auditRecord: RoutingAuditRecord = {
         incidentId: cleanId,

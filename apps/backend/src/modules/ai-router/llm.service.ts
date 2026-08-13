@@ -60,37 +60,92 @@ export class LlmService {
     };
   }
 
+  private sanitizeReasoningText(rawReasoning: string, targetGroup: string = 'App Support'): string {
+    if (!rawReasoning) return `Ticket requirements match operational domain for ${targetGroup}.`;
+
+    let cleaned = rawReasoning.trim();
+    
+    // Remove explicit thinking process prefixes
+    cleaned = cleaned.replace(/Here's a thinking process:?/gi, '').trim();
+
+    // If string still contains step-by-step thinking breakdown (e.g. 1. Analyze...), extract the final rationale line
+    if (cleaned.includes('Analyze') || cleaned.includes('1.') || cleaned.includes('Step 1')) {
+      const lines = cleaned.split('\n').map(l => l.trim()).filter(Boolean);
+      // Find the last line that isn't a list header or markdown title
+      const cleanLine = lines.slice().reverse().find(l => 
+        !l.toLowerCase().startsWith('analyze') &&
+        !l.toLowerCase().startsWith("here's") &&
+        !l.startsWith('*') &&
+        !l.startsWith('#') &&
+        !l.match(/^\d+\./)
+      );
+      if (cleanLine) {
+        cleaned = cleanLine;
+      }
+    }
+
+    // Clean markdown bolding, bullets, and newlines
+    cleaned = cleaned
+      .replace(/[\*\#\`]/g, '')
+      .replace(/^\s*[\-\d\.]+\s*/gm, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (cleaned.length < 10 || cleaned.toLowerCase().includes('thinking process')) {
+      return `Ticket requirements and technical request match operational domain for ${targetGroup}.`;
+    }
+
+    return cleaned;
+  }
+
   private safeJsonParse(rawText: string): any {
     let cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      cleaned = jsonMatch[0];
+    
+    // Extract JSON block (finding last valid brace pair if thinking traces precede)
+    const lastBraceIndex = cleaned.lastIndexOf('}');
+    const firstBraceIndex = cleaned.indexOf('{');
+    if (firstBraceIndex !== -1 && lastBraceIndex !== -1 && lastBraceIndex > firstBraceIndex) {
+      cleaned = cleaned.substring(firstBraceIndex, lastBraceIndex + 1);
     }
+
     try {
-      return JSON.parse(cleaned);
+      const obj = JSON.parse(cleaned);
+      if (obj && typeof obj === 'object') {
+        if (obj.reasoningText) {
+          obj.reasoningText = this.sanitizeReasoningText(obj.reasoningText, obj.targetGroup);
+        }
+        return obj;
+      }
     } catch (parseErr) {
       this.logger.warn(`JSON parse failed, attempting auto-repair: ${parseErr.message}`);
       try {
         let repaired = cleaned.replace(/,\s*([\}\]])/g, '$1');
         if (!repaired.endsWith('}')) {
-          // If string quotes are unterminated, close quote and brace
           if ((repaired.match(/"/g) || []).length % 2 !== 0) {
             repaired += '"';
           }
           repaired += '}';
         }
-        return JSON.parse(repaired);
+        const obj = JSON.parse(repaired);
+        if (obj.reasoningText) {
+          obj.reasoningText = this.sanitizeReasoningText(obj.reasoningText, obj.targetGroup);
+        }
+        return obj;
       } catch {
         const groupMatch = rawText.match(/"targetGroup"\s*:\s*"([^"]+)"/i);
+        const targetGroup = groupMatch ? groupMatch[1] : 'DevOps Ops';
+        const reasoningMatch = rawText.match(/"reasoningText"\s*:\s*"([^"]+)"/i);
+        const rawReasoning = reasoningMatch ? reasoningMatch[1] : rawText;
         return {
-          targetGroup: groupMatch ? groupMatch[1] : 'DevOps Ops',
+          targetGroup: targetGroup,
           confidenceScore: 85,
-          assignedTechnician: 'DevOps Team Lead',
-          reasoningText: rawText.substring(0, 300).replace(/"/g, "'"),
+          assignedTechnician: `${targetGroup} Lead`,
+          reasoningText: this.sanitizeReasoningText(rawReasoning, targetGroup),
         };
       }
     }
   }
+
 
   async analyzeIncidentWithNvidiaLLM(
     request: IncidentAnalysisRequest,
