@@ -52,11 +52,12 @@ export class KnowledgeService {
       }
     });
 
-    // Start continuous background processing after 5 seconds
-    setTimeout(() => {
-      this.runContinuousBackgroundSynthesis('tenant_acme_01');
-    }, 5000);
+    // Background continuous synthesis loop disabled to preserve clean Master SOP documents
+    // setTimeout(() => {
+    //   this.runContinuousBackgroundSynthesis('tenant_acme_01');
+    // }, 5000);
   }
+
 
   private mapKBToDTO(record: any): KnowledgeArticle {
     return {
