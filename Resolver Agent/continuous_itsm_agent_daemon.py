@@ -1535,6 +1535,142 @@ def _enforce_sop_safety_rules(sop_commands, short_desc, desc, kb_number):
     return commands
 
 
+# ---------------------------------------------------------------------------
+# LLM RAG Judge — double-checks Intent Booster candidates before score override.
+# Called ONLY when raw semantic similarity is in the ambiguous zone [0.25, 0.75).
+# Returns (approved: bool, reason: str)
+# ---------------------------------------------------------------------------
+def verify_rag_match_intent_with_llm(short_desc, desc, sop_number, sop_title, sop_commands):
+    try:
+        prompt = (
+            "You are a strict IT Knowledge Base Relevance Judge.\n"
+            "Your job is to decide whether the given SOP (Standard Operating Procedure) is the CORRECT and APPROPRIATE solution for the incident ticket described below.\n"
+            "Do NOT be lenient. If the SOP addresses a different root cause or a different kind of problem, you MUST reject it.\n\n"
+            f"INCIDENT SHORT DESCRIPTION: {short_desc}\n\n"
+            f"INCIDENT DESCRIPTION (may include logs/output):\n{desc[:1500]}\n\n"
+            f"CANDIDATE SOP: [{sop_number}] {sop_title}\n"
+            f"SOP COMMANDS:\n{json.dumps(sop_commands, indent=2)}\n\n"
+            "DECISION RULES:\n"
+            "- APPROVE if the SOP commands directly resolve the root cause shown in the incident.\n"
+            "- REJECT if the SOP addresses a different failure mode (e.g. Kubelet service crash vs pod NodeSelector mismatch, or password reset vs user creation).\n"
+            "- REJECT if the SOP is too generic and its commands would not help the specific issue described.\n\n"
+            "Respond in STRICT JSON only (no markdown, no explanation outside JSON):\n"
+            '{"approved": true|false, "reason": "<one sentence explanation>"}'
+        )
+        result_text = invoke_llm_with_fallback(
+            messages=[{"role": "user", "content": prompt}],
+            call_label=f"LLM RAG Judge [{sop_number}]"
+        )
+        parsed = safe_json_parse(result_text)
+        if parsed and isinstance(parsed, dict) and "approved" in parsed:
+            return bool(parsed["approved"]), parsed.get("reason", "")
+    except Exception as e:
+        logger.warning(f"LLM RAG Judge invocation error for [{sop_number}]: {e}")
+    # On any failure, be permissive — don't block on LLM errors
+    return True, "LLM Judge unavailable — defaulting to permissive"
+
+
+# ---------------------------------------------------------------------------
+# Post-Remediation Proof-of-Fix Guard
+# Executes targeted domain-specific verification commands over the ALREADY-OPEN
+# PersistentSSHSession (session) and returns (is_fixed: bool, evidence: str).
+# ---------------------------------------------------------------------------
+def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec_log, inc_number):
+    """
+    Domain-aware post-fix verification.
+    Returns (is_fixed: bool, evidence: str).
+    """
+    full_text = f"{short_desc} {desc}".lower()
+    evidence_lines = []
+    is_fixed = True
+
+    # --- Kubernetes Pod Scheduling / Pending check ---
+    import re as _re
+    k8s_pod_pending = (
+        "pending" in full_text and
+        any(k in full_text for k in ["pod", "kubectl", "kubernetes", "k8s", "failedscheduling", "node affinity", "node selector"])
+    )
+    if k8s_pod_pending:
+        # Extract pod name from description
+        pod_name_match = _re.search(r"kubectl describe pod\s+([\w\-]+)", desc) or \
+                         _re.search(r"pod[:\s]+([\w\-]+)", desc, _re.IGNORECASE)
+        pod_name = pod_name_match.group(1) if pod_name_match else None
+        if pod_name:
+            ok, out = session.exec_command(f"kubectl get pod {pod_name} -o jsonpath='{{.status.phase}}'")
+            pod_phase = out.strip().strip("'").upper()
+            evidence_lines.append(f"Pod '{pod_name}' phase after remediation: {pod_phase}")
+            if pod_phase not in ("RUNNING", "SUCCEEDED", "COMPLETED"):
+                is_fixed = False
+                evidence_lines.append(f"❌ Pod is still in '{pod_phase}' state — remediation did NOT resolve scheduling issue.")
+            else:
+                evidence_lines.append(f"✅ Pod is in '{pod_phase}' state — scheduling resolved.")
+        else:
+            evidence_lines.append("⚠️ Pod name could not be extracted from description — skipping Kubernetes phase verification.")
+
+    # --- Linux User Account check ---
+    elif any(k in full_text for k in ["useradd", "linux user", "user account", "provision user", "create user", "userdel", "delete user", "offboard"]):
+        # Extract usernames from executed commands in exec_log
+        users_created = list(set(_re.findall(r"useradd\s+(?:-[a-zA-Z0-9\-]+\s+)*([a-zA-Z0-9_\-]+)", exec_log)))
+        users_deleted = list(set(_re.findall(r"userdel\s+(?:-[a-zA-Z0-9\-]+\s+)*([a-zA-Z0-9_\-]+)", exec_log)))
+
+        is_deletion = any(k in full_text for k in ["delete", "remove", "offboard", "userdel", "deprovision"])
+        users_to_check = users_deleted if is_deletion else users_created
+
+        if users_to_check:
+            for u in users_to_check[:5]:  # verify up to 5 users
+                ok, out = session.exec_command(f"id {u} 2>&1")
+                exists = "uid=" in out
+                if is_deletion:
+                    if exists:
+                        is_fixed = False
+                        evidence_lines.append(f"❌ User '{u}' still exists after deletion — userdel failed.")
+                    else:
+                        evidence_lines.append(f"✅ User '{u}' successfully deleted.")
+                else:
+                    if not exists:
+                        is_fixed = False
+                        evidence_lines.append(f"❌ User '{u}' does NOT exist after creation — useradd failed.")
+                    else:
+                        evidence_lines.append(f"✅ User '{u}' created successfully.")
+        else:
+            evidence_lines.append("⚠️ No useradd/userdel commands found in exec log — skipping user account verification.")
+
+    # --- Python venv check ---
+    elif any(k in full_text for k in ["python virtual environment", "venv", "virtualenv", "python venv"]):
+        venv_match = _re.search(r"python3?\s+-m\s+venv\s+([\w/\\\-\.]+)", exec_log)
+        venv_path = venv_match.group(1) if venv_match else None
+        if venv_path:
+            ok, out = session.exec_command(f"test -f '{venv_path}/bin/activate' && echo EXISTS || echo MISSING")
+            if "EXISTS" in out:
+                evidence_lines.append(f"✅ Python venv at '{venv_path}' verified — activate script present.")
+            else:
+                is_fixed = False
+                evidence_lines.append(f"❌ Python venv at '{venv_path}' NOT found after creation.")
+        else:
+            evidence_lines.append("⚠️ Venv path not extracted from exec log — skipping venv verification.")
+
+    # --- Service / Application check ---
+    elif any(k in full_text for k in ["service down", "crash", "restart", "502", "bad gateway", "outage", "nexacore", "application down"]):
+        service_match = _re.search(r"systemctl\s+(?:start|restart)\s+([\w\-\.]+)", exec_log)
+        svc = service_match.group(1) if service_match else None
+        if svc:
+            ok, out = session.exec_command(f"systemctl is-active {svc} 2>&1")
+            active = out.strip().lower()
+            if active == "active":
+                evidence_lines.append(f"✅ Service '{svc}' is active after restart.")
+            else:
+                is_fixed = False
+                evidence_lines.append(f"❌ Service '{svc}' is '{active}' — restart did not succeed.")
+        else:
+            evidence_lines.append("⚠️ No systemctl restart command found in exec log — skipping service status check.")
+    else:
+        evidence_lines.append("ℹ️ No domain-specific post-remediation check applicable — trusting SSH execution result.")
+
+    evidence = " | ".join(evidence_lines)
+    logger.info(f"🔬 Post-Remediation Guard [{inc_number}]: is_fixed={is_fixed} | {evidence}")
+    return is_fixed, evidence
+
+
 def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articles, incident_id, target_os="Linux/Unix"):
     # 1. Dual-Vector RAG Strategy: Raw Query + Normalized Operational Intent Fusion
     rag_results = []
@@ -1712,13 +1848,37 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                          (is_db2_intent and "db2" in kb_text and cand_number in ["KB0000025", "KB0000042"])
 
             is_external_access_intent = any(k in q_low for k in ["external access", "external world", "cannot access from external", "firewall", "ingress", "nodeport external", "outside world"])
-            is_k8s_intent = any(k in q_low for k in ["argocd", "kubernetes", "k8s", "kubectl", "pod", "namespace", "deployment"])
-            
-            # If external access intent, target KB0000046 specifically and suppress generic pod restart SOPs
-            is_k8s_external_sop = cand_number == "KB0000046" or "external firewall" in kb_text
-            is_k8s_internal_sop = cand_number in ["KB0000039", "KB0000026", "KB0000040"] and not is_external_access_intent
 
-            is_k8s_sop = (is_external_access_intent and is_k8s_external_sop) or (not is_external_access_intent and is_k8s_internal_sop)
+            # K8s scheduling / affinity / selector issues — these are NOT kubelet crashes or credential retrieval
+            _k8s_scheduling_issue = any(k in q_low for k in [
+                "failedscheduling", "node affinity", "node selector", "nodeselector", "node-selector",
+                "affinity", "pending", "0/2 nodes", "didn't match", "pod's node affinity", "troubleshoot"
+            ])
+            _k8s_service_crash = any(k in q_low for k in [
+                "kubelet", "kubelet crash", "kubelet failed", "node not ready", "node notready",
+                "kubernetes node", "k8s node", "worker node down"
+            ])
+            _k8s_argocd = any(k in q_low for k in ["argocd", "argo cd", "argocd credentials", "argocd admin"])
+
+            is_k8s_intent = any(k in q_low for k in ["kubernetes", "k8s", "kubectl", "pod", "namespace", "deployment"])
+
+            # KB0000046 = external ingress/firewall, KB0000026 = kubelet recovery, KB0000039 = pod restart, KB0000040 = argocd credentials
+            is_k8s_external_sop = cand_number == "KB0000046" or "external firewall" in kb_text
+            # KB0000026 kubelet recovery must NEVER fire for scheduling/affinity/pending issues
+            is_k8s_kubelet_sop = cand_number == "KB0000026" or "kubelet" in kb_text
+            is_k8s_pod_sop = cand_number == "KB0000039" or "pod restart" in kb_text or "crashloop" in kb_text
+            is_k8s_argocd_sop = cand_number == "KB0000040" or "argocd" in kb_text
+
+            # Strict K8s sub-domain routing: only boost if SOP sub-domain matches ticket sub-domain
+            is_k8s_sop = False
+            if is_external_access_intent and is_k8s_external_sop:
+                is_k8s_sop = True
+            elif _k8s_service_crash and is_k8s_kubelet_sop and not _k8s_scheduling_issue:
+                is_k8s_sop = True
+            elif _k8s_argocd and is_k8s_argocd_sop:
+                is_k8s_sop = True
+            elif is_k8s_intent and is_k8s_pod_sop and not _k8s_scheduling_issue and not _k8s_service_crash and not is_external_access_intent:
+                is_k8s_sop = True
 
             is_jenkins_intent = is_credential_task or any(k in q_low for k in ["jenkins", "initialadminpassword"])
             is_jenkins_sop = cand_number == "KB0000041" or "jenkins" in kb_text
@@ -1726,16 +1886,42 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             is_perf_intent = any(k in q_low for k in ["cpu 100", "memory 100", "high cpu", "high memory", "ram utilization", "system performance issue"])
             is_perf_sop = cand_number in ["KB0468210", "KB0051346", "KB0468207"] or "system performance issue" in kb_text
 
-            if (is_venv_intent and is_venv_sop) or \
-               (is_user_create_intent and is_user_create_sop) or \
-               (is_user_delete_intent and is_user_delete_sop) or \
-               (is_db2_intent and is_db2_sop) or \
-               (is_k8s_intent and is_k8s_sop) or \
-               (is_jenkins_intent and is_jenkins_sop) or \
-               (is_perf_intent and is_perf_sop):
-                if cand_score >= 0.25:
-                    logger.info(f"✨ System-wide Intent Booster: Boosted Master SOP [{cand_number}] '{cand_art.get('title', '')}' score from {cand_score:.4f} to 0.8800 (Domain Intent Match).")
-                    cand_score = 0.8800
+            _booster_fires = (
+                (is_venv_intent and is_venv_sop) or
+                (is_user_create_intent and is_user_create_sop) or
+                (is_user_delete_intent and is_user_delete_sop) or
+                (is_db2_intent and is_db2_sop) or
+                (is_k8s_sop) or
+                (is_jenkins_intent and is_jenkins_sop) or
+                (is_perf_intent and is_perf_sop)
+            )
+
+            if _booster_fires and cand_score >= INTENT_BOOST_MIN_SCORE:
+                # --- LLM RAG Judge gate: only validate when similarity is ambiguous (below 0.75) ---
+                if cand_score < 0.75:
+                    _judge_approved, _judge_reason = verify_rag_match_intent_with_llm(
+                        short_desc, desc, cand_number, cand_art.get("title", ""),
+                        cand_art.get("steps", cand_art.get("commands", []))
+                    )
+                    if not _judge_approved:
+                        logger.warning(
+                            f"🛡️ LLM RAG Judge REJECTED Intent Boost for [{cand_number}] "
+                            f"'{cand_art.get('title', '')}' (raw score {cand_score:.4f}). "
+                            f"Reason: {_judge_reason}. Treating as RAG Miss candidate."
+                        )
+                        next_best_info = (
+                            f"[{cand_number}] Intent Booster overridden by LLM RAG Judge: {_judge_reason}"
+                        )
+                        continue  # Skip this candidate entirely — fall through to RAG miss
+                    else:
+                        logger.info(
+                            f"✅ LLM RAG Judge APPROVED Intent Boost for [{cand_number}] "
+                            f"'{cand_art.get('title', '')}' (raw score {cand_score:.4f}). "
+                            f"Reason: {_judge_reason}"
+                        )
+
+                logger.info(f"✨ System-wide Intent Booster: Boosted Master SOP [{cand_number}] '{cand_art.get('title', '')}' score from {cand_score:.4f} to {INTENT_BOOST_SCORE} (Domain Intent Match).")
+                cand_score = INTENT_BOOST_SCORE
 
 
             if cand_score < RAG_SIMILARITY_THRESHOLD:
@@ -2823,23 +3009,70 @@ Respond ONLY in valid JSON format:
         logger.info(f"🔒 Incident [{number}] is now ESCALATED — locked from re-processing this session.")
         return
 
-    # 7. Format & Post Live Terminal Proof Work Note (Only on success)
+    # 7. Mandatory Post-Remediation Proof-of-Fix Guard
+    #    Run domain-aware verification commands on the live host before resolving.
+    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔬 Post-Remediation Verification", "RUNNING", "Running mandatory post-remediation proof-of-fix verification...")
+    proof_session = PersistentSSHSession(ip, user, password)
+    try:
+        post_fix_ok, post_fix_evidence = verify_post_remediation_status(
+            proof_session, short_desc, desc, sop_commands, exec_log, number
+        )
+    except Exception as _pf_err:
+        logger.warning(f"Post-Remediation Guard raised exception for [{number}]: {_pf_err}. Defaulting to exec-log result.")
+        post_fix_ok = evaluation.get("is_healthy", True)
+        post_fix_evidence = f"Post-remediation guard error: {_pf_err}"
+    finally:
+        proof_session.close()
+
+    if not post_fix_ok:
+        dept = incident.get("department", "Unix")
+        team_member = get_team_member_for_department(dept)
+        logger.warning(
+            f"🛑 POST-REMEDIATION GUARD FAILED for [{number}]: {post_fix_evidence}. "
+            f"Refusing to mark RESOLVED. Escalating to {team_member}."
+        )
+        post_timeline_update(inc_id, number, short_desc, ci_name, "ESCALATED", "🔬 Post-Remediation Verification", "FAILED",
+                             f"Post-remediation proof-of-fix FAILED: {post_fix_evidence}. Escalating to {team_member}.")
+        escalation_note = (
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🛑 POST-REMEDIATION VERIFICATION FAILED — TICKET NOT RESOLVED\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎫 Ticket: [{number}] {short_desc}\n"
+            f"🖥️ Host: {ci_name} ({ip})\n"
+            f"📚 Applied SOP: [{kb_num}] {kb_title}\n\n"
+            f"❌ POST-FIX VERIFICATION RESULT:\n{post_fix_evidence}\n\n"
+            f"The autonomous agent executed the SOP commands successfully but the post-remediation verification \n"
+            f"confirmed the issue is NOT resolved. Human intervention required.\n"
+            f"Assigned to: {team_member}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
+        add_work_note(token, inc_id, escalation_note)
+        update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member)
+        locked_incident_sessions.add(inc_id)
+        resolved_incident_sessions.add(inc_id)
+        logger.info(f"🔒 Incident [{number}] is now ESCALATED (post-remediation guard) — locked from re-processing.")
+        return
+
+    post_timeline_update(inc_id, number, short_desc, ci_name, "SUCCESS", "🔬 Post-Remediation Verification", "SUCCESS", f"Post-remediation proof-of-fix PASSED: {post_fix_evidence}")
+
+    # 8. Format & Post Live Terminal Proof Work Note (Only on success)
     post_timeline_update(inc_id, number, short_desc, ci_name, "SUCCESS", "🧪 Verification Tests", "SUCCESS", f"Verification passed: {evaluation.get('proof_summary')}")
     proof_note = format_execution_proof_work_note(
         number, short_desc, ci_name, ip, kb_num, kb_title,
         evaluation.get("is_healthy", False),
-        evaluation.get("proof_summary", "Verified healthy host status."),
+        f"{evaluation.get('proof_summary', 'Verified healthy host status.')} | Post-fix: {post_fix_evidence}",
         exec_log
     )
     add_work_note(token, inc_id, proof_note)
 
-    # 8. Resolve Ticket & Report Auto-Execution to Dashboard Audit Stream
+    # 9. Resolve Ticket & Report Auto-Execution to Dashboard Audit Stream
     res_code = "Server - Kernel & OS Patch"
     res_notes = (
         f"Autonomous SOP Remediation completed by Gemini 3.1 Pro Preview Agent.\n"
         f"Applied SOP: {kb_num} ({kb_title})\n"
         f"Host: {ci_name} ({ip})\n"
-        f"Verification: {evaluation.get('proof_summary', 'Verified normal operational metrics.')}"
+        f"Verification: {evaluation.get('proof_summary', 'Verified normal operational metrics.')}\n"
+        f"Post-Remediation Guard: {post_fix_evidence}"
     )
     if update_incident_status(token, inc_id, "RESOLVED", res_code, res_notes):
         logger.info(f"🎉 Successfully RESOLVED IN_PROGRESS Incident [{number}]!")
