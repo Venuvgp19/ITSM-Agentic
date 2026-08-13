@@ -147,8 +147,7 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
         default_base_url = config.get("baseUrl") or default_base_url
         custom_fallbacks = config.get("fallbackModels")
         if custom_fallbacks:
-            # Prepend high-performing NVIDIA NIM models to custom fallbacks
-            fallback_models = list(dict.fromkeys(["meta/llama-3.3-70b-instruct", "nvidia/nemotron-3.5-lightning-30b-a3b"] + custom_fallbacks))
+            fallback_models = list(dict.fromkeys(["nvidia/nemotron-3.5-lightning-30b-a3b"] + [m for m in custom_fallbacks if "llama-3.3-70b" not in m]))
 
     for model in fallback_models:
         # Retry up to 3 times per model for transient network glitches
@@ -163,7 +162,7 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                     api_key=m_key,
                     base_url=m_url,
                     http_client=custom_httpx_client,
-                    timeout=30.0
+                    timeout=120.0
                 )
                 kwargs = {"model": model, "messages": messages}
                 if response_format and not is_nvidia_nim:
@@ -171,8 +170,13 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                 if tools:
                     kwargs["tools"] = tools
                 
-                # Disable thinking trace overhead in background daemon calls for subsecond responses
-                if "nemotron-3-ultra" in model.lower() or "nemotron-3.5-lightning" in model.lower():
+                # Configure reasoning parameters for NVIDIA Nemotron 3.5 Lightning
+                if "nemotron-3.5-lightning" in model.lower():
+                    kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 4096}
+                    kwargs["temperature"] = 0.6
+                    kwargs["top_p"] = 0.95
+                    kwargs["max_tokens"] = 4096
+                elif "nemotron-3-ultra" in model.lower():
                     kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
                 
@@ -226,7 +230,47 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
     return "Verification completed via physical SSH telemetry. Service state confirmed operational.", "deterministic-failsafe"
 
 
+def safe_json_parse(text):
+    """
+    Robustly parses JSON strings from LLM completions, stripping out thinking traces,
+    markdown codeblocks (```json ... ```), or leading/trailing conversational text.
+    """
+    if not text:
+        return {}
+    if isinstance(text, (dict, list)):
+        return text
+    if not isinstance(text, str):
+        return {}
+    s = text.strip()
+    try:
+        return json.loads(s)
+    except Exception:
+        pass
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", s, re.IGNORECASE)
+    if match:
+        try:
+            return json.loads(match.group(1).strip())
+        except Exception:
+            pass
+    start = s.find('{')
+    end = s.rfind('}')
+    if start != -1 and end > start:
+        try:
+            return json.loads(s[start:end+1])
+        except Exception:
+            pass
+    start_arr = s.find('[')
+    end_arr = s.rfind(']')
+    if start_arr != -1 and end_arr > start_arr:
+        try:
+            return json.loads(s[start_arr:end_arr+1])
+        except Exception:
+            pass
+    return {}
+
+
 # Saved Inventory & Credentials for Configuration Items
+
 CI_CREDENTIALS = {
     "Worker 1": {
         "ip": "192.168.56.10",
@@ -321,7 +365,8 @@ CI_CREDENTIALS = {
 }
 
 # Custom HTTP Client with SSL disabled for enterprise proxy
-custom_httpx_client = httpx.Client(verify=False, timeout=httpx.Timeout(30.0, connect=10.0))
+custom_httpx_client = httpx.Client(verify=False, timeout=httpx.Timeout(120.0, connect=15.0))
+
 
 # Initialize OpenAI Client pointing to Gen AI Lab Gemini 3.1 Pro Preview
 llm_client = OpenAI(
@@ -1795,9 +1840,10 @@ Respond ONLY in JSON format:
                 call_label=f"SOP Synthesis [{ticket_number}]"
             )
             if plan_content:
-                plan = json.loads(plan_content) if isinstance(plan_content, str) else plan_content
+                plan = safe_json_parse(plan_content)
                 if isinstance(plan, list) and len(plan) > 0: plan = plan[0]
                 logger.info(f"🧠 Knowledge base creator LLM synthesized new Master SOP using model: '{used_model}'")
+
         except Exception as e:
             logger.error(f"LLM SOP synthesis failed for {ticket_number}: {e}")
             plan = {}
@@ -2003,12 +2049,13 @@ Respond ONLY in JSON:
                 call_label=f"SOP Parameterization [{ticket_number}]"
             )
             if plan_content:
-                plan = json.loads(plan_content) if isinstance(plan_content, str) else plan_content
+                plan = safe_json_parse(plan_content)
                 if isinstance(plan, list) and len(plan) > 0: plan = plan[0]
                 logger.info(f"🧠 Parameterized commands using model: '{used_model}'")
         except Exception as e:
             logger.error(f"LLM SOP parameterization failed for {ticket_number}: {e}")
             plan = {}
+
             
         sop_commands = plan.get("sop_commands", kb_steps_list)
         reasoning = plan.get("reasoning", f"SOP {top_match['number']} parameterized.")
