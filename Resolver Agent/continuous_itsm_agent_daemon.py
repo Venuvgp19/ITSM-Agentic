@@ -1931,6 +1931,30 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                 continue
 
             # Valid Match Found!
+            # --- Universal LLM RAG Judge gate for K8s tickets ---
+            # When a K8s-related candidate scores high purely via dense embedding,
+            # the booster may never fire but we still need to validate relevance.
+            _ticket_is_k8s_domain = any(k in q_low for k in ["kubernetes", "k8s", "kubectl", "pod", "kubelet", "argocd", "deployment", "namespace"])
+            if _ticket_is_k8s_domain:
+                _judge_approved_direct, _judge_reason_direct = verify_rag_match_intent_with_llm(
+                    short_desc, desc, cand_number, cand_art.get("title", ""),
+                    cand_art.get("steps", cand_art.get("commands", []))
+                )
+                if not _judge_approved_direct:
+                    logger.warning(
+                        f"🛡️ LLM RAG Judge REJECTED direct K8s match [{cand_number}] "
+                        f"'{cand_art.get('title', '')}' (score {cand_score:.4f}). "
+                        f"Reason: {_judge_reason_direct}. Continuing to next candidate."
+                    )
+                    next_best_info = f"[{cand_number}] rejected by LLM RAG Judge: {_judge_reason_direct}"
+                    continue
+                else:
+                    logger.info(
+                        f"✅ LLM RAG Judge APPROVED direct K8s match [{cand_number}] "
+                        f"'{cand_art.get('title', '')}' (score {cand_score:.4f}). "
+                        f"Reason: {_judge_reason_direct}"
+                    )
+
             is_new = False
             matched_kb = cand_art
             top_match = candidate
@@ -1956,60 +1980,46 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             diag_logs = "Diagnostic context unavailable (SSH probe timeout/skipped)."
 
         # 2. Invoke LLM to synthesize a GENERIC Master SOP based on Server Diagnosis + Ticket Requirement
-        prompt = f"""
-You are a Senior L2 Systems & DevOps Administrator for Enterprise Infrastructure.
-Synthesize a highly accurate, technical, and actionable Standard Operating Procedure (SOP) Knowledge Base Article to solve the EXACT request in the Incident Ticket below.
+        prompt = f"""You are a Senior L2 Systems & DevOps Administrator. Write a Standard Operating Procedure (SOP) to resolve the incident below.
 
-INCIDENT TICKET REQUIREMENTS (HIGHEST PRIORITY):
-- Ticket Number: {ticket_number}
-- Short Description: {short_desc}
-- Description: {desc}
-- Target CI: {ci_name} ({ip})
-- Target OS: {target_os}
+INCIDENT: [{ticket_number}] {short_desc}
+DESCRIPTION: {desc[:600]}
+TARGET HOST: {ci_name} (IP: {ip}, OS: {target_os})
 
-LIVE SERVER DIAGNOSTIC CONTEXT (FOR ENVIRONMENT DETAILS & OS DISTRO ONLY):
---- LIVE SERVER DIAGNOSTIC FINDINGS ---
-{diag_logs[:3000]}
----------------------------------------
+LIVE SERVER DIAGNOSTIC CONTEXT (environment/OS details only):
+{diag_logs[:2000]}
 
-MANDATORY RULES FOR HIGH QUALITY SOP SYNTHESIS:
-1. STRICT ADHERENCE TO TICKET REQUEST (NON-NEGOTIABLE):
-   - The SOP Title, Summary, and resolution_steps MUST directly perform and fulfill the specific task requested in Short Description: "{short_desc}".
-   - EXAMPLES:
-     * If ticket asks to "install az cli", the SOP title MUST be "Master SOP: Azure CLI Installation and Verification on Linux Node" and resolution_steps MUST be the exact shell commands to install and verify Azure CLI (e.g., `curl -sL https://aka.ms/InstallAzureCLIDeb | bash` or `apt-get update && apt-get install -y azure-cli`, `az --version`).
-     * If ticket asks to "install docker", the SOP resolution_steps MUST be `curl -fsSL https://get.docker.com | sh` or `apt-get install -y docker.io`, `systemctl enable --now docker`.
-     * If ticket asks to "create user", the SOP resolution_steps MUST use `useradd` / `passwd` / `sudoers`.
-     * If ticket asks for ArgoCD, the SOP resolution_steps MUST use `kubectl`.
-   - DO NOT change the topic or synthesize commands for unrelated software (like restarting ArgoCD or creating users) when the ticket is about installing CLI tools or software!
+CRITICAL RULES:
+1. Write 4-6 REAL, EXECUTABLE shell commands that directly fix the exact issue in "{short_desc}".
+2. Commands must be NATIVE shell commands — do NOT prefix with ssh or any remote connection command. The agent already has an open SSH session.
+3. Use the live diagnostic context ONLY to determine OS distro/version for correct package manager syntax.
+4. Do NOT write placeholder text like "exact_command_1" or "<command>". Write real commands.
+5. EXAMPLES of correct commands:
+   - For pod scheduling fix: kubectl patch pod <pod-name> --type='json' -p='[...]' OR kubectl delete pod <pod-name>
+   - For azure cli install: curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+   - For user creation: useradd -m -s /bin/bash <username>
 
-2. DIRECT TARGET SHELL COMMANDS:
-   - Format `resolution_steps` as direct shell commands executed ON target host. DO NOT prefix commands with `ssh root@ip`.
-   - ALLOW valid official package download URLs (e.g. `https://aka.ms/InstallAzureCLIDeb`, official apt/yum repositories).
-
-3. HIGH QUALITY STRUCTURE:
-   - Synthesize 4-6 sequential, concrete, executable shell commands.
-   - Provide 4-6 specific symptoms and synonyms in "symptoms" matching the EXACT domain of "{short_desc}".
-
-Respond ONLY in JSON format:
+Respond ONLY with valid JSON (no markdown fences):
 {{
-  "title": "Master SOP: [Action Title for {short_desc}]",
-  "summary": "Technical explanation of how to perform {short_desc} on target host {ci_name}",
+  "title": "Master SOP: <action verb> <specific topic> on {ci_name}",
+  "summary": "<1-2 sentence technical explanation of what this SOP does>",
   "symptoms": [
     "{short_desc}",
-    "{desc}",
-    "Domain specific symptom 1",
-    "Domain specific symptom 2"
+    "<domain-specific symptom related to {short_desc}>",
+    "<another domain-specific symptom>",
+    "<another domain-specific symptom>"
   ],
   "resolution_steps": [
-    "exact_command_1",
-    "exact_command_2"
+    "<real shell command 1>",
+    "<real shell command 2>",
+    "<real shell command 3>",
+    "<real shell command 4>"
   ],
   "safety_checks": [
-    "verification_command_1"
+    "<real verification command>"
   ],
-  "reasoning": "Technical rationale for executing these exact commands to solve {short_desc}."
-}}
-"""
+  "reasoning": "<1-2 sentence technical rationale for these specific commands>"
+}}"""
         plan = {}
         try:
             plan_content, used_model = invoke_llm_with_fallback(
@@ -2050,17 +2060,27 @@ Respond ONLY in JSON format:
                 if "curl" in s_clean or "wget" in s_clean or "http" in s_clean:
                     continue
 
-            # Clean any placeholder brackets like <PASTE_... >
-            s_clean = re.sub(r'<PASTE_[^>]+>', '', s_clean)
-            s_clean = s_clean.strip()
+            # Strip any ssh root@ip wrapper that crept in from the LLM
+            s_unwrapped = strip_ssh_wrapper(s_clean, ip)
+            if s_unwrapped:  # wrapper was found and stripped
+                logger.info(f"🧹 Stripped SSH wrapper from generated SOP step: '{s_clean}' -> '{s_unwrapped}'")
+                s_clean = s_unwrapped
 
-            if not s_clean:
+            # Reject placeholder steps that the LLM echoed from the prompt template
+            _placeholder_patterns = [
+                r"^exact_command_\d+$",
+                r"^<real shell command",
+                r"^<verification command",
+                r"^<command",
+                r"^<action",
+                r"ssh root@.*exact_command",
+                r"ssh root@.*<",
+            ]
+            if any(re.search(pat, s_clean, re.IGNORECASE) for pat in _placeholder_patterns):
+                logger.warning(f"🚫 Rejecting placeholder step from LLM output: '{s_clean}'")
                 continue
 
-            if s_clean.lower().startswith("ssh "):
-                formatted_steps.append(s_clean)
-            else:
-                formatted_steps.append(s_clean)
+            formatted_steps.append(s_clean)
 
         # Deterministic Fallback Parser if LLM output was empty or sanitized to 0 steps
         if not formatted_steps:
