@@ -148,7 +148,7 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
         custom_fallbacks = config.get("fallbackModels")
         if custom_fallbacks:
             # Prepend high-performing NVIDIA NIM models to custom fallbacks
-            fallback_models = list(dict.fromkeys(["nvidia/nemotron-3.5-lightning-30b-a3b", "meta/llama-3.3-70b-instruct"] + custom_fallbacks))
+            fallback_models = list(dict.fromkeys(["meta/llama-3.3-70b-instruct", "nvidia/nemotron-3.5-lightning-30b-a3b"] + custom_fallbacks))
 
     for model in fallback_models:
         # Retry up to 3 times per model for transient network glitches
@@ -171,14 +171,10 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                 if tools:
                     kwargs["tools"] = tools
                 
-                # Configure reasoning parameters for NVIDIA Nemotron 3.5 Lightning
-                if "nemotron-3.5-lightning" in model.lower():
-                    kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 16384}
-                    kwargs["temperature"] = 1.0
-                    kwargs["top_p"] = 0.95
-                    kwargs["max_tokens"] = 16384
-                elif "nemotron-3-ultra" in model.lower():
+                # Disable thinking trace overhead in background daemon calls for subsecond responses
+                if "nemotron-3-ultra" in model.lower() or "nemotron-3.5-lightning" in model.lower():
                     kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+
                 
                 res = client.chat.completions.create(**kwargs)
 

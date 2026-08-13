@@ -247,16 +247,17 @@ Output your analysis in strict JSON format with keys:
                     },
                     { role: 'user', content: prompt },
                   ],
-                  temperature: 1.0,
+                  temperature: 0.6,
                   top_p: 0.95,
-                  max_tokens: 16384,
+                  max_tokens: 4096,
                   extra_body: {
                     chat_template_kwargs: { enable_thinking: true },
-                    reasoning_budget: 16384
+                    reasoning_budget: 2048
                   }
                 }),
-                signal: AbortSignal.timeout(60000),
+                signal: AbortSignal.timeout(90000),
               });
+
 
               if (nvidiaResponse.ok) {
                 const data: any = await nvidiaResponse.json();
