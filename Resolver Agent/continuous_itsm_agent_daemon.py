@@ -100,6 +100,28 @@ HYBRID_KW_WEIGHT       = 0.25   # weight of keyword-frequency score in hybrid bl
 INTENT_BOOST_SCORE     = 0.8800  # score assigned when intent booster fires (must be >= threshold)
 INTENT_BOOST_MIN_SCORE = 0.25    # minimum pre-boost cosine score for booster to activate
 
+# --- K8s Domain Detection (single source of truth) ---
+# IMPORTANT: This list MUST be shared by BOTH the early Domain Guard (ca. L1982)
+# AND the later LLM-RAG-Judge gate (ca. L2123). Using different keyword sets in
+# those two checks previously allowed a K8s ticket phrased with "pod"/"namespace"
+# (but NOT "kubernetes"/"kubectl") to bypass the hard Guard yet still reach the
+# soft Judge gate — letting a container/Pod ticket match a Linux-User SOP.
+K8S_DOMAIN_KEYWORDS = [
+    "kubernetes", "k8s", "kubectl", "argocd",
+    "pod", "kubelet", "deployment", "namespace",
+    "container", "crictl", "containerd", "kube-apiserver",
+    "kube-controller", "kube-scheduler", "etcd", "nodeport",
+]
+
+# Linux user-management SOPs. These must NEVER be served to a K8s-domain ticket.
+# Mulfunction MUST always block these mismatches even if the LLM Judge is down.
+LINUX_USER_SOP_NUMBERS = [
+    "KB0000038", "KB0000022", "KB0000023",  # Linux user deletion/deprovisioning
+    "KB0000028", "KB0000027", "KB0000021",  # Linux user creation
+    "KB0000036", "KB0000037",               # restricted-sudo / standard creation
+    "KB0000015", "KB0000017", "KB0000018",  # lock/unlock, password reset, modify user
+]
+
 MODEL_NAME = ROUTER_MODEL
 POLL_INTERVAL_SECONDS = 15
 FALLBACK_MODELS = [
@@ -2286,20 +2308,31 @@ Respond ONLY with valid JSON (no markdown fences):
                 ]
             # 2. Check for Kubernetes / ArgoCD / Container Service issues
             elif any(k in f_low for k in ["argocd", "kubernetes", "k8s", "kubectl", "pod", "namespace", "deployment"]):
-                ns_match = re.search(r"(?:namespace|ns)\s+([a-zA-Z0-9_-]+)", f_low)
-                target_ns = ns_match.group(1) if ns_match else ""
-                if target_ns.lower() in ["in", "the", "of", "a", "on", "is", "for", "named"]:
-                    target_ns = ""
-                if not target_ns:
-                    target_ns = "argocd" if "argocd" in f_low else "default"
+                # Handle Scheduling / Node-Selector issues specifically
+                if any(k in f_low for k in ["pending", "failedscheduling", "node affinity", "node selector"]):
+                    pod_match = re.search(r"pod[:\s]+([\w\-]+)", desc, re.IGNORECASE) or re.search(r"kubectl describe pod\s+([\w\-]+)", desc)
+                    p_name = pod_match.group(1) if pod_match else "unknown-pod"
+                    formatted_steps = [
+                        f"kubectl get pod {p_name} -o jsonpath='{{.spec.nodeSelector}}'",
+                        f"kubectl get nodes --show-labels | grep hostname",
+                        f"kubectl patch pod {p_name} -p '{{\"spec\":{{\"nodeSelector\":null}}}}'",
+                        f"kubectl get pod {p_name}"
+                    ]
+                else:
+                    ns_match = re.search(r"(?:namespace|ns)\s+([a-zA-Z0-9_-]+)", f_low)
+                    target_ns = ns_match.group(1) if ns_match else ""
+                    if target_ns.lower() in ["in", "the", "of", "a", "on", "is", "for", "named"]:
+                        target_ns = ""
+                    if not target_ns:
+                        target_ns = "argocd" if "argocd" in f_low else "default"
 
-                formatted_steps = [
-                    f"kubectl get namespaces",
-                    f"kubectl get pods -n {target_ns} -o wide",
-                    f"kubectl rollout restart deployment -n {target_ns}",
-                    f"kubectl get events -n {target_ns} --sort-by='.metadata.creationTimestamp' | tail -n 10",
-                    f"kubectl get pods -n {target_ns}"
-                ]
+                    formatted_steps = [
+                        f"kubectl get namespaces",
+                        f"kubectl get pods -n {target_ns} -o wide",
+                        f"kubectl rollout restart deployment -n {target_ns}",
+                        f"kubectl get events -n {target_ns} --sort-by='.metadata.creationTimestamp' | tail -n 10",
+                        f"kubectl get pods -n {target_ns}"
+                    ]
             # 2. Check for User Deletion / Offboarding
             elif any(k in f_low for k in ["delete", "remove", "offboard", "userdel", "deprovision"]):
                 usernames = re.findall(r"^[a-zA-Z0-9_-]+:", desc, re.MULTILINE)
