@@ -43,6 +43,7 @@ interface KnowledgeArticle {
   viewCount: number;
   helpfulCount: number;
   createdAt: string;
+  content?: string;
 }
 
 interface WorkerStatus {

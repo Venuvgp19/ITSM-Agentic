@@ -1584,6 +1584,18 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
     evidence_lines = []
     is_fixed = True
 
+    def clean_ssh_stdout(raw):
+        """Extract just the STDOUT body from the PersistentSSHSession.exec_command envelope.
+        exec_command returns  '=== [CMD: <cmd>] ===\nSTDOUT:\n<out>\nSTDERR:\n<err>\n\n',
+        so a raw equality check against the command output never matches. This helper
+        pulls out only the <out> block (normalized) for reliable verification."""
+        text = raw or ""
+        if "STDOUT:" in text:
+            body = text.split("STDOUT:", 1)[1]
+            body = body.split("STDERR:", 1)[0]
+            return body.strip().strip("'").strip()
+        return text.strip().strip("'").strip()
+
     # --- Kubernetes Pod Scheduling / Pending check ---
     import re as _re
     k8s_pod_pending = (
@@ -1597,7 +1609,7 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
         pod_name = pod_name_match.group(1) if pod_name_match else None
         if pod_name:
             ok, out = session.exec_command(f"kubectl get pod {pod_name} -o jsonpath='{{.status.phase}}'")
-            pod_phase = out.strip().strip("'").upper()
+            pod_phase = clean_ssh_stdout(out).upper()
             evidence_lines.append(f"Pod '{pod_name}' phase after remediation: {pod_phase}")
             if pod_phase not in ("RUNNING", "SUCCEEDED", "COMPLETED"):
                 is_fixed = False
@@ -1655,7 +1667,7 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
         svc = service_match.group(1) if service_match else None
         if svc:
             ok, out = session.exec_command(f"systemctl is-active {svc} 2>&1")
-            active = out.strip().lower()
+            active = clean_ssh_stdout(out).lower()
             if active == "active":
                 evidence_lines.append(f"✅ Service '{svc}' is active after restart.")
             else:
@@ -1669,6 +1681,180 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
     evidence = " | ".join(evidence_lines)
     logger.info(f"🔬 Post-Remediation Guard [{inc_number}]: is_fixed={is_fixed} | {evidence}")
     return is_fixed, evidence
+
+
+def post_synthesis_relevance_audit(steps, ticket_number, short_desc, desc, ci_name, ip, target_os="Linux/Unix"):
+    """
+    Post-synthesis relevance judge. Guards the human-approval card so the SOP that gets
+    submitted actually references the concrete entities/actions from the ticket, instead of
+    silently approving a generic or entity-mismatched SOP.
+    Returns: (kept_steps, verdict) where verdict = {"audit","kept","dropped","note",
+    "entities_found","confidence","judged"}.
+    """
+    import re as _re
+
+    full_txt = f"{short_desc}\n{desc}\n{ci_name} {ip}".lower()
+
+    # ---- Phase 0: entity extraction (deterministic, conservative) ----
+    entities = set()
+    _wordish = _re.findall(r"[a-zA-Z][a-zA-Z0-9_\-\.]{4,}", full_txt)
+    _stop = {
+        "error", "errors", "issue", "server", "servers", "service", "services",
+        "system", "systems", "status", "failed", "failure", "ticket", "ticket_number",
+        "repository", "deployment", "environment", "production", "application", "app",
+        "default", "admin", "administrator", "linux", "unix", "root", "user", "users",
+        "password", "description", "short_desc", "command", "commands", "access",
+        "network", "internet", "connection", "connect", "degraded", "restart", "start",
+        "stop", "creating", "created", "installation", "install", "configure", "config",
+        "port", "host", "hostname", "credentials", "secret", "secrets"
+    }
+    for w in _wordish:
+        if w in _stop:
+            continue
+        if _re.search(r"[a-zA-Z]{3,}", w):
+            entities.add(w)
+
+    for m in _re.finditer(
+        r"\b(?:useradd|adduser|passwd|deluser|userdel|chown|chmod|su\s+)\s+([a-zA-Z][a-zA-Z0-9_\-\\.]+)",
+        full_txt
+    ):
+        entities.add(m.group(1))
+
+    for m in _re.finditer(r"((?:[a-zA-Z0-9_\-\\.]+)\.[a-z]{2,}(?::[0-9]+)?)", full_txt):
+        entities.add(m.group(1))
+    for m in _re.finditer(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", full_txt):
+        entities.add(m.group(0))
+    for m in _re.finditer(r"(?:[a-zA-Z0-9][a-zA-Z0-9\-_]*)(?::[0-9]{1,5})\b", full_txt):
+        entities.add(m.group(0))
+
+    _app_kw = _re.findall(r"\b(jenkins|nginx|apache|httpd|mysql|mariadb|postgres|postgresql|redis|rabbitmq|mongodb|docker|kubernetes|kubectl|java|node|tomcat|grafana|prometheus|elasticsearch|kafka|zookeeper|php|python|azure-cli|aws-cli)\b", full_txt)
+    for k in _app_kw:
+        entities.add(k)
+
+    entities = {e for e in entities if not _re.match(r"^\d+$", e)}
+    ent_lower = {e.lower(): e for e in entities}
+
+    kept = []
+    dropped = []
+    for step in steps:
+        sl = str(step or "").lower()
+        if not sl.strip():
+            dropped.append(step)
+            continue
+        # Phase A: entity reference
+        if any(e in sl for e in ent_lower):
+            kept.append(step)
+            continue
+        # Phase B: safe generic diagnostics / package-manager verbs
+        if _re.search(
+            r"\b(?:uptime|ps\s+|free\s+|journalctl|ss\s+|netstat|whoami|hostname|uname|cat\s+|tail\s+|grep\s+|echo\s+|touch\s+|mkdir\s+|chmod\s+|chown\s+|systemctl\s+(?:status|is-active|list-units|enable|daemon-reload)|yum\s+(?:install|update|check-update)|apt(?:-get)?\s+(?:install|update))(?=\s|-|:|$)",
+            sl
+        ):
+            kept.append(step)
+            continue
+        # Phase C: recognized standalone verbs on a presumably-targeted subject
+        if _re.search(r"\b(docker|podman|kubectl|node|npm|pip|java)\b", sl):
+            kept.append(step)
+            continue
+        dropped.append(step)
+
+    entity_hit_ratio = (len(kept) / len(steps)) if steps else 0.0
+    total = len(steps or [])
+    too_many_dropped = bool(dropped) and (len(dropped) / total) > 0.4
+    # ---- Phase D: optional LLM relevance judge on marginal cases ----
+    judged = False
+    if too_many_dropped and entities:
+        judged = True
+        try:
+            judge_prompt = (
+                "You are a strict SOP relevance auditor. The incident asks to resolve "
+                f"\"{short_desc}\" | \"{desc[:1200]}\". Host {ci_name} ({ip}), OS {target_os}. "
+                f"Confirmed entities from the ticket: {sorted(entities)}. "
+                "Review each proposed remediation command. Respond with strictly valid JSON "
+                '(no fences): {"verdicts":[{"command":"...","action":"KEEP|FIX|DROP","note":"..."}],"confidence":0.0-1.0}. '
+                "Use FIX only when the command is right but targets the wrong/undefined entity "
+                "and you can name the correct entity from the ticket. Do NOT invent entities "
+                "not in the ticket.\n"
+                f"Candidate commands: {steps}"
+            )
+            jcontent, _jmodel = invoke_llm_with_fallback(
+                messages=[{"role": "user", "content": judge_prompt}],
+                response_format={"type": "json_object"},
+                call_label=f"SOP Relevance Audit [{ticket_number}]"
+            )
+            jplan = safe_json_parse(jcontent) if jcontent else {}
+            verdicts = jplan.get("verdicts", []) if isinstance(jplan, dict) else []
+            if verdicts:
+                _by_cmd = {_str(v.get("command")).strip().lower(): v for v in verdicts}
+                nkept, ndrop, fixed_any = [], [], False
+                for st in steps:
+                    v = _by_cmd.get(_str(st).strip().lower())
+                    action = _str(v.get("action")).upper() if v else ""
+                    if action == "KEEP":
+                        nkept.append(st)
+                    elif action == "FIX" and v.get("note"):
+                        cand = _str(v.get("note")).strip()
+                        if cand.lower() in ent_lower:
+                            nkept.append(cand)
+                            fixed_any = True
+                        else:
+                            ndrop.append(st)
+                    else:
+                        ndrop.append(st)
+                kept, dropped = nkept, ndrop
+                try:
+                    _conf = float(jplan.get("confidence"))
+                except (TypeError, ValueError):
+                    _conf = entity_hit_ratio
+                verdict = _build_relevance_verdict(kept, dropped, entities, _conf,
+                                                   judged=True, ticket_num=ticket_number,
+                                                   fixed_any=fixed_any)
+                return kept, verdict
+        except Exception as e:
+            logger.warning(f"Relevance judge LLM pass failed ({e}); falling back to deterministic verdict.")
+
+    confidence = 0.5 + 0.5 * entity_hit_ratio if entities else 0.8
+    verdict = _build_relevance_verdict(kept, dropped, entities, confidence,
+                                       judged=judged, ticket_num=ticket_number,
+                                       fixed_any=False)
+    return kept, verdict
+
+
+def _str(v):
+    return str(v) if v is not None else ""
+
+
+def _build_relevance_verdict(kept, dropped, entities, confidence, judged, ticket_num, fixed_any=False):
+    total = len(kept) + len(dropped)
+    kept_ratio = (len(kept) / total) if total else 0.0
+    if not entities:
+        note = "No concrete entities found in ticket text; relying on generic-safe command analysis."
+        audit = "needs_human_review" if len(kept) == 0 else "passed"
+    else:
+        n_entity_hits = sum(1 for s in kept for e in entities if e.lower() in str(s).lower())
+        if len(kept) == 0:
+            note = "All synthesized steps dropped — no step maps to any ticket entity or safe generic verb."
+            audit = "failed"
+        elif kept_ratio >= 0.8 and n_entity_hits > 0:
+            note = f"Steps reference ticket entities: {sorted(entities)}."
+            if fixed_any:
+                note += " (1+ steps corrected to named entities by auditor)"
+            audit = "passed"
+        elif kept_ratio >= 0.6:
+            note = "Partial entity coverage — some steps are generic/safe; recommend human review."
+            audit = "needs_human_review"
+        else:
+            note = "Low entity coverage — several steps dropped/flagged; strong human review advised."
+            audit = "needs_human_review"
+    return {
+        "audit": audit,
+        "kept": len(kept),
+        "dropped": len(dropped),
+        "note": note,
+        "entities_found": sorted(entities),
+        "confidence": round(float(confidence), 3),
+        "judged": bool(judged),
+    }
 
 
 def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articles, incident_id, target_os="Linux/Unix"):
@@ -1983,18 +2169,21 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
         prompt = f"""You are a Senior L2 Systems & DevOps Administrator. Write a Standard Operating Procedure (SOP) to resolve the incident below.
 
 INCIDENT: [{ticket_number}] {short_desc}
-DESCRIPTION: {desc[:600]}
+DESCRIPTION (FULL, do not lose any entity):
+{desc}
 TARGET HOST: {ci_name} (IP: {ip}, OS: {target_os})
 
 LIVE SERVER DIAGNOSTIC CONTEXT (environment/OS details only):
 {diag_logs[:2000]}
 
 CRITICAL RULES:
-1. Write 4-6 REAL, EXECUTABLE shell commands that directly fix the exact issue in "{short_desc}".
-2. Commands must be NATIVE shell commands — do NOT prefix with ssh or any remote connection command. The agent already has an open SSH session.
-3. Use the live diagnostic context ONLY to determine OS distro/version for correct package manager syntax.
-4. Do NOT write placeholder text like "exact_command_1" or "<command>". Write real commands.
-5. EXAMPLES of correct commands:
+1. Write 4-6 REAL, EXECUTABLE shell commands that directly fix the EXACT issue described above.
+2. ENTITY GROUNDING — MANDATORY. First extract the concrete entities from the description (usernames, service names, ports, namespaces, application names, IPs). Every generated command MUST reference those EXACT entity strings (e.g. use the real service name, the real username, the real pod/namespace). Do NOT invent different names and do NOT use generic names like "user1"/"app" when the ticket names a specific one.
+3. Commands must be NATIVE shell commands — do NOT prefix with ssh or any remote connection command. The agent already has an open SSH session.
+4. Use the live diagnostic context ONLY to determine OS distro/version for correct package manager syntax.
+5. Do NOT write placeholder text like "exact_command_1" or "<command>". Write real commands.
+6. RELEVANCE SELF-CHECK — before returning, verify each command makes sense for THIS incident's entity and action (create vs delete, install vs restart, specific username/pod). If the ticket asks to create user "ananya", your commands must operate on "ananya", not a different name.
+7. EXAMPLES of correct commands:
    - For pod scheduling fix: kubectl patch pod <pod-name> --type='json' -p='[...]' OR kubectl delete pod <pod-name>
    - For azure cli install: curl -sL https://aka.ms/InstallAzureCLIDeb | bash
    - For user creation: useradd -m -s /bin/bash <username>
@@ -2183,12 +2372,41 @@ Respond ONLY with valid JSON (no markdown fences):
                             "journalctl -n 30 --no-pager"
                         ]
 
+        # ── Post-synthesis relevance judge (synthesized path only) ──────────
+        # Confirms the SOP actually references the ticket's entities/actions before it
+        # reaches the human-approval card. Deterministic entity-scoring first; a marginal
+        # case may invoke an LLM per-step KEEP/FIX/DROP pass. Verdict is attached to
+        # new_sop_data so the approval payload + escalation notes reflect review status.
+        relevance_metrics = {
+            "audit": "not_run", "kept": len(formatted_steps), "dropped": 0,
+            "note": "No relevance audit performed.", "entities_found": [],
+            "confidence": None, "judged": False,
+        }
+        if is_new and formatted_steps:
+            audited_steps, relevance_metrics = post_synthesis_relevance_audit(
+                formatted_steps, ticket_number, short_desc, desc,
+                ci_name, ip, target_os=target_os
+            )
+            formatted_steps = audited_steps
+            logger.info(
+                f"🛡️ Relevance Judge [{ticket_number}] audit={relevance_metrics['audit']} "
+                f"kept={relevance_metrics['kept']} dropped={relevance_metrics['dropped']} "
+                f"entities={relevance_metrics['entities_found']} "
+                f"judged={relevance_metrics['judged']} :: {relevance_metrics['note']}"
+            )
+            if not formatted_steps:
+                logger.warning(
+                    f"⛔ Relevance judge removed ALL steps for [{ticket_number}] — SOP will not be auto-approved. "
+                    f"{relevance_metrics['note']}"
+                )
+
         new_sop_data = {
             "title": kb_title,
             "summary": summary,
             "resolution_steps": formatted_steps,
             "safety_checks": safety_checks,
-            "reasoning": reasoning
+            "reasoning": reasoning,
+            "relevance": relevance_metrics
         }
         
         return True, "KB_NEW", kb_title, reasoning, formatted_steps, new_sop_data
@@ -2778,17 +2996,27 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
             if not my_approval and inc_id not in submitted_approval_incidents:
                 submitted_approval_incidents.add(inc_id)
                 res_steps = (new_sop_data or {}).get("resolution_steps", [])
+                # The synthesizer prompt instructs the LLM to return NATIVE shell commands
+                # (the agent already holds an open SSH session via PersistentSSHSession).
+                # Do NOT re-wrap them with an extra `ssh root@<ip>` — that would both corrupt
+                # double-remote commands and make the approval card diverge from what executes.
                 formatted_res_steps = []
                 for step in res_steps:
                     s = str(step).strip()
-                    s_clean = re.sub(r'^\d+\.\s*', '', s)
-                    if s_clean.lower() in [f"ssh root@{ip}", "ssh root@192.168.100.101"] or re.match(r"^ssh\s+[^\s]+$", s_clean.lower()):
+                    if not s:
                         continue
-                    if s_clean.lower().startswith("ssh "):
-                        formatted_res_steps.append(s_clean)
-                    else:
-                        formatted_res_steps.append(f'ssh root@{ip} "{s_clean}"')
+                    s_clean = " ".join(re.sub(r'^\d+\.\s*', '', s).split())
+                    # Drop bare ssh-header placeholders that the LLM echoed from the template
+                    if re.match(r"^ssh\s+[^\s]+$", s_clean.lower()):
+                        continue
+                    # Pass through everything else EXACTLY as synthesized (already ssh-prefixed or native)
+                    formatted_res_steps.append(s_clean)
+                # Never send an empty SOP for approval — surface the gap instead
                 res_steps = formatted_res_steps
+                if not res_steps:
+                    logger.warning(f"⚠️ Synthesized SOP resolved to 0 steps for [{number}] — refusing to submit a hollow approval card.")
+                else:
+                    logger.info(f"✅ SOP synthesis produced {len(res_steps)} native steps for [{number}]: {res_steps[:3]}...")
 
                 approval_payload = {
                     "incidentId": inc_id,
@@ -2799,10 +3027,11 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                     "targetCi": f"{ci_name} ({ip})",
                     "department": "DevOps Team",
                     "riskLevel": "HIGH",
-                    "confidenceScore": 85.0,
+                    "confidenceScore": (lambda _mv: (85.0 if _mv.get("confidence") is None else float(_mv["confidence"]) * 100.0))((new_sop_data or {}).get("relevance", {})),
                     "summary": (new_sop_data or {}).get("summary", f"Synthesized new SOP for {short_desc}"),
                     "proposedCommands": res_steps,
                     "aiReasoning": (new_sop_data or {}).get("reasoning", "New use case requiring human review."),
+                    "relevanceAudit": (new_sop_data or {}).get("relevance", {}),
                     "safetyChecks": [{"check": check, "passed": True} for check in (new_sop_data or {}).get("safety_checks", [])],
                     "kbArticleReference": "KB_NEW",
                     "kbTitle": (new_sop_data or {}).get("title", f"SOP: {short_desc}"),
@@ -2811,28 +3040,44 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                         "kbTitle": (new_sop_data or {}).get("title", f"SOP: {short_desc}"),
                         "synthesizedSolution": "\n".join(res_steps),
                         "resolutionSteps": res_steps,
-                        "trendInsight": f"Synthesized SOP containing {len(res_steps)} resolution steps starting with SSH connection."
+                        "trendInsight": f"Synthesized SOP containing {len(res_steps)} resolution steps. Relevance audit={((new_sop_data or {}).get('relevance', {}) or {}).get('audit', 'n/a')}: {((new_sop_data or {}).get('relevance', {}) or {}).get('note', '')}"
                     }
                 }
                 logger.info(f"📝 Submitting pending approval request for synthesized SOP on ticket [{number}]...")
-                submit_agent_approval(token, approval_payload)
-                
-                post_timeline_update(inc_id, number, short_desc, ci_name, "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", f"Synthesized SOP {(new_sop_data or {}).get('title')}. Awaiting human approval in Control Tower.")
-                notice_note = (
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🧠 AI KNOWLEDGE SYNTHESIZER: NEW SOP SUBMITTED FOR APPROVAL\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🔍 RAG Search: Miss (No matching SOP found in local Vector DB).\n"
-                    f"📝 Action: Synthesized a new SOP and requested Human-in-the-Loop review.\n"
-                    f"🎫 Ticket: [{number}] {short_desc}\n"
-                    f"Proposed SOP Title: {(new_sop_data or {}).get('title')}\n"
-                    f"Proposed Commands: {', '.join((new_sop_data or {}).get('resolution_steps', []))}\n"
-                    f"State: Incident placed ON_HOLD awaiting human operator approval in Control Tower.\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                )
-                add_work_note(token, inc_id, notice_note, author="🧠 AI Knowledge Synthesizer")
-                update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
-                locked_incident_sessions.add(inc_id)
+                if res_steps:
+                    submit_agent_approval(token, approval_payload)
+                    post_timeline_update(inc_id, number, short_desc, ci_name, "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", f"Synthesized SOP {(new_sop_data or {}).get('title')}. Awaiting human approval in Control Tower.")
+                    notice_note = (
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🧠 AI KNOWLEDGE SYNTHESIZER: NEW SOP SUBMITTED FOR APPROVAL\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🔍 RAG Search: Miss (No matching SOP found in local Vector DB).\n"
+                        f"📝 Action: Synthesized a new SOP and requested Human-in-the-Loop review.\n"
+                        f"🎫 Ticket: [{number}] {short_desc}\n"
+                        f"Proposed SOP Title: {(new_sop_data or {}).get('title')}\n"
+                        f"Proposed Commands: {', '.join(res_steps) if res_steps else '(none qualified for approval)'}\n"
+                        f"Relevance Audit: {((new_sop_data or {}).get('relevance', {}) or {}).get('audit', 'n/a')} — {((new_sop_data or {}).get('relevance', {}) or {}).get('note', '')}\n"
+                        f"State: Incident placed ON_HOLD awaiting human operator approval in Control Tower.\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    )
+                    add_work_note(token, inc_id, notice_note, author="🧠 AI Knowledge Synthesizer")
+                    update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
+                    locked_incident_sessions.add(inc_id)
+                else:
+                    logger.warning(f"⛔ Refusing to submit approval for [{number}] — the synthesized SOP resolved to 0 usable commands.")
+                    post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "🔐 Human-in-the-Loop Gate", "FAILED", "SOP synthesis produced 0 usable commands; escalation required.")
+                    notice_note = (
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🧠 AI KNOWLEDGE SYNTHESIZER: SOP SYNTHESIS FAILED\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🎫 Ticket: [{number}] {short_desc}\n"
+                        f"The agent could not derive any concrete remediation steps for this incident.\n"
+                        f"Escalated to human operator for manual intervention.\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    )
+                    add_work_note(token, inc_id, notice_note, author="🧠 AI Knowledge Synthesizer")
+                    update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
+                    locked_incident_sessions.add(inc_id)
                 return
                 
             elif my_approval:
