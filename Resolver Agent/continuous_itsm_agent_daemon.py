@@ -79,7 +79,7 @@ active_processing_incidents = set()
 # ----------------------------------------------------
 ITSM_BASE_URL = "http://localhost:4000/api/v1"
 GENAI_LAB_URL = "https://genailab.tcs.in/v1"
-GENAI_API_KEY = "sk-RRoxANx2dKdNE3N5j0mbxQ"
+GENAI_API_KEY = "sk-0mLmGnF9P0tbG_jlZVYDoA"
 NVIDIA_API_KEY = "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"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 # Specialized Agent Model Mapping
@@ -88,7 +88,7 @@ RESOLVER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 SYNTHESIZER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 GOVERNANCE_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
-RAG_SIMILARITY_THRESHOLD = 0.65
+RAG_SIMILARITY_THRESHOLD = 0.62
 
 # --- RAG Scoring Configuration ---
 # Hybrid blend weights — applied when top dense score is in edge zone [0.35, threshold).
@@ -575,18 +575,35 @@ class ChromaVectorDB:
                 return set()
         return set()
 
-    def add_kb_embedding(self, kb_id, number, title, embedding):
+    def add_kb_embedding(self, kb_id, number, title, embedding, updated_at=None):
         if self.collection:
             try:
                 final_id = str(kb_id or number or title)
                 final_num = str(number or kb_id or "")
+                meta = {"number": final_num, "title": str(title)}
+                if updated_at:
+                    meta["updatedAt"] = str(updated_at)
                 self.collection.upsert(
                     ids=[final_id],
                     embeddings=[embedding],
-                    metadatas=[{"number": final_num, "title": str(title)}]
+                    metadatas=[meta]
                 )
             except Exception as e:
                 logger.warning(f"Failed to index KB in ChromaDB: {e}")
+
+    def delete_kb(self, number):
+        if self.collection:
+            try:
+                res = self.collection.get()
+                matching_ids = []
+                for doc_id, meta in zip(res.get("ids", []), res.get("metadatas", [])):
+                    if meta and meta.get("number") == number:
+                        matching_ids.append(doc_id)
+                if matching_ids:
+                    self.collection.delete(ids=matching_ids)
+                    logger.info(f"Deleted KB {number} from ChromaDB collection.")
+            except Exception as e:
+                logger.warning(f"Failed to delete KB {number} from ChromaDB: {e}")
 
     def search_kb(self, query_embedding, limit=3):
         if not self.collection:
@@ -642,7 +659,7 @@ class LocalVectorDB:
         cursor.execute("SELECT number FROM kb_embeddings")
         return {row[0] for row in cursor.fetchall()}
 
-    def add_kb_embedding(self, kb_id, number, title, embedding):
+    def add_kb_embedding(self, kb_id, number, title, embedding, updated_at=None):
         cursor = self.conn.cursor()
         embedding_str = json.dumps(embedding)
         cursor.execute(
@@ -650,6 +667,15 @@ class LocalVectorDB:
             (kb_id, number, title, embedding_str)
         )
         self.conn.commit()
+
+    def delete_kb(self, number):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM kb_embeddings WHERE number = ?", (number,))
+            self.conn.commit()
+            logger.info(f"Deleted KB {number} from LocalVectorDB.")
+        except Exception as e:
+            logger.warning(f"Failed to delete KB {number} from LocalVectorDB: {e}")
 
     def search_kb(self, query_embedding, limit=3):
         cursor = self.conn.cursor()
@@ -679,22 +705,49 @@ def sync_vector_db_with_kb(token, client, vdb):
         kb_articles = fetch_kb_articles(token)
         indexed_numbers = vdb.get_indexed_numbers()
         
+        # 1. Purge stale articles no longer in database
+        kb_numbers = {art.get("number") for art in kb_articles if art.get("number")}
+        stale_numbers = [num for num in indexed_numbers if num not in kb_numbers]
+        for num in stale_numbers:
+            logger.info(f"Removing stale indexed article {num} from vector database...")
+            vdb.delete_kb(num)
+
+        # 2. Check for missing or updated articles
+        res = vdb.collection.get() if hasattr(vdb, "collection") and vdb.collection else None
+        meta_map = {}
+        if res and "metadatas" in res and res["metadatas"]:
+            for doc_id, meta in zip(res["ids"], res["metadatas"]):
+                if meta and "number" in meta:
+                    meta_map[meta["number"]] = meta
+        
         for art in kb_articles:
             art_id = art.get("id") or art.get("number")
             art_number = art.get("number")
+            art_updated = art.get("updatedAt")
+            
+            title = art.get("title", "")
+            summary = art.get("summary", "")
+            # Use canonical embedding text builder (passage mode for nv-embed-v1)
+            content_to_embed = build_kb_embed_text(
+                title=title,
+                summary=summary,
+                symptoms=art.get("symptoms", []),
+                root_cause=art.get("rootCause", "")
+            )
+            
+            should_index = False
             if art_number not in indexed_numbers:
-                title = art.get("title", "")
-                summary = art.get("summary", "")
-                # Use canonical embedding text builder (passage mode for nv-embed-v1)
-                content_to_embed = build_kb_embed_text(
-                    title=title,
-                    summary=summary,
-                    symptoms=art.get("symptoms", []),
-                    root_cause=art.get("rootCause", "")
-                )
+                should_index = True
+            elif art_number in meta_map:
+                stored_updated = meta_map[art_number].get("updatedAt")
+                if str(stored_updated) != str(art_updated):
+                    logger.info(f"Detected updates in {art_number} content/symptoms. Re-indexing...")
+                    should_index = True
+                    
+            if should_index:
                 emb = get_embedding(content_to_embed, input_type="passage")
-                vdb.add_kb_embedding(art_id, art_number, title, emb)
-                logger.info(f"Indexed KB article {art_number} in vector database (100% SOP RAG Coverage).")
+                vdb.add_kb_embedding(art_id, art_number, title, emb, updated_at=art_updated)
+                logger.info(f"Indexed/Updated KB article {art_number} in vector database (100% SOP RAG Coverage).")
     except Exception as e:
         logger.error(f"Failed to sync KB articles to Vector DB: {e}")
 
@@ -2753,7 +2806,8 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                 "3. BULK DELETION / OFFBOARDING RULE: If the incident requests deleting users, extract ALL usernames listed in the Incident Full Description payload (parse all username lines from /etc/passwd dumps or list: e.g. venu, asha, rajesh, ananya, priya, vikram, nexacore, Siva, user01..20, Pamsudo1..5, jboss, pamsudo1..5, ignio) and execute `userdel -r -f <username>` and `rm -f /etc/sudoers.d/*<username>*` for EVERY SINGLE USER listed!\n"
                 "4. ONE-PASS VERIFICATION: Once all operations are executed and verified, IMMEDIATELY STOP calling tools and output your final summary.\n"
                 "5. NATIVE SHELL ONLY: DO NOT prepend 'ssh root@ip' to commands.\n"
-                "6. NON-INTERACTIVE EXECUTION ONLY: Automated SSH sessions cannot accept interactive human inputs. NEVER execute interactive auth prompts like `az login --use-device-code`, `nano`, or `read -p`. For CLI tools like Azure CLI (`az`), run non-interactive verification (e.g. `az --version`, `which az`, setting up non-interactive config files or service principal auth `az login --service-principal`)."
+                "6. NON-INTERACTIVE EXECUTION ONLY: Automated SSH sessions cannot accept interactive human inputs. NEVER execute interactive auth prompts like `az login --use-device-code`, `nano`, or `read -p`. For CLI tools like Azure CLI (`az`), run non-interactive verification (e.g. `az --version`, `which az`, setting up non-interactive config files or service principal auth `az login --service-principal`).\n"
+                "7. STRICT SOP COMMAND MATCHING: You are strictly restricted to execute ONLY the exact commands provided in the 'SOP Guide Commands' list. Any command you execute MUST match one of the commands in the SOP Guide list. You cannot execute arbitrary or unapproved commands."
             )
         },
         {"role": "user", "content": f"Target Host: {ip}\nIncident Short Desc: {short_desc}\nIncident Full Description:\n{desc}\n\nSOP Guide Commands:\n" + json.dumps(guide_commands)}
@@ -2789,6 +2843,33 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                             args = json.loads(tc.function.arguments)
                             cmd = args.get("command")
                             logger.info(f"🛠️ LLM decided to execute tool: {cmd}")
+                            
+                            # Strict SOP validation check
+                            def normalize_cmd(c):
+                                if not c:
+                                    return ""
+                                c = c.strip().strip("'\"").strip(";").strip()
+                                return " ".join(c.split())
+                            
+                            cmd_norm = normalize_cmd(cmd)
+                            guide_norms = [normalize_cmd(gc) for gc in (guide_commands or [])]
+                            
+                            if guide_norms and cmd_norm not in guide_norms:
+                                logger.warning(f"🛡️ STRICT SOP BLOCK: Blocked command '{cmd}' as it is not in the approved SOP commands.")
+                                error_msg = (
+                                    f"SECURITY ERROR: Command '{cmd}' is not present in the approved SOP Guide Commands. "
+                                    f"You are strictly restricted to executing ONLY the approved commands: {guide_commands}."
+                                )
+                                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"SOP Blocked: {cmd}")
+                                messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tc.id,
+                                    "name": tc.function.name,
+                                    "content": error_msg
+                                })
+                                is_success = False
+                                continue
+                            
                             post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"LLM executing: {cmd}")
                             
                             # Execute using held persistent SSH session
@@ -3438,7 +3519,7 @@ def start_continuous_monitoring():
 
             # Sync KB articles to Vector DB (every 5 cycles to avoid overhead)
             if not hasattr(start_continuous_monitoring, 'sync_counter'):
-                start_continuous_monitoring.sync_counter = 0
+                start_continuous_monitoring.sync_counter = 4
             start_continuous_monitoring.sync_counter += 1
             if start_continuous_monitoring.sync_counter % 5 == 0:
                 sync_vector_db_with_kb(token, None, vector_db)

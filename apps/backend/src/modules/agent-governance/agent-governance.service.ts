@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { KnowledgeService } from '../knowledge/knowledge.service';
 
 export interface SafetyCheck {
   check: string;
@@ -85,7 +86,10 @@ export interface AgentHistoryEntry {
 @Injectable()
 export class AgentGovernanceService implements OnModuleInit {
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => KnowledgeService)) private readonly knowledgeService: KnowledgeService
+  ) {}
 
   async onModuleInit() {
     await this.getModelConfig();
@@ -247,23 +251,18 @@ export class AgentGovernanceService implements OnModuleInit {
       const title = details.kbTitle || details.synthesizerOutput?.kbTitle || `Master SOP: Approved Remediation Runbook for ${details.incidentTitle || record.summary}`;
       const steps = details.proposedCommands || details.synthesizerOutput?.resolutionSteps || [];
       const kbNumber = `KB${Math.floor(1000000 + Math.random() * 9000000)}`;
-      
       try {
-        await this.prisma.knowledgeArticle.create({
-          data: {
-            id: kbNumber,
-            number: kbNumber,
-            tenantId: 'tenant_acme_01',
-            title: title,
-            category: details.department || 'Automated Remediation',
-            content: `# ${title}\n\n## Approved Remediation Steps\n` + steps.map((s: string) => `- \`${s}\``).join('\n'),
-            summary: details.summary || details.aiReasoning || title,
-            author: `🛡️ HITL Operator (${approverName})`,
-            resolutionSteps: steps,
-            rating: 5.0
-          }
+        const createdArticle = await this.knowledgeService.createArticle({
+          title: title,
+          category: details.department || 'Automated Remediation',
+          configurationItem: details.targetCi || 'Unknown CI',
+          summary: details.summary || details.aiReasoning || title,
+          symptoms: [],
+          rootCause: '',
+          resolutionSteps: steps,
+          sourceIncidentIds: [record.entityId]
         });
-        console.log(`[GovernanceService] 📚 Auto-saved newly approved Master SOP ${kbNumber}: "${title}"`);
+        console.log(`[GovernanceService] 📚 Auto-saved newly approved Master SOP ${createdArticle?.number || kbNumber}: "${title}"`);
       } catch (e: any) {
         console.warn(`[GovernanceService] Auto-save KnowledgeArticle note: ${e.message}`);
       }

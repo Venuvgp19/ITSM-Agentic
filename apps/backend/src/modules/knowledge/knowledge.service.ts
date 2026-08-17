@@ -604,16 +604,83 @@ Return JSON with:
     return this.synthesizeAllIncidentsInBatches(tenantId);
   }
 
+  private async findSemanticMasterSop(title: string, tenantId: string): Promise<any | null> {
+    try {
+      const masterSops = await this.prisma.knowledgeArticle.findMany({
+        where: {
+          tenantId,
+          title: { startsWith: 'Master SOP:', mode: 'insensitive' }
+        }
+      });
+
+      if (masterSops.length === 0) return null;
+
+      const sopsList = masterSops.map(s => `[Number: ${s.number}, Title: "${s.title}"]`).join('\n');
+      const prompt = `You are an ITIL Knowledge Management Assistant.
+We have a new SOP article with the title: "${title}".
+We have the following list of existing Master SOPs in our database:
+${sopsList}
+
+Determine if this new SOP title refers to the exact same technical/operational domain as one of the existing Master SOPs (e.g. both are user creation/provisioning, both are Docker uninstallation, both are database operations, both are Kubernetes fixes, etc.).
+If yes, reply with the Number of the matching Master SOP (e.g., KB0468213) and nothing else.
+If no existing Master SOP is a semantic match, reply with "NONE" and nothing else. Do not add any explanation or markdown formatting.`;
+
+      const config = this.getDynamicConfig();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`,
+      };
+      if (!config.baseUrl.includes('nvidia.com')) {
+        headers['x-litellm-api-key'] = config.apiKey;
+      }
+
+      const response = await fetch(`${config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: config.model,
+          messages: [
+            { role: 'system', content: 'You are a strict identifier. Output only the matching KB number or "NONE".' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.1,
+          max_tokens: 20
+        }),
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (response.ok) {
+        const data: any = await response.json();
+        const reply = (data.choices?.[0]?.message?.content || '').trim().replace(/['"`]/g, '');
+        if (reply && reply !== 'NONE') {
+          const matched = masterSops.find(s => s.number.toLowerCase() === reply.toLowerCase());
+          if (matched) {
+            this.logger.log(`🤖 Semantic Match Found: "${title}" matched to existing Master SOP ${matched.number} ("${matched.title}")`);
+            return matched;
+          }
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`Error in semantic master SOP check: ${err.message}`);
+    }
+    return null;
+  }
+
   async createArticle(dto: any) {
     const tenantId = dto.tenantId || 'tenant_acme_01';
 
     // Strict Deduplication Guard: Prevent duplicate creation if an article with identical title already exists
     if (dto.title) {
-      const existing = await this.prisma.knowledgeArticle.findFirst({
+      let existing = await this.prisma.knowledgeArticle.findFirst({
         where: { tenantId, title: { equals: dto.title.trim(), mode: 'insensitive' } }
       });
+
+      if (!existing) {
+        existing = await this.findSemanticMasterSop(dto.title, tenantId);
+      }
+
       if (existing) {
-        this.logger.log(`ℹ️ KB Article '${existing.number}' already exists with title '${existing.title}'. Merging resolution steps and symptoms...`);
+        this.logger.log(`ℹ | KB Article '${existing.number}' matched title '${dto.title}'. Merging resolution steps and symptoms...`);
         const existingSteps = (existing.resolutionSteps as string[]) || [];
         const newSteps = (dto.resolutionSteps as string[]) || [];
         const mergedSteps = Array.from(new Set([...existingSteps, ...newSteps]));
@@ -624,7 +691,12 @@ Return JSON with:
 
         const updated = await this.prisma.knowledgeArticle.update({
           where: { id: existing.id },
-          data: { resolutionSteps: mergedSteps, symptoms: mergedSymptoms }
+          data: { 
+            resolutionSteps: mergedSteps, 
+            symptoms: mergedSymptoms,
+            isPublished: true,
+            version: (existing.version || 1) + 1
+          }
         });
         return this.mapKBToDTO(updated);
       }

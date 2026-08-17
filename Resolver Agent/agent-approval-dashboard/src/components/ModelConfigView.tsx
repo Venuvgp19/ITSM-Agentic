@@ -65,7 +65,7 @@ export function ModelConfigView() {
     genai_lab: {
       environment: 'genai_lab' as const,
       baseUrl: 'https://genailab.tcs.in/v1',
-      apiKey: 'sk-RRoxANx2dKdNE3N5j0mbxQ',
+      apiKey: 'sk-0mLmGnF9P0tbG_jlZVYDoA',
       routerModel: 'genailab-maas-gpt-4o',
       resolverModel: 'genailab-maas-gpt-4o',
       synthesizerModel: 'genailab-maas-gpt-4o',
