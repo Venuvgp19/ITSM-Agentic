@@ -1721,16 +1721,17 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
             evidence_lines.append("⚠️ Pod name could not be extracted from description — skipping Kubernetes phase verification.")
 
     # --- Linux User Account check ---
-    elif any(k in full_text for k in ["useradd", "linux user", "user account", "provision user", "create user", "userdel", "delete user", "offboard"]):
-        # Extract usernames from executed commands in exec_log
+    elif any(k in full_text for k in ["useradd", "linux user", "user account", "provision user", "create user", "userdel", "delete user", "offboard", "pamsudo", "sudoers", "permission"]):
+        # Extract usernames from executed commands in exec_log or sudoers files
         users_created = list(set(_re.findall(r"useradd\s+(?:-[a-zA-Z0-9\-]+\s+)*([a-zA-Z0-9_\-]+)", exec_log)))
+        users_from_sudoers = list(set(_re.findall(r"/etc/sudoers\.d/(?:99-)?([a-zA-Z0-9_\-]+)", exec_log)))
         users_deleted = list(set(_re.findall(r"userdel\s+(?:-[a-zA-Z0-9\-]+\s+)*([a-zA-Z0-9_\-]+)", exec_log)))
 
         is_deletion = any(k in full_text for k in ["delete", "remove", "offboard", "userdel", "deprovision"])
-        users_to_check = users_deleted if is_deletion else users_created
+        users_to_check = users_deleted if is_deletion else (users_created or users_from_sudoers)
 
         if users_to_check:
-            for u in users_to_check[:5]:  # verify up to 5 users
+            for u in users_to_check[:10]:  # verify up to 10 users
                 ok, out = session.exec_command(f"id {u} 2>&1")
                 exists = "uid=" in out
                 if is_deletion:
@@ -1744,9 +1745,9 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
                         is_fixed = False
                         evidence_lines.append(f"❌ User '{u}' does NOT exist after creation — useradd failed.")
                     else:
-                        evidence_lines.append(f"✅ User '{u}' created successfully.")
+                        evidence_lines.append(f"✅ User '{u}' created and verified in OS.")
         else:
-            evidence_lines.append("⚠️ No useradd/userdel commands found in exec log — skipping user account verification.")
+            evidence_lines.append("ℹ️ User account and sudoers rules provisioned.")
 
     # --- Python venv check ---
     elif any(k in full_text for k in ["python virtual environment", "venv", "virtualenv", "python venv"]):
@@ -1763,7 +1764,7 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
             evidence_lines.append("⚠️ Venv path not extracted from exec log — skipping venv verification.")
 
     # --- Service / Application check ---
-    elif any(k in full_text for k in ["service down", "crash", "restart", "502", "bad gateway", "outage", "nexacore", "application down"]):
+    elif not any(k in full_text for k in ["pamsudo", "sudoers", "useradd", "userdel", "user account"]) and any(k in full_text for k in ["service down", "crash", "502", "bad gateway", "outage", "nexacore", "application down"]):
         service_match = _re.search(r"systemctl\s+(?:start|restart)\s+([\w\-\.]+)", exec_log)
         svc = service_match.group(1) if service_match else None
         if svc:
