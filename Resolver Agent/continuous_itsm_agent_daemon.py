@@ -2888,7 +2888,7 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
     full_exec_log = ""
     is_success = True
     
-    max_turns = 5
+    max_turns = 10
     turn = 0
     
     session = PersistentSSHSession(ip, user, password)
