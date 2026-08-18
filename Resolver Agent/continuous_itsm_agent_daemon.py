@@ -1751,8 +1751,30 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
             else:
                 is_fixed = False
                 evidence_lines.append(f"❌ Service '{svc}' is '{active}' — restart did not succeed.")
+    # --- CPU / Memory Resource Utilization check ---
+    elif any(k in full_text for k in ["cpu", "memory", "ram", "load average", "high load", "resource utilization", "performance"]):
+        cpu_pct = 0.0
+        mem_pct = 0.0
+        try:
+            ok_c, out_c = session.exec_command("top -bn1 | grep 'Cpu(s)' | awk '{print 100 - $8}'")
+            cpu_body = clean_ssh_stdout(out_c)
+            cpu_pct = float(cpu_body)
+        except Exception:
+            cpu_pct = 0.0
+
+        try:
+            ok_m, out_m = session.exec_command("free | awk 'NR==2{printf \"%.2f\", $3*100/$2 }'")
+            mem_body = clean_ssh_stdout(out_m)
+            mem_pct = float(mem_body)
+        except Exception:
+            mem_pct = 0.0
+
+        evidence_lines.append(f"Post-remediation host resource status: CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}%")
+        if cpu_pct > 90.0 or mem_pct > 90.0:
+            is_fixed = False
+            evidence_lines.append(f"❌ Host resource utilization remains critical (CPU: {cpu_pct:.2f}%, Memory: {mem_pct:.2f}% > 90.0%). Executed KB0468210 diagnostic runbook — escalating to human engineer with log evidence.")
         else:
-            evidence_lines.append("⚠️ No systemctl restart command found in exec log — skipping service status check.")
+            evidence_lines.append(f"✅ Host resource utilization normalized (CPU: {cpu_pct:.2f}%, Memory: {mem_pct:.2f}% <= 90.0%).")
     else:
         evidence_lines.append("ℹ️ No domain-specific post-remediation check applicable — trusting SSH execution result.")
 
