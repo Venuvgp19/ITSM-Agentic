@@ -38,13 +38,14 @@ export function ModelConfigView() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const availableModels = [
+    { value: 'azure/genailab-maas-gpt-4o-mini', label: 'OpenAI GPT-4o Mini (GenAI Lab - Fast Classification & Governance)' },
+    { value: 'genailab-maas-gpt-4o', label: 'OpenAI GPT-4o (GenAI Lab - High-Precision SSH Resolver)' },
+    { value: 'gemini-3.1-pro-preview', label: 'Google Gemini 3.1 Pro Preview (GenAI Lab - Deep Reasoning Synthesizer)' },
+    { value: 'azure_ai/genailab-maas-DeepSeek-R1', label: 'DeepSeek R1 (GenAI Lab - Reasoning Engine)' },
     { value: 'nvidia/nemotron-3.5-lightning-30b-a3b', label: 'NVIDIA Nemotron 3.5 Lightning 30B (NVIDIA NIM - Active & Thinking Enabled)' },
     { value: 'meta/llama-3.3-70b-instruct', label: 'Meta Llama-3.3 70B Instruct (NVIDIA NIM - Active & Verified)' },
-    { value: 'nvidia/llama-3.1-nemotron-70b-instruct', label: 'NVIDIA Llama 3.1 Nemotron 70B Instruct' },
-    { value: 'mistralai/mistral-7b-instruct-v0.3', label: 'Mistral 7B Instruct v0.3' },
-    { value: 'deepseek-ai/deepseek-r1', label: 'DeepSeek R1 (NVIDIA NIM)' },
-    { value: 'genailab-maas-gpt-4o', label: 'OpenAI GPT-4o (GenAI Lab)' },
-    { value: 'gemini-2.5-pro', label: 'Google Gemini 2.5 Pro' }
+    { value: 'gemini-2.5-pro', label: 'Google Gemini 2.5 Pro' },
+    { value: 'gemini-2.5-flash', label: 'Google Gemini 2.5 Flash' }
   ];
 
   const presets = {
@@ -66,12 +67,14 @@ export function ModelConfigView() {
       environment: 'genai_lab' as const,
       baseUrl: 'https://genailab.tcs.in/v1',
       apiKey: 'sk-0mLmGnF9P0tbG_jlZVYDoA',
-      routerModel: 'genailab-maas-gpt-4o',
+      routerModel: 'azure/genailab-maas-gpt-4o-mini',
       resolverModel: 'genailab-maas-gpt-4o',
-      synthesizerModel: 'genailab-maas-gpt-4o',
-      governanceModel: 'genailab-maas-gpt-4o',
+      synthesizerModel: 'gemini-3.1-pro-preview',
+      governanceModel: 'azure/genailab-maas-gpt-4o-mini',
       fallbackModels: [
         'genailab-maas-gpt-4o',
+        'azure/genailab-maas-gpt-4o-mini',
+        'gemini-3.1-pro-preview',
         'gemini-2.5-flash'
       ]
     },
