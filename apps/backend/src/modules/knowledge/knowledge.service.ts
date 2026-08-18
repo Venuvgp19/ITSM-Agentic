@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IncidentService } from '../incidents/incident.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -37,7 +37,7 @@ export class KnowledgeService {
     private readonly incidentService: IncidentService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-    private readonly governanceService: AgentGovernanceService
+    @Inject(forwardRef(() => AgentGovernanceService)) private readonly governanceService: AgentGovernanceService
   ) {
     this.liteLlmBaseUrl = this.configService?.get<string>('LITELLM_BASE_URL') || 'https://genailab.tcs.in/v1';
     this.liteLlmApiKey = 'sk-taPdt4_aNdzmFCX3nP0GiA';

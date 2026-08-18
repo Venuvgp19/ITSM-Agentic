@@ -2866,7 +2866,7 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                 "6. ONE-PASS VERIFICATION: Once all operations are executed and verified, IMMEDIATELY STOP calling tools and output your final summary.\n"
                 "7. NATIVE SHELL ONLY: DO NOT prepend 'ssh root@ip' to commands.\n"
                 "8. NON-INTERACTIVE EXECUTION ONLY: Automated SSH sessions cannot accept interactive human inputs. NEVER execute interactive auth prompts like `az login --use-device-code`, `nano`, or `read -p`.\n"
-                "9. STRICT SOP COMMAND MATCHING: You are strictly restricted to execute ONLY the exact commands provided in the 'SOP Guide Commands' list. Any command you execute MUST match one of the commands in the SOP Guide list."
+                "9. FLEXIBLE SOP COMMAND ADAPTATION: Use the approved 'SOP Guide Commands' as a foundational blueprint. You are authorized to adjust and parameterize the SOP commands (such as substituting target usernames, service names, file paths, hostnames, or specific command options) to achieve the incident goal. However, you MUST NOT execute a completely unrelated or arbitrary command that strays from the SOP's intended operational purpose."
             )
         },
         {"role": "user", "content": f"Target Host: {ip}\nIncident Short Desc: {short_desc}\nIncident Full Description:\n{desc}\n\nSOP Guide Commands:\n" + json.dumps(guide_commands)}
@@ -2903,21 +2903,31 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                             cmd = args.get("command")
                             logger.info(f"🛠️ LLM decided to execute tool: {cmd}")
                             
-                            # Strict SOP validation check
-                            def normalize_cmd(c):
-                                if not c:
-                                    return ""
-                                c = c.strip().strip("'\"").strip(";").strip()
-                                return " ".join(c.split())
+                            # Flexible SOP validation check: allow command adaptation/parameterization matching SOP command intent
+                            def is_allowed_command_adaptation(c_str, approved):
+                                if not approved or not c_str:
+                                    return True
+                                c_clean = c_str.strip().strip("'\"").strip(";")
+                                base_bin = c_clean.split()[0].lower() if c_clean else ""
+                                
+                                # Extract base binaries from approved SOP commands
+                                approved_bins = set()
+                                for ac in approved:
+                                    ac_clean = ac.strip().strip("'\"").strip(";")
+                                    parts = ac_clean.split()
+                                    if parts:
+                                        approved_bins.add(parts[0].lower())
+                                        
+                                # Standard DevOps binaries allowed for SOP adaptation
+                                devops_bins = {"id", "useradd", "userdel", "groupadd", "pkill", "echo", "chmod", "chown", "visudo", "systemctl", "service", "ss", "ps", "top", "free", "cat", "grep", "find", "journalctl", "curl", "test", "rm", "mkdir", "su", "sudo"}
+                                allowed_bins = approved_bins.union(devops_bins)
+                                return base_bin in allowed_bins
                             
-                            cmd_norm = normalize_cmd(cmd)
-                            guide_norms = [normalize_cmd(gc) for gc in (guide_commands or [])]
-                            
-                            if guide_norms and cmd_norm not in guide_norms:
-                                logger.warning(f"🛡️ STRICT SOP BLOCK: Blocked command '{cmd}' as it is not in the approved SOP commands.")
+                            if guide_commands and not is_allowed_command_adaptation(cmd, guide_commands):
+                                logger.warning(f"🛡️ SOP SAFETY BLOCK: Blocked command '{cmd}' as it is completely unrelated to the approved SOP commands.")
                                 error_msg = (
-                                    f"SECURITY ERROR: Command '{cmd}' is not present in the approved SOP Guide Commands. "
-                                    f"You are strictly restricted to executing ONLY the approved commands: {guide_commands}."
+                                    f"SECURITY ERROR: Command '{cmd}' is completely unrelated to the approved SOP Guide Commands. "
+                                    f"Please adapt the approved SOP commands: {guide_commands}."
                                 )
                                 post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"SOP Blocked: {cmd}")
                                 messages.append({

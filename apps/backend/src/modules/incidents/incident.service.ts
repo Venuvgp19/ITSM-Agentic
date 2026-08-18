@@ -66,7 +66,7 @@ export class IncidentService {
     // Find the max existing incident number to avoid duplicates
     const lastIncident = await this.prisma.$queryRaw<{number: string}[]>`
       SELECT number FROM "Incident" 
-      WHERE number LIKE 'INC%' AND "tenantId" = ${tenantId}
+      WHERE number ~ '^INC[0-9]+$' AND "tenantId" = ${tenantId}
       ORDER BY CAST(SUBSTRING(number FROM 4) AS INTEGER) DESC
       LIMIT 1
     `;
