@@ -2749,10 +2749,12 @@ def run_read_only_diagnostic_react_loop(ip, user, password, short_desc, desc, nu
                 "- KUBERNETES / ARGOCD TICKETS: Only inspect k8s resources (`kubectl get pods`, `kubectl get svc`) if the ticket explicitly mentions Kubernetes, ArgoCD, or container pods.\n"
                 "- JENKINS / CREDENTIAL TICKETS: Only inspect Jenkins processes or secrets if the ticket explicitly mentions Jenkins or credentials.\n"
                 "- SYSTEM SERVICES / PERFORMANCE: Inspect process lists, memory, logs, and service status relevant to the ticket topic.\n"
-                "STRICT READ-ONLY SAFETY RULES:\n"
-                "1. READ-ONLY COMMANDS ONLY: You may ONLY execute non-destructive diagnostic commands (e.g. `cat`, `grep`, `find`, `journalctl`, `ss`, `ps`, `ls`, `id`, `getent`, `systemctl status`, `which`, `uname`, `dpkg -l`, `rpm -qa`).\n"
-                "2. NO MUTATING COMMANDS: ABSOLUTELY NO `rm`, `userdel`, `useradd`, `systemctl restart`, `systemctl stop`, `kill`, `chmod`, `sed -i`, `echo >`.\n"
-                "3. EFFICIENT 1-3 TURNS: Execute precise diagnostic probes, then summarize exact findings."
+                "STRICT SAFETY & ACCESS RULES:\n"
+                "1. PERMISSION VS SERVICE RESTART RULE: If an incident ticket requests granting permission/access for a target command (e.g. 'permission to execute systemctl restart sshd'), DO NOT execute that target command (e.g. DO NOT run `systemctl restart sshd` or `systemctl stop sshd`) on the live host! The target command is a privilege specification for sudoers drop-in configuration, NOT a request to restart production services.\n"
+                "2. READ-ONLY COMMANDS ONLY: You may ONLY execute non-destructive diagnostic commands (e.g. `cat`, `grep`, `find`, `journalctl`, `ss`, `ps`, `ls`, `id`, `getent`, `systemctl status`, `which`, `uname`, `dpkg -l`, `rpm -qa`).\n"
+                "3. NO MUTATING COMMANDS: ABSOLUTELY NO `rm`, `userdel`, `useradd`, `systemctl restart`, `systemctl stop`, `kill`, `chmod`, `sed -i`, `echo >`.\n"
+                "4. OUTPUT FORMAT DIRECTIVE: Perform internal reasoning silently. Do NOT output internal `<thought>` or `<thinking>` tags or chain-of-thought blocks in your responses. Output ONLY direct tool calls and concise execution summaries.\n"
+                "5. EFFICIENT 1-3 TURNS: Execute precise diagnostic probes, then summarize exact findings."
             )
         },
         {"role": "user", "content": f"Target Host: {ip} ({ci_name})\nIncident Ticket: {number}\nShort Desc: {short_desc}\nFull Description Payload:\n{desc}"}
@@ -2854,14 +2856,16 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
             "role": "system", 
             "content": (
                 "You are an elite, hyper-efficient IT DevOps Agent. You must resolve the incident in the MINIMUM required steps using the SOP guide and Incident payload.\n"
-                "RULES FOR MAXIMUM EFFICIENCY:\n"
+                "RULES FOR MAXIMUM EFFICIENCY & SAFETY:\n"
                 "1. NO DUPLICATE COMMANDS: Never run duplicate checks (e.g. repeating `ps aux`, `ss -tlnp`, `tail`, or `cat` if already performed in a previous turn).\n"
                 "2. COMPLETE APPLICATION STARTUP: If an application or service is down, you MUST execute the startup command AFTER clearing ports/processes.\n"
-                "3. BULK DELETION / OFFBOARDING RULE: If the incident requests deleting users, extract ALL usernames listed in the Incident Full Description payload (parse all username lines from /etc/passwd dumps or list: e.g. venu, asha, rajesh, ananya, priya, vikram, nexacore, Siva, user01..20, Pamsudo1..5, jboss, pamsudo1..5, ignio) and execute `userdel -r -f <username>` and `rm -f /etc/sudoers.d/*<username>*` for EVERY SINGLE USER listed!\n"
-                "4. ONE-PASS VERIFICATION: Once all operations are executed and verified, IMMEDIATELY STOP calling tools and output your final summary.\n"
-                "5. NATIVE SHELL ONLY: DO NOT prepend 'ssh root@ip' to commands.\n"
-                "6. NON-INTERACTIVE EXECUTION ONLY: Automated SSH sessions cannot accept interactive human inputs. NEVER execute interactive auth prompts like `az login --use-device-code`, `nano`, or `read -p`. For CLI tools like Azure CLI (`az`), run non-interactive verification (e.g. `az --version`, `which az`, setting up non-interactive config files or service principal auth `az login --service-principal`).\n"
-                "7. STRICT SOP COMMAND MATCHING: You are strictly restricted to execute ONLY the exact commands provided in the 'SOP Guide Commands' list. Any command you execute MUST match one of the commands in the SOP Guide list. You cannot execute arbitrary or unapproved commands."
+                "3. BULK DELETION / OFFBOARDING RULE: If the incident requests deleting users, extract ALL usernames listed in the Incident Full Description payload and execute `userdel -r -f <username>` and `rm -f /etc/sudoers.d/*<username>*` for EVERY SINGLE USER listed!\n"
+                "4. PERMISSION VS SERVICE RESTART RULE: If the incident requests granting user access/sudoers rules for a target command (e.g. 'permission to execute systemctl restart sshd'), DO NOT execute that target command (e.g. DO NOT run `systemctl restart sshd`) on the live host unless the approved SOP explicitly instructs to restart it!\n"
+                "5. OUTPUT FORMAT DIRECTIVE: Perform internal reasoning silently. Do NOT output internal `<thought>` or `<thinking>` tags or chain-of-thought blocks in your responses. Output ONLY direct tool calls and concise execution summaries.\n"
+                "6. ONE-PASS VERIFICATION: Once all operations are executed and verified, IMMEDIATELY STOP calling tools and output your final summary.\n"
+                "7. NATIVE SHELL ONLY: DO NOT prepend 'ssh root@ip' to commands.\n"
+                "8. NON-INTERACTIVE EXECUTION ONLY: Automated SSH sessions cannot accept interactive human inputs. NEVER execute interactive auth prompts like `az login --use-device-code`, `nano`, or `read -p`.\n"
+                "9. STRICT SOP COMMAND MATCHING: You are strictly restricted to execute ONLY the exact commands provided in the 'SOP Guide Commands' list. Any command you execute MUST match one of the commands in the SOP Guide list."
             )
         },
         {"role": "user", "content": f"Target Host: {ip}\nIncident Short Desc: {short_desc}\nIncident Full Description:\n{desc}\n\nSOP Guide Commands:\n" + json.dumps(guide_commands)}
@@ -2945,7 +2949,8 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                                     return False, full_exec_log
                 else:
                     # Final summary produced, no tools called
-                    summary = msg.content
+                    raw_summary = msg.content or ""
+                    summary = re.sub(r'<thought>.*?</thought>', '', raw_summary, flags=re.DOTALL | re.IGNORECASE).strip()
                     logger.info(f"✅ ReAct Loop finished for {number}: {summary}")
                     full_exec_log += f"\n=== FINAL AGENT SUMMARY ===\n{summary}\n"
                     break
