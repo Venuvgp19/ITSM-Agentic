@@ -88,7 +88,7 @@ RESOLVER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 SYNTHESIZER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 GOVERNANCE_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
-RAG_SIMILARITY_THRESHOLD = 0.62
+RAG_SIMILARITY_THRESHOLD = 0.42
 
 # --- RAG Scoring Configuration ---
 # Hybrid blend weights — applied when top dense score is in edge zone [0.35, threshold).
@@ -1986,25 +1986,10 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
     raw_query = f"{short_desc} {desc}"
     query_text = raw_query
     
-    # Abstract query into clean L2 Operational Intent using short_desc to prevent matching raw description log output warnings
-    norm_query = raw_query
-    s_low = short_desc.lower()
-
-    # Helper to check for exact word boundary match for short terms like "id"
-    def has_exact_word(word, text):
-        return any(w.strip(".,;:!?()[]{}'\"") == word for w in text.split())
-
-    has_user = any(k in s_low for k in ["user", "useradd", "account", "pamsudo", "sudo", "privilege", "permission"])
-    has_id = has_exact_word("id", s_low)
-
-    if any(k in s_low for k in ["delete", "remove", "offboard", "userdel", "deprovision", "deactivate", "delete all"]):
-        norm_query = "Master SOP: Bulk Linux User Account Deprovisioning & Deletion"
-    elif has_user or has_id:
-        norm_query = "Master SOP: User Account Creation & Provisioning"
-    elif any(k in s_low for k in ["nexacore", "port 8080", "502", "bad gateway", "connection refused"]):
-        norm_query = "SOP: NexaCore Port 8080 Firewalld Unblock and Subprocess Restart"
-    elif any(k in s_low for k in ["cpu", "memory", "ram", "utilization", "load average", "high load", "resource utilization", "performance"]):
-        norm_query = "Master SOP: System Performance & Resource Utilization Runbook"
+    # Dynamic Operational Intent Normalization (Strips hostnames, IPs, specific numbers & ranges for pure RAG matching)
+    clean_text = re.sub(r'worker\d+ol|workernode\d+hl|control\s*plane|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '', short_desc, flags=re.IGNORECASE)
+    clean_text = re.sub(r'\b\d+\s*users\b|pamsudo\d+(\s*to\s*pamsudo\d+)?|\buser\d+\b', 'user account', clean_text, flags=re.IGNORECASE)
+    norm_query = clean_text.strip() if clean_text.strip() else raw_query
 
     try:
         # Query embeddings use 'query' input_type (nv-embed-v1 asymmetric retrieval)
@@ -2124,9 +2109,9 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                 logger.warning(f"🛡️ Action Mismatch Guard: User Deletion ticket [{ticket_number}] matched Provisioning SOP [{cand_number}] '{cand_art.get('title', '')}'. Omitting & inspecting next best candidate...")
                 next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch (Deletion vs Provisioning)."
                 continue
-            elif is_creation_task and is_sop_deletion:
-                logger.warning(f"🛡️ Action Mismatch Guard: User Creation ticket [{ticket_number}] matched Deletion SOP [{cand_number}] '{cand_art.get('title', '')}'. Omitting & inspecting next best candidate...")
-                next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch (Creation vs Deletion)."
+            elif is_creation_task and not any(k in kb_text for k in ["user", "account", "pamsudo", "sudo", "provisioning", "service account"]):
+                logger.warning(f"🛡️ Category Guard: User Creation ticket [{ticket_number}] matched Non-User SOP [{cand_number}] '{cand_art.get('title', '')}'. Omitting & inspecting next best candidate...")
+                next_best_info = f"Candidate [{cand_number}] omitted (User Creation ticket matched non-user SOP)."
                 continue
             elif is_single_user_req and is_bulk_sop:
                 logger.warning(f"🛡️ Quantity Mismatch Guard: Single-user ticket [{ticket_number}] matched Bulk SOP [{cand_number}] (Score {cand_score:.4f}). Omitting & inspecting next best candidate...")
