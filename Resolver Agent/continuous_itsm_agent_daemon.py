@@ -3027,6 +3027,7 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
     is_cpu_alert = not is_user_mgmt_ticket and any(re.search(rf"\b{re.escape(k)}\b", full_text) for k in ["cpu", "load average", "cpu spikes", "cpu 100", "cpu pressure", "cpu saturation", "cpu utilization", "high load"])
     is_mem_alert = not is_user_mgmt_ticket and any(re.search(rf"\b{re.escape(k)}\b", full_text) for k in ["memory", "ram", "oom", "heap", "swap", "memory pressure", "memory 100", "out of memory", "memory utilization", "kernel heap"])
 
+    is_resource_alert_exceeded = False
     if is_cpu_alert or is_mem_alert:
         logger.info(f"📊 CPU/Memory Alert Ticket Detected — Running Autonomous Threshold Check on {ci_name} ({ip})")
         post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "📊 Autonomous Threshold Check", "RUNNING", f"Capturing live CPU/Memory utilization from {ci_name} ({ip})...")
