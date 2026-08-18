@@ -575,7 +575,7 @@ class ChromaVectorDB:
                 return set()
         return set()
 
-    def add_kb_embedding(self, kb_id, number, title, embedding, updated_at=None):
+    def add_kb_embedding(self, kb_id, number, title, embedding, updated_at=None, document=None):
         if self.collection:
             try:
                 final_id = str(kb_id or number or title)
@@ -583,11 +583,14 @@ class ChromaVectorDB:
                 meta = {"number": final_num, "title": str(title)}
                 if updated_at:
                     meta["updatedAt"] = str(updated_at)
-                self.collection.upsert(
-                    ids=[final_id],
-                    embeddings=[embedding],
-                    metadatas=[meta]
-                )
+                kwargs = {
+                    "ids": [final_id],
+                    "embeddings": [embedding],
+                    "metadatas": [meta]
+                }
+                if document:
+                    kwargs["documents"] = [str(document)]
+                self.collection.upsert(**kwargs)
             except Exception as e:
                 logger.warning(f"Failed to index KB in ChromaDB: {e}")
 
@@ -746,7 +749,7 @@ def sync_vector_db_with_kb(token, client, vdb):
                     
             if should_index:
                 emb = get_embedding(content_to_embed, input_type="passage")
-                vdb.add_kb_embedding(art_id, art_number, title, emb, updated_at=art_updated)
+                vdb.add_kb_embedding(art_id, art_number, title, emb, updated_at=art_updated, document=content_to_embed)
                 logger.info(f"Indexed/Updated KB article {art_number} in vector database (100% SOP RAG Coverage).")
     except Exception as e:
         logger.error(f"Failed to sync KB articles to Vector DB: {e}")
@@ -1958,6 +1961,8 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             norm_query = "Linux User Account Provisioning & Passwordless Sudo Access Runbook"
     elif any(k in s_low for k in ["nexacore", "port 8080", "502", "bad gateway", "connection refused"]):
         norm_query = "SOP: NexaCore Port 8080 Firewalld Unblock and Subprocess Restart"
+    elif any(k in s_low for k in ["cpu", "memory", "ram", "utilization", "load average", "high load", "resource utilization", "performance"]):
+        norm_query = "Master SOP: System Performance & Resource Utilization Runbook"
 
     try:
         # Query embeddings use 'query' input_type (nv-embed-v1 asymmetric retrieval)
