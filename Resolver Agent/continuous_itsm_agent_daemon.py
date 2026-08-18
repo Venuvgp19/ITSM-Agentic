@@ -1528,6 +1528,29 @@ def _enforce_sop_safety_rules(sop_commands, short_desc, desc, kb_number):
     if not commands:
         return commands
 
+    # --- SANITIZE SUDOERS COMMANDS FROM LLM HALLUCINATED NARRATIVE TEXT ---
+    import re as _re
+    sanitized_commands = []
+    for c in commands:
+        if "sudoers.d" in c:
+            match = _re.search(r'echo\s+["\']?([^"\'\s]+)\s+ALL=\(ALL\)\s+NOPASSWD:\s*([^"\'\n]+?)["\']?\s*>', c, _re.IGNORECASE)
+            if match:
+                u_name = match.group(1)
+                raw_spec = match.group(2).strip()
+                clean_spec = _re.split(r'[\.\;\n,]', raw_spec)[0].strip()
+                words = clean_spec.split()
+                valid_words = []
+                for w in words:
+                    if w.lower() in ["create", "users", "user", "on", "called", "with", "permission", "to", "for", "please", "worker1ol", "worker2ol", "worker1", "worker2", "5"]:
+                        break
+                    valid_words.append(w)
+                final_spec = " ".join(valid_words).strip()
+                if not final_spec:
+                    final_spec = "ALL"
+                c = f'echo "{u_name} ALL=(ALL) NOPASSWD: {final_spec}" > "/etc/sudoers.d/99-{u_name}" && chmod 440 "/etc/sudoers.d/99-{u_name}"'
+        sanitized_commands.append(c)
+    commands = sanitized_commands
+
     # --- ALL USER MANAGEMENT SOPs: Validate username is not a placeholder ---
     user_mgmt_kbs = ["KB0000001", "KB0000014", "KB0000015", "KB0000017", "KB0000018"]
     if kb_number in user_mgmt_kbs:
@@ -1977,10 +2000,7 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
     if any(k in s_low for k in ["delete", "remove", "offboard", "userdel", "deprovision", "deactivate", "delete all"]):
         norm_query = "Master SOP: Bulk Linux User Account Deprovisioning & Deletion"
     elif has_user or has_id:
-        if any(k in s_low for k in ["su -", "systemctl", "sudoers", "drop-in", "execute"]):
-            norm_query = "Provision Linux user account with restricted sudoers drop-in permission for systemctl command execution"
-        else:
-            norm_query = "Linux User Account Provisioning & Passwordless Sudo Access Runbook"
+        norm_query = "Master SOP: User Account Creation & Provisioning"
     elif any(k in s_low for k in ["nexacore", "port 8080", "502", "bad gateway", "connection refused"]):
         norm_query = "SOP: NexaCore Port 8080 Firewalld Unblock and Subprocess Restart"
     elif any(k in s_low for k in ["cpu", "memory", "ram", "utilization", "load average", "high load", "resource utilization", "performance"]):
@@ -2428,18 +2448,40 @@ Respond ONLY with valid JSON (no markdown fences):
                         formatted_steps.append(f'userdel -r -f "{u_clean}" 2>/dev/null || true')
             # 3. Check for User Creation / Provisioning
             else:
-                pamsudo_matches = re.findall(r'Pamsudo\d+|pamsudo\d+', full_txt, re.IGNORECASE)
-                if pamsudo_matches:
-                    users = sorted(list(set(pamsudo_matches)))
+                range_match = re.search(r'([a-zA-Z0-9_-]+?)(\d+)\s*(?:to|\.\.|\-)\s*(?:[a-zA-Z0-9_-]+?)?(\d+)', full_txt, re.IGNORECASE)
+                if range_match:
+                    prefix = range_match.group(1).strip()
+                    start_num = int(range_match.group(2))
+                    end_num = int(range_match.group(3))
+                    if start_num <= end_num and (end_num - start_num) <= 50:
+                        users = [f"{prefix}{i}" for i in range(start_num, end_num + 1)]
+                    else:
+                        users = []
                 else:
-                    u_match = re.search(r'\buser\s+([a-zA-Z0-9_-]+)', full_txt, re.IGNORECASE)
-                    candidate_user = u_match.group(1).strip() if u_match else ""
-                    if candidate_user.lower() in ["creation", "account", "control", "plane", "server", "node", "cluster", "workernode1hl"]:
-                        candidate_user = ""
-                    users = [candidate_user] if candidate_user else []
+                    users = []
 
-                cmd_match = re.search(r'(?:command like|capability|command)\s+([a-zA-Z0-9_\-\/\s]+)', full_txt, re.IGNORECASE)
-                restricted_cmd = cmd_match.group(1).strip() if cmd_match else ""
+                if not users:
+                    pamsudo_matches = re.findall(r'Pamsudo\d+|pamsudo\d+', full_txt, re.IGNORECASE)
+                    if pamsudo_matches:
+                        users = sorted(list(set([p.lower() for p in pamsudo_matches])))
+                    else:
+                        u_match = re.search(r'\buser\s+([a-zA-Z0-9_-]+)', full_txt, re.IGNORECASE)
+                        candidate_user = u_match.group(1).strip() if u_match else ""
+                        if candidate_user.lower() in ["creation", "account", "control", "plane", "server", "node", "cluster", "workernode1hl"]:
+                            candidate_user = ""
+                        users = [candidate_user] if candidate_user else []
+
+                cmd_match = re.search(r'(?:command like|capability|only command|command)\s+([a-zA-Z0-9_\-\/\.\s]+)', full_txt, re.IGNORECASE)
+                raw_cmd = cmd_match.group(1).strip() if cmd_match else ""
+                restricted_cmd = re.split(r'[\.\;\n,]', raw_cmd)[0].strip() if raw_cmd else ""
+                if restricted_cmd:
+                    words = restricted_cmd.split()
+                    valid_words = []
+                    for w in words:
+                        if w.lower() in ["create", "users", "user", "on", "called", "with", "permission", "to", "for", "please", "worker1ol", "worker2ol", "worker1", "worker2", "5"]:
+                            break
+                        valid_words.append(w)
+                    restricted_cmd = " ".join(valid_words).strip()
 
                 if users:
                     for u in users:
