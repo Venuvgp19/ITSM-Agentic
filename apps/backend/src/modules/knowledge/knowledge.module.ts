@@ -6,7 +6,7 @@ import { AiRouterModule } from '../ai-router/ai-router.module';
 import { AgentGovernanceModule } from '../agent-governance/agent-governance.module';
 
 @Module({
-  imports: [IncidentModule, AiRouterModule, forwardRef(() => AgentGovernanceModule)],
+  imports: [IncidentModule, forwardRef(() => AiRouterModule), forwardRef(() => AgentGovernanceModule)],
   controllers: [KnowledgeController],
   providers: [KnowledgeService],
   exports: [KnowledgeService],
