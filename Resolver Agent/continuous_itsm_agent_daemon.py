@@ -2615,12 +2615,17 @@ Respond ONLY in JSON:
             )
             if plan_content:
                 plan = safe_json_parse(plan_content)
-                if isinstance(plan, list) and len(plan) > 0: plan = plan[0]
+                if isinstance(plan, list) and len(plan) > 0:
+                    plan = plan[0]
+                if not isinstance(plan, dict):
+                    plan = {}
                 logger.info(f"🧠 Parameterized commands using model: '{used_model}'")
         except Exception as e:
             logger.error(f"LLM SOP parameterization failed for {ticket_number}: {e}")
             plan = {}
 
+        if not isinstance(plan, dict):
+            plan = {}
             
         sop_commands = plan.get("sop_commands", kb_steps_list)
         reasoning = plan.get("reasoning", f"SOP {top_match['number']} parameterized.")
