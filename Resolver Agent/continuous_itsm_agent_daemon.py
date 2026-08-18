@@ -2102,6 +2102,14 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
                 continue
 
             # Action Direction & Quantity Safety Filter Check
+            is_user_account_ticket = any(k in q_low for k in ["user", "users", "pamsudo", "account", "userdel", "useradd", "offboard", "deprovision", "delete 5 users", "delete user"])
+            is_software_sop = any(k in kb_title for k in ["docker", "kubernetes", "nexacore", "postgresql", "spooler", "firewalld", "nginx", "apache"])
+            
+            if is_user_account_ticket and is_deletion_task and is_software_sop:
+                logger.warning(f"🛡️ Category Guard: User Deletion ticket [{ticket_number}] matched Software Removal SOP [{cand_number}] '{cand_art.get('title', '')}'. Omitting & inspecting next best candidate...")
+                next_best_info = f"Candidate [{cand_number}] omitted — User Deletion ticket cannot match Software Removal SOP."
+                continue
+
             if is_credential_task and is_sop_user_mgmt:
                 logger.warning(f"🛡️ Action Mismatch Guard: Credential Retrieval ticket [{ticket_number}] matched Account Management SOP [{cand_number}] '{cand_art.get('title', '')}'. Omitting & inspecting next best candidate...")
                 next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch (Credential Retrieval vs Account Management)."
@@ -2866,7 +2874,7 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                 "6. ONE-PASS VERIFICATION: Once all operations are executed and verified, IMMEDIATELY STOP calling tools and output your final summary.\n"
                 "7. NATIVE SHELL ONLY: DO NOT prepend 'ssh root@ip' to commands.\n"
                 "8. NON-INTERACTIVE EXECUTION ONLY: Automated SSH sessions cannot accept interactive human inputs. NEVER execute interactive auth prompts like `az login --use-device-code`, `nano`, or `read -p`.\n"
-                "9. FLEXIBLE SOP COMMAND ADAPTATION: Use the approved 'SOP Guide Commands' as a foundational blueprint. You are authorized to adjust and parameterize the SOP commands (such as substituting target usernames, service names, file paths, hostnames, or specific command options) to achieve the incident goal. However, you MUST NOT execute a completely unrelated or arbitrary command that strays from the SOP's intended operational purpose."
+                "9. CONSTRAINED SOP COMMAND ADAPTATION: Use the approved 'SOP Guide Commands' as a strict foundational blueprint. You are authorized to adapt and parameterize ONLY the specific commands/binaries present in the SOP Guide (substituting target usernames, IPs, service names, or file paths). You are STRICTLY PROHIBITED from introducing completely new command binaries that are absent from the approved SOP blueprint."
             )
         },
         {"role": "user", "content": f"Target Host: {ip}\nIncident Short Desc: {short_desc}\nIncident Full Description:\n{desc}\n\nSOP Guide Commands:\n" + json.dumps(guide_commands)}
@@ -2903,31 +2911,33 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                             cmd = args.get("command")
                             logger.info(f"🛠️ LLM decided to execute tool: {cmd}")
                             
-                            # Flexible SOP validation check: allow command adaptation/parameterization matching SOP command intent
+                            # Constrained SOP validation check: allow parameter adaptation ONLY for binaries present in approved SOP blueprint
                             def is_allowed_command_adaptation(c_str, approved):
                                 if not approved or not c_str:
                                     return True
                                 c_clean = c_str.strip().strip("'\"").strip(";")
                                 base_bin = c_clean.split()[0].lower() if c_clean else ""
                                 
-                                # Extract base binaries from approved SOP commands
+                                # Extract base binaries from approved SOP commands (handling compound commands with && / || / ;)
                                 approved_bins = set()
                                 for ac in approved:
                                     ac_clean = ac.strip().strip("'\"").strip(";")
-                                    parts = ac_clean.split()
-                                    if parts:
-                                        approved_bins.add(parts[0].lower())
+                                    sub_cmds = re.split(r'&&|\|\||;|\|', ac_clean)
+                                    for sc in sub_cmds:
+                                        parts = sc.strip().split()
+                                        if parts:
+                                            approved_bins.add(parts[0].lower())
                                         
-                                # Standard DevOps binaries allowed for SOP adaptation
-                                devops_bins = {"id", "useradd", "userdel", "groupadd", "pkill", "echo", "chmod", "chown", "visudo", "systemctl", "service", "ss", "ps", "top", "free", "cat", "grep", "find", "journalctl", "curl", "test", "rm", "mkdir", "su", "sudo"}
-                                allowed_bins = approved_bins.union(devops_bins)
+                                # Diagnostic tools always allowed for health/status verification
+                                diagnostic_bins = {"id", "ss", "ps", "top", "free", "journalctl", "curl", "test"}
+                                allowed_bins = approved_bins.union(diagnostic_bins)
                                 return base_bin in allowed_bins
                             
                             if guide_commands and not is_allowed_command_adaptation(cmd, guide_commands):
-                                logger.warning(f"🛡️ SOP SAFETY BLOCK: Blocked command '{cmd}' as it is completely unrelated to the approved SOP commands.")
+                                logger.warning(f"🛡️ SOP SAFETY BLOCK: Blocked command '{cmd}' as its binary/tool is not present in the approved SOP commands {guide_commands}.")
                                 error_msg = (
-                                    f"SECURITY ERROR: Command '{cmd}' is completely unrelated to the approved SOP Guide Commands. "
-                                    f"Please adapt the approved SOP commands: {guide_commands}."
+                                    f"SECURITY ERROR: Command '{cmd}' uses a binary/tool that is not present in the approved SOP Guide Commands. "
+                                    f"You are restricted to adapting ONLY the approved SOP commands: {guide_commands}."
                                 )
                                 post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"SOP Blocked: {cmd}")
                                 messages.append({
