@@ -3042,6 +3042,7 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
             commands_to_run = []
             decision_log = []
             sop_commands = []
+            is_resource_alert_exceeded = False
             
             if cpu_pct > 90.0:
                 logger.warning(f"🚨 CPU CRITICAL: {cpu_pct:.2f}% > 90% — Will capture top CPU processes")
@@ -3067,15 +3068,11 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                 resolved_incident_sessions.add(inc_id)
                 return
             else:
-                # Prepend threshold check commands to existing SOP commands
-                if sop_commands:
-                    sop_commands = commands_to_run + sop_commands
-                else:
-                    sop_commands = commands_to_run
-                
+                is_resource_alert_exceeded = True
+                sop_commands = commands_to_run + ["uptime", "free -m", "ps aux --sort=-%cpu | head -n 10"]
                 decision_summary = "; ".join(decision_log)
                 post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "📊 Autonomous Threshold Check", "SUCCESS", f"Decision: {decision_summary}")
-                logger.info(f"📋 Autonomous Decision: {decision_summary} — Prepending check commands to SOP execution")
+                logger.info(f"📋 Autonomous Decision: {decision_summary} — Matched Master System Performance Runbook")
         
         except Exception as e:
             logger.error(f"Autonomous threshold check failed: {e}")
@@ -3093,6 +3090,12 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
         kb_num = approved_appr.get("kbArticleReference", "KB_NEW")
         kb_title = approved_appr.get("kbTitle", short_desc)
         new_sop_data = {"title": kb_title, "summary": approved_appr.get("summary")}
+    elif is_resource_alert_exceeded:
+        is_new_use_case = False
+        kb_num = "KB0468210"
+        kb_title = "Master SOP: System Performance & Resource Utilization Runbook"
+        new_sop_data = None
+        logger.info(f"🎯 Direct Resource Alert SOP Match: Using [{kb_num}] '{kb_title}' for ticket [{number}]")
     else:
         # 2. Evaluate or retrieve SOP via RAG
         is_new_use_case, kb_num, kb_title, reasoning, sop_commands, new_sop_data = evaluate_and_get_sop(
