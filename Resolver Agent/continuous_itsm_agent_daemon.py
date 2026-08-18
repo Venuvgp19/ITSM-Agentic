@@ -3036,6 +3036,7 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
             # Autonomous Decision Logic
             commands_to_run = []
             decision_log = []
+            sop_commands = []
             
             if cpu_pct > 90.0:
                 logger.warning(f"🚨 CPU CRITICAL: {cpu_pct:.2f}% > 90% — Will capture top CPU processes")
