@@ -252,6 +252,32 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
     return "Verification completed via physical SSH telemetry. Service state confirmed operational.", "deterministic-failsafe"
 
 
+def clean_thinking_text(text: str) -> str:
+    if not text:
+        return ""
+    # Strip XML tags <thought>...</thought> and <thinking>...</thinking>
+    text = _re.sub(r'<(?:thought|thinking)>.*?</(?:thought|thinking)>', '', text, flags=_re.DOTALL | _re.IGNORECASE)
+    # Strip lines starting with thinking headers
+    lines = []
+    skip = False
+    for line in text.splitlines():
+        l_strip = line.strip()
+        l_lower = l_strip.lower()
+        if any(l_lower.startswith(p) for p in [
+            "here's a thinking process", "thinking process:", "let's analyze", "let's break down",
+            "1.  **analyze user input", "1. **analyze user input", "analyze user input"
+        ]):
+            skip = True
+            continue
+        if skip:
+            if l_strip.startswith("[Tool Call") or l_strip.startswith("```") or l_strip.startswith("Final state") or l_strip.startswith("- **") or l_strip.startswith("All requested"):
+                skip = False
+            else:
+                continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
 def safe_json_parse(text):
     """
     Robustly parses JSON strings from LLM completions, stripping out thinking traces,
@@ -1727,10 +1753,10 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
         raw_sudoers = _re.findall(r'/etc/sudoers\.d/(?:99-)?([a-zA-Z0-9_\-]+)', exec_log)
         raw_deleted = _re.findall(r'userdel\s+(?:-[a-zA-Z0-9\-]+\s+|\"[^\"]*\"\s+|\'[^\']*\'\s+)*\"?([a-zA-Z0-9_\-]+)\"?', exec_log)
 
-        ignore_terms = {"bin", "bash", "sh", "etc", "sudoers", "root", "command", "systemctl", "restart", "nexacore"}
-        users_created = list(set([u.strip('"\'') for u in raw_created if u and not u.startswith("-") and not u.startswith("/") and u.lower() not in ignore_terms]))
-        users_from_sudoers = list(set([u.strip('"\'') for u in raw_sudoers if u and not u.startswith("-") and not u.startswith("/") and u.lower() not in ignore_terms]))
-        users_deleted = list(set([u.strip('"\'') for u in raw_deleted if u and not u.startswith("-") and not u.startswith("/") and u.lower() not in ignore_terms]))
+        ignore_terms = {"bin", "bash", "sh", "etc", "sudoers", "root", "command", "systemctl", "restart", "nexacore", "pamsudox", "puser", "user", "username", "sudo_command", "99-"}
+        users_created = list(set([u.strip('"\'') for u in raw_created if u and not u.startswith("-") and not u.startswith("/") and not u.endswith("X") and not u.isupper() and u.lower() not in ignore_terms]))
+        users_from_sudoers = list(set([u.strip('"\'') for u in raw_sudoers if u and not u.startswith("-") and not u.startswith("/") and not u.endswith("X") and not u.isupper() and u.lower() not in ignore_terms]))
+        users_deleted = list(set([u.strip('"\'') for u in raw_deleted if u and not u.startswith("-") and not u.startswith("/") and not u.endswith("X") and not u.isupper() and u.lower() not in ignore_terms]))
 
         is_deletion = any(k in full_text for k in ["delete", "remove", "offboard", "userdel", "deprovision"])
         users_to_check = users_deleted if is_deletion else (users_created or users_from_sudoers)
@@ -2981,9 +3007,17 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                 else:
                     # Final summary produced, no tools called
                     raw_summary = msg.content or ""
-                    summary = re.sub(r'<thought>.*?</thought>', '', raw_summary, flags=re.DOTALL | re.IGNORECASE).strip()
-                    logger.info(f"✅ ReAct Loop finished for {number}: {summary}")
-                    full_exec_log += f"\n=== FINAL AGENT SUMMARY ===\n{summary}\n"
+                    clean_summary = clean_thinking_text(raw_summary)
+                    if turn <= 3 and (not clean_summary or "thinking process" in raw_summary.lower() or len(clean_summary) < 15):
+                        logger.info(f"ℹ️ ReAct Loop turn {turn}: LLM outputted thinking prose without tool calls. Re-prompting for direct tool execution...")
+                        messages.append({
+                            "role": "user",
+                            "content": "CRITICAL DIRECTIVE: Do NOT output thinking prose or analysis blocks. Execute the required SSH tool calls immediately using execute_ssh_command."
+                        })
+                        continue
+
+                    logger.info(f"✅ ReAct Loop finished for {number}: {clean_summary}")
+                    full_exec_log += f"\n=== FINAL AGENT SUMMARY ===\n{clean_summary}\n"
                     break
             except Exception as e:
                 logger.error(f"ReAct Loop Error: {e}")
