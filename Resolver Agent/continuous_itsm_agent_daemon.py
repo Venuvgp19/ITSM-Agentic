@@ -1723,9 +1723,14 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
     # --- Linux User Account check ---
     elif any(k in full_text for k in ["useradd", "linux user", "user account", "provision user", "create user", "userdel", "delete user", "offboard", "pamsudo", "sudoers", "permission"]):
         # Extract usernames from executed commands in exec_log or sudoers files
-        users_created = list(set(_re.findall(r"useradd\s+(?:-[a-zA-Z0-9\-]+\s+)*([a-zA-Z0-9_\-]+)", exec_log)))
-        users_from_sudoers = list(set(_re.findall(r"/etc/sudoers\.d/(?:99-)?([a-zA-Z0-9_\-]+)", exec_log)))
-        users_deleted = list(set(_re.findall(r"userdel\s+(?:-[a-zA-Z0-9\-]+\s+)*([a-zA-Z0-9_\-]+)", exec_log)))
+        raw_created = _re.findall(r'useradd\s+(?:-[a-zA-Z0-9\-]+\s+|\"[^\"]*\"\s+|\'[^\']*\'\s+)*\"?([a-zA-Z0-9_\-]+)\"?', exec_log)
+        raw_sudoers = _re.findall(r'/etc/sudoers\.d/(?:99-)?([a-zA-Z0-9_\-]+)', exec_log)
+        raw_deleted = _re.findall(r'userdel\s+(?:-[a-zA-Z0-9\-]+\s+|\"[^\"]*\"\s+|\'[^\']*\'\s+)*\"?([a-zA-Z0-9_\-]+)\"?', exec_log)
+
+        ignore_terms = {"bin", "bash", "sh", "etc", "sudoers", "root", "command", "systemctl", "restart", "nexacore"}
+        users_created = list(set([u.strip('"\'') for u in raw_created if u and not u.startswith("-") and not u.startswith("/") and u.lower() not in ignore_terms]))
+        users_from_sudoers = list(set([u.strip('"\'') for u in raw_sudoers if u and not u.startswith("-") and not u.startswith("/") and u.lower() not in ignore_terms]))
+        users_deleted = list(set([u.strip('"\'') for u in raw_deleted if u and not u.startswith("-") and not u.startswith("/") and u.lower() not in ignore_terms]))
 
         is_deletion = any(k in full_text for k in ["delete", "remove", "offboard", "userdel", "deprovision"])
         users_to_check = users_deleted if is_deletion else (users_created or users_from_sudoers)
