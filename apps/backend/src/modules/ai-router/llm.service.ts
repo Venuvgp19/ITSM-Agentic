@@ -176,15 +176,13 @@ export class LlmService {
           headers['x-litellm-api-key'] = apiKey;
         }
 
-        const response = await fetch(`${baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              {
-                role: 'system',
-                content: `You are an expert Enterprise ITSM AI Agentic Router. 
+        const isNemotron = model.includes('nemotron-3.5-lightning') || model.includes('nemotron');
+        const reqBody: any = {
+          model: model,
+          messages: [
+            {
+              role: 'system',
+              content: `You are an expert Enterprise ITSM AI Agentic Router. 
 Analyze the incident description, affected Configuration Item (CI), and system logs.
 Select the single best operational department group from the following list:
 - Unix
@@ -204,15 +202,25 @@ Output your analysis in strict JSON format with keys:
   "recommendedResolutionCode": "string (suggested close code category)",
   "recommendedWorkNote": "string (diagnostic work note to log)"
 }`,
-              },
-              {
-                role: 'user',
-                content: prompt,
-              },
-            ],
-            temperature: 0.2,
-            max_tokens: 1024,
-          }),
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: isNemotron ? 0.6 : 0.2,
+          max_tokens: 4096,
+        };
+
+        if (isNemotron) {
+          reqBody.chat_template_kwargs = { enable_thinking: true };
+          reqBody.reasoning_budget = 2048;
+        }
+
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(reqBody),
           signal: AbortSignal.timeout(60000),
         });
 
