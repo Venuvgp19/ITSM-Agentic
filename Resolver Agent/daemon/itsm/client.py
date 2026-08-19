@@ -1,0 +1,261 @@
+import requests
+from ..config import (
+    logger,
+    ITSM_BASE_URL,
+    MODEL_NAME,
+    CI_CREDENTIALS,
+    resolved_incident_sessions,
+)
+from ..llm import get_embedding, build_kb_embed_text
+from ..rag.vector_db import ChromaVectorDB
+from ..rag.hybrid_search import sanitize_kb_title
+
+DEPARTMENT_TEAM_MEMBERS = {
+    "Unix": "Richard Stallman (Unix)",
+    "Network Ops": "Sarah Connor (Network Ops)",
+    "App Support": "Alex Mercer (App Support)",
+    "Desktop Support": "David Miller (Desktop Support)",
+    "DBA Team": "DBA Team",
+    "SecOps": "Security Team",
+    "DevOps Ops": "DevOps Team"
+}
+
+def get_team_member_for_department(department):
+    return DEPARTMENT_TEAM_MEMBERS.get(department, "Richard Stallman (Unix)")
+
+def get_auth_token():
+    try:
+        res = requests.post(
+            f"{ITSM_BASE_URL}/auth/login",
+            json={"email": "resolver.agent@enterprise.com", "password": "password123"},
+            timeout=5
+        )
+        if res.status_code in [200, 201]:
+            return res.json()["accessToken"]
+    except Exception as e:
+        logger.error(f"Authentication failed: {e}")
+    return None
+
+def fetch_incident_queue(token):
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(f"{ITSM_BASE_URL}/incidents", headers=headers, timeout=5)
+        if res.status_code == 200:
+            return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching incident queue: {e}")
+    return []
+
+def fetch_kb_articles(token):
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(f"{ITSM_BASE_URL}/knowledge/articles", headers=headers, timeout=5)
+        if res.status_code == 200:
+            return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching KB articles: {e}")
+    return []
+
+def add_work_note(token, incident_id, note_text, author="🤖 Unix Auto-Resolver Agent"):
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Check if a duplicate work note already exists for key headers
+    try:
+        inc_res = requests.get(f"{ITSM_BASE_URL}/incidents/{incident_id}", headers=headers, timeout=5)
+        if inc_res.status_code == 200:
+            existing_activities = inc_res.json().get("activities", [])
+            meaningful_lines = [l.strip() for l in note_text.split('\n') if l.strip() and '━━' not in l]
+            header_line = meaningful_lines[0] if meaningful_lines else note_text[:50]
+            for act in existing_activities:
+                if header_line and header_line in act.get("comment", ""):
+                    logger.info(f"⏭️ Skipping duplicate work note for {incident_id}: '{header_line[:40]}...'")
+                    return True
+    except Exception:
+        pass
+
+    payload = {"comment": note_text, "isWorkNote": True, "author": author}
+    try:
+        res = requests.post(f"{ITSM_BASE_URL}/incidents/{incident_id}/activities", headers=headers, json=payload, timeout=5)
+        return res.status_code in [200, 201]
+    except Exception as e:
+        logger.error(f"Failed to post work note to {incident_id}: {e}")
+        return False
+
+def fetch_agent_approvals(token):
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.get(f"{ITSM_BASE_URL}/agent/approvals", headers=headers, timeout=5)
+        if res.status_code == 200:
+            return res.json()
+    except Exception as e:
+        logger.error(f"Error fetching agent approvals: {e}")
+    return []
+
+def submit_agent_approval(token, approval_data):
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        res = requests.post(f"{ITSM_BASE_URL}/agent/approvals", headers=headers, json=approval_data, timeout=5)
+        return res.status_code in [200, 201]
+    except Exception as e:
+        logger.error(f"Error submitting agent approval request: {e}")
+        return False
+
+def update_incident_status(token, incident_id, state, resolution_code=None, resolution_notes=None, assigned_to=None):
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {"state": state}
+    if resolution_code:
+        payload["resolutionCode"] = resolution_code
+    if resolution_notes:
+        payload["resolutionNotes"] = resolution_notes
+    if assigned_to:
+        payload["assignedTo"] = assigned_to
+    try:
+        res = requests.patch(f"{ITSM_BASE_URL}/incidents/{incident_id}/state", headers=headers, json=payload, timeout=5)
+        if res.status_code not in [200, 201]:
+            res = requests.patch(f"{ITSM_BASE_URL}/incidents/{incident_id}", headers=headers, json=payload, timeout=5)
+        
+        if state == "RESOLVED":
+            resolved_incident_sessions.add(incident_id)
+            logger.info(f"🔒 Incident [{incident_id}] state saved as RESOLVED in PostgreSQL DB — locked from re-processing.")
+            
+        return res.status_code in [200, 201]
+    except Exception as e:
+        logger.error(f"Failed to update status for {incident_id}: {e}")
+        return False
+
+def save_new_kb_article_to_storage(new_article_data):
+    """
+    Persists a dynamically generated SOP Knowledge Base Article directly into the Single Master Database via NestJS API.
+    Only called AFTER the Resolver Agent successfully resolves the incident!
+    """
+    try:
+        target_title = str(new_article_data.get("title", "")).strip().lower()
+        target_tokens = set(t for t in target_title.split() if len(t) > 3)
+        
+        if target_title:
+            try:
+                existing_kbs = requests.get(f"{ITSM_BASE_URL}/knowledge/articles", timeout=5).json()
+                for kb in existing_kbs:
+                    existing_title = str(kb.get("title", "")).strip().lower()
+                    
+                    # 1. Exact Title Match
+                    if existing_title == target_title:
+                        logger.info(f"ℹ️ KB Article '{kb.get('number')}' already exists with identical title '{kb.get('title')}'. Skipping duplicate creation.")
+                        return kb
+                    
+                    # 2. Fuzzy Token Overlap Check (>85% similarity)
+                    existing_tokens = set(t for t in existing_title.split() if len(t) > 3)
+                    if target_tokens and existing_tokens:
+                        overlap = len(target_tokens.intersection(existing_tokens))
+                        similarity = overlap / max(len(target_tokens), len(existing_tokens))
+                        if similarity >= 0.85:
+                            logger.info(f"ℹ️ KB Article '{kb.get('number')}' ('{kb.get('title')}') is a near-duplicate (similarity: {similarity:.2f}). Merging steps into existing KB...")
+                            existing_steps = kb.get("resolutionSteps", [])
+                            new_steps = new_article_data.get("resolutionSteps", [])
+                            merged_steps = list(dict.fromkeys(existing_steps + new_steps))
+
+                            existing_symptoms = kb.get("symptoms", [])
+                            new_symptoms = new_article_data.get("symptoms", [])
+                            merged_symptoms = list(dict.fromkeys(existing_symptoms + new_symptoms))
+                            
+                            try:
+                                patch_res = requests.patch(
+                                    f"{ITSM_BASE_URL}/knowledge/articles/{kb.get('number')}",
+                                    json={"resolutionSteps": merged_steps, "symptoms": merged_symptoms},
+                                    timeout=5
+                                )
+                                if patch_res.status_code == 200:
+                                    logger.info(f"✅ Successfully merged new resolution steps and enriched symptoms into {kb.get('number')}")
+                                    updated_kb = patch_res.json()
+                                    try:
+                                        vdb = ChromaVectorDB()
+                                        content_to_embed = build_kb_embed_text(
+                                            title=kb.get('title', ''),
+                                            summary=kb.get('summary', ''),
+                                            symptoms=merged_symptoms,
+                                            root_cause=kb.get('rootCause', '')
+                                        )
+                                        emb = get_embedding(content_to_embed, input_type="passage")
+                                        if emb:
+                                            vdb.add_kb_embedding(kb.get('number'), kb.get('number'), kb.get('title'), emb)
+                                            logger.info(f"⚡ Re-indexed vector embeddings for {kb.get('number')} in ChromaDB with enriched RAG coverage.")
+                                    except Exception as vec_err:
+                                        logger.warning(f"Failed to re-index vector embedding: {vec_err}")
+                                    return updated_kb
+                            except Exception as patch_err:
+                                logger.warning(f"Could not patch existing KB {kb.get('number')}: {patch_err}")
+                            return kb
+            except Exception as check_err:
+                logger.warning(f"Error checking existing KBs for deduplication: {check_err}")
+
+        clean_title = sanitize_kb_title(new_article_data.get("title", "Troubleshooting & SOP: New Issue"))
+        payload = {
+            "title": clean_title,
+            "category": new_article_data.get("category", "Unix - OS & Services"),
+            "configurationItem": new_article_data.get("configurationItem", "Worker 1"),
+            "summary": new_article_data.get("summary", "Dynamically synthesized SOP article."),
+            "symptoms": new_article_data.get("symptoms", ["Telemetry alert reported for new issue."]),
+            "rootCause": new_article_data.get("rootCause", "Root cause identified in new use case diagnostic."),
+            "resolutionSteps": new_article_data.get("resolutionSteps", []),
+            "sourceIncidentIds": new_article_data.get("sourceIncidentIds", []),
+            "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
+            "modelUsed": MODEL_NAME
+        }
+        res = requests.post(f"{ITSM_BASE_URL}/knowledge/articles", json=payload, timeout=5)
+        if res.status_code in [200, 201]:
+            new_article = res.json()
+            logger.info(f"✨ PERSISTED NEW SOP ARTICLE TO DATABASE VIA API: {new_article.get('number')} - {new_article.get('title')}")
+            _indexed_ok = False
+            try:
+                vdb = ChromaVectorDB()
+                symptom_list = new_article.get('symptoms', [])
+                content_to_embed = build_kb_embed_text(
+                    title=new_article.get('title', ''),
+                    summary=new_article.get('summary', ''),
+                    symptoms=symptom_list,
+                    root_cause=new_article.get('rootCause', '')
+                )
+                emb = get_embedding(content_to_embed, input_type="passage")
+                if emb:
+                    vdb.add_kb_embedding(new_article.get('number'), new_article.get('number'), new_article.get('title'), emb)
+                    _indexed_numbers = vdb.get_indexed_numbers()
+                    if new_article.get('number') in _indexed_numbers:
+                        _indexed_ok = True
+                        logger.info(f"⚡ Indexed new vector embedding for {new_article.get('number')} in ChromaDB (verified present).")
+                    else:
+                        logger.error(f"❌ ChromaDB upsert reported success but {new_article.get('number')} is NOT present after write — reindex required.")
+            except Exception as vec_err:
+                logger.error(f"❌ Failed to index new vector embedding for {new_article.get('number')}: {vec_err}")
+            try:
+                new_article["_chromadb_indexed"] = _indexed_ok
+            except Exception:
+                pass
+            return new_article
+        else:
+            logger.error(f"Failed to post KB article. Status: {res.status_code}, Body: {res.text}")
+            return None
+    except Exception as e:
+        logger.error(f"Failed to persist new KB article via API: {e}")
+        return None
+
+def resolve_ci_credentials(incident):
+    ci_name = incident.get("configurationItem")
+    short_desc = (incident.get("shortDescription") or "").lower()
+    desc = (incident.get("description") or "").lower()
+
+    # 1. Try mapping the explicit CI name if it is defined and exists in CI_CREDENTIALS
+    if ci_name and ci_name in CI_CREDENTIALS:
+        return CI_CREDENTIALS[ci_name], ci_name
+
+    # 2. Scan shortDescription and description for references to known IP addresses or CI names
+    for key, info in CI_CREDENTIALS.items():
+        if info["ip"] in short_desc or info["ip"] in desc:
+            return info, key
+        if key.lower() in short_desc or key.lower() in desc:
+            return info, key
+        key_no_spaces = key.lower().replace(" ", "")
+        if key_no_spaces in short_desc or key_no_spaces in desc:
+            return info, key
+
+    # 3. No fallback to default host
+    return None, None
