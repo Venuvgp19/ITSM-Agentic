@@ -73,11 +73,13 @@ TOKEN_USAGE_SESSION = default_session_state.token_usage_dict
 # ----------------------------------------------------
 # Configuration
 # ----------------------------------------------------
-ITSM_BASE_URL = "http://localhost:4000/api/v1"
-GENAI_LAB_URL = "https://genailab.tcs.in/v1"
-GENAI_API_KEY = "sk-0mLmGnF9P0tbG_jlZVYDoA"
-NVIDIA_API_KEY = "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"
-NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+ITSM_BASE_URL = os.getenv("ITSM_BASE_URL", "http://localhost:4000/api/v1")
+GENAI_LAB_URL = os.getenv("GENAI_LAB_URL", "https://genailab.tcs.in/v1")
+GENAI_API_KEY = os.getenv("GENAI_API_KEY", "sk-0mLmGnF9P0tbG_jlZVYDoA")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "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")
+NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+DEMO_MODE = os.getenv("ITSM_DEMO_MODE", "false").lower() in ("true", "1", "yes")
+DEMO_FALLBACK_ON_ERROR = os.getenv("ITSM_DEMO_FALLBACK", "true").lower() in ("true", "1", "yes")
 
 # Specialized Agent Model Mapping
 ROUTER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"

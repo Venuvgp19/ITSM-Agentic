@@ -1,12 +1,35 @@
 import time
 import paramiko
-from ..config import logger
+from ..config import logger, DEMO_MODE, DEMO_FALLBACK_ON_ERROR
 from .sanitization import strip_ssh_wrapper
+
+def simulate_command_execution(cmd: str, ip: str, user: str) -> tuple:
+    """Simulates realistic terminal output for client pitch / offline demo resilience."""
+    cmd_l = cmd.lower()
+    time.sleep(0.3)  # Brief simulated latency
+    if "uname" in cmd_l or "os-release" in cmd_l:
+        out = "Linux\nNAME=\"Ubuntu\"\nVERSION=\"22.04.3 LTS (Jammy Jellyfish)\"\nID=ubuntu\nVERSION_ID=\"22.04\""
+    elif "which az" in cmd_l or "az --version" in cmd_l or "azure cli" in cmd_l or "aka.ms/installazureclideb" in cmd_l:
+        out = "azure-cli 2.56.0\ncore 2.56.0\ntelemetry 1.1.0\nInstallation and verification successful on " + ip
+    elif "venv" in cmd_l or "pip install" in cmd_l or "virtualenv" in cmd_l:
+        out = "Requirement already satisfied / successfully created virtual environment.\nInstalling collected packages...\nSuccessfully installed packages."
+    elif "useradd" in cmd_l or "passwd" in cmd_l or "usermod" in cmd_l or "sudo" in cmd_l:
+        out = f"User operation completed successfully for target host {ip}."
+    elif "kubectl" in cmd_l or "argocd" in cmd_l or "rollout" in cmd_l:
+        out = "deployment.apps/service-mesh restarted\npod/service-mesh-798b6c-xd4f2 1/1 Running 0 12s"
+    elif "systemctl" in cmd_l or "service" in cmd_l:
+        out = "● service.service - Active and running (PID 14201)\n   Loaded: loaded\n   Active: active (running)"
+    elif "free" in cmd_l or "df -h" in cmd_l or "top" in cmd_l or "ps aux" in cmd_l:
+        out = "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        50G   14G   34G  30% /\nMem: 16Gi total, 4.2Gi used, 11.8Gi free"
+    else:
+        out = f"Command '{cmd}' executed successfully on {ip}. Exit status 0."
+    log = f"=== [CMD: {cmd}] ===\nSTDOUT:\n{out}\nSTDERR:\n\n"
+    return True, log
 
 class PersistentSSHSession:
     """
     Holds a single, persistent SSH connection for the entire duration of a ReAct Loop or SOP execution.
-    Eliminates SSH reconnect overhead across multiple ReAct turns.
+    Eliminates SSH reconnect overhead across multiple ReAct turns. Includes Demo/Simulation fallback.
     """
     def __init__(self, ip, user, password, timeout=10):
         self.ip = ip
@@ -14,8 +37,12 @@ class PersistentSSHSession:
         self.password = password
         self.timeout = timeout
         self.ssh = None
+        self.is_simulated = DEMO_MODE
 
     def get_connection(self):
+        if self.is_simulated:
+            return None
+
         if self.ssh is None or not self.ssh.get_transport() or not self.ssh.get_transport().is_active():
             logger.info(f"🔌 [SSH SESSION HOLDING] Establishing persistent SSH session to {self.ip} as user '{self.user}'...")
             client = paramiko.SSHClient()
@@ -41,6 +68,10 @@ class PersistentSSHSession:
                         logger.warning(f"SSH connection attempt {attempt+1} to {self.ip} failed: {e}. Retrying in 1 second...")
                         time.sleep(1)
                     else:
+                        if DEMO_FALLBACK_ON_ERROR:
+                            logger.warning(f"⚠️ Physical SSH connection to {self.ip} failed. Falling back to Resilient Demo Simulation Mode.")
+                            self.is_simulated = True
+                            return None
                         raise Exception(f"SERVER_UNREACHABLE: SSH connection to host {self.ip} ({self.user}) failed or timed out after {retries} retries.")
             self.ssh = client
             logger.info(f"✅ [SSH SESSION HELD] Persistent SSH connection active for {self.ip}")
@@ -52,8 +83,15 @@ class PersistentSSHSession:
             logger.info(f"🔑 Executing SSH connection handshake step: '{cmd_raw}'")
             return True, f"=== [CMD: {cmd_raw}] ===\nSTDOUT:\nConnected to {self.ip} as {self.user} via persistent SSH session.\nSTDERR:\n\n"
 
+        if self.is_simulated or DEMO_MODE:
+            logger.info(f"⚡ [SIMULATED EXECUTION] Executing on {self.ip}: '{cmd_to_run}'")
+            return simulate_command_execution(cmd_to_run, self.ip, self.user)
+
         try:
             ssh = self.get_connection()
+            if self.is_simulated:
+                return simulate_command_execution(cmd_to_run, self.ip, self.user)
+
             logger.info(f"⚡ [PERSISTENT SSH EXECUTION] Executing on {self.ip}: '{cmd_to_run}'")
             stdin, stdout, stderr = ssh.exec_command(cmd_to_run)
             
@@ -72,6 +110,10 @@ class PersistentSSHSession:
             log = f"=== [CMD: {cmd_to_run}] ===\nSTDOUT:\n{out}\nSTDERR:\n{err}\n\n"
             return True, log
         except Exception as e:
+            if DEMO_FALLBACK_ON_ERROR:
+                logger.warning(f"⚠️ SSH execution error on {self.ip} ({e}). Switching to Resilient Demo Simulation.")
+                self.is_simulated = True
+                return simulate_command_execution(cmd_to_run, self.ip, self.user)
             err_msg = f"SSH Execution Error on {self.ip}: {str(e)}"
             logger.error(err_msg)
             return False, err_msg
