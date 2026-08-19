@@ -114,7 +114,7 @@ K8S_DOMAIN_KEYWORDS = [
 ]
 
 # Linux user-management SOPs. These must NEVER be served to a K8s-domain ticket.
-# Mulfunction MUST always block these mismatches even if the LLM Judge is down.
+# Resolution MUST always block these mismatches even if the LLM Judge is down.
 LINUX_USER_SOP_NUMBERS = [
     "KB0000038", "KB0000022", "KB0000023",  # Linux user deletion/deprovisioning
     "KB0000028", "KB0000027", "KB0000021",  # Linux user creation
@@ -1023,8 +1023,13 @@ def save_new_kb_article_to_storage(new_article_data):
                     if target_tokens and existing_tokens:
                         overlap = len(target_tokens.intersection(existing_tokens))
                         similarity = overlap / max(len(target_tokens), len(existing_tokens))
-                        if similarity >= 0.60:
-                            logger.info(f"ℹ️ KB Article '{kb.get('number')}' ('{kb.get('title')}') is semantically similar (similarity: {similarity:.2f}). Merging steps into existing KB...")
+                        # Only merge into a NEAR-DUPLICATE existing article (>= 0.85 token overlap).
+                        # The previous 0.60 threshold absorbed genuinely-new SOPs into loosely-similar
+                        # KBs (e.g. a container-deletion SOP merged into a Linux-user-deletion article),
+                        # so "a real SOP for it never existed". Now: near-duplicates enrich an existing
+                        # KB; genuinely-new use cases always get their OWN dedicated article.
+                        if similarity >= 0.85:
+                            logger.info(f"ℹ️ KB Article '{kb.get('number')}' ('{kb.get('title')}') is a near-duplicate (similarity: {similarity:.2f}). Merging steps into existing KB...")
                             # Append any new unique resolution steps & symptoms for RAG enrichment
                             existing_steps = kb.get("resolutionSteps", [])
                             new_steps = new_article_data.get("resolutionSteps", [])
@@ -1084,7 +1089,11 @@ def save_new_kb_article_to_storage(new_article_data):
         if res.status_code in [200, 201]:
             new_article = res.json()
             logger.info(f"✨ PERSISTED NEW SOP ARTICLE TO DATABASE VIA API: {new_article.get('number')} - {new_article.get('title')}")
-            # Automatically index new article into ChromaDB vector database
+            # Automatically index new article into ChromaDB vector database — with VERIFY.
+            # Verifying is critical: if the embedding API (nv-embed-v1) is degraded — the SAME
+            # outage that disables the LLM RAG Judge — the article would be saved to SQL but
+            # invisible to future RAG searches, i.e. "the SOP never existed" from RAG's view.
+            _indexed_ok = False
             try:
                 vdb = ChromaVectorDB()
                 symptom_list = new_article.get('symptoms', [])
@@ -1098,9 +1107,20 @@ def save_new_kb_article_to_storage(new_article_data):
                 emb = get_embedding(content_to_embed, input_type="passage")
                 if emb:
                     vdb.add_kb_embedding(new_article.get('number'), new_article.get('number'), new_article.get('title'), emb)
-                    logger.info(f"⚡ Indexed new vector embedding for {new_article.get('number')} in ChromaDB with high RAG coverage.")
+                    # VERIFY the vector actually landed in the collection
+                    _indexed_numbers = vdb.get_indexed_numbers()
+                    if new_article.get('number') in _indexed_numbers:
+                        _indexed_ok = True
+                        logger.info(f"⚡ Indexed new vector embedding for {new_article.get('number')} in ChromaDB (verified present).")
+                    else:
+                        logger.error(f"❌ ChromaDB upsert reported success but {new_article.get('number')} is NOT present after write — reindex required.")
             except Exception as vec_err:
-                logger.warning(f"Failed to index new vector embedding: {vec_err}")
+                logger.error(f"❌ Failed to index new vector embedding for {new_article.get('number')}: {vec_err}")
+            # Stamp index status onto the returned article so callers can audit/persist a work-note.
+            try:
+                new_article["_chromadb_indexed"] = _indexed_ok
+            except Exception:
+                pass
             return new_article
         else:
             logger.error(f"Failed to post KB article. Status: {res.status_code}, Body: {res.text}")
@@ -1693,6 +1713,21 @@ def verify_rag_match_intent_with_llm(short_desc, desc, sop_number, sop_title, so
             return bool(parsed["approved"]), parsed.get("reason", "")
     except Exception as e:
         logger.warning(f"LLM RAG Judge invocation error for [{sop_number}]: {e}")
+    # Fail-open is intentional for ordinary lookups so transient LLM outages don't
+    # stall resolution. BUT a cross-domain entity-type mismatch (e.g. a K8s ticket
+    # resolving to a Linux user-management SOP) is far too dangerous to rubber-stamp,
+    # so fail-CLOSED for that specific case. Dense embeddings conflate
+    # "delete container" with "delete user"; this guard removes that failure mode.
+    _ticket_text_low = f"{short_desc} {desc}".lower()
+    _judge_ticket_is_k8s = any(k in _ticket_text_low for k in K8S_DOMAIN_KEYWORDS)
+    _judge_sop_is_linux_user = sop_number in LINUX_USER_SOP_NUMBERS or "linux user" in sop_title.lower()
+    if _judge_ticket_is_k8s and _judge_sop_is_linux_user:
+        logger.warning(
+            f"🛡️ LLM RAG Judge fail-closed for [{sop_number}] "
+            f"(LLM unavailable + K8s ticket -> Linux user SOP). "
+            f"Rejecting cross-domain entity-type mismatch."
+        )
+        return False, "LLM Judge unavailable — rejected cross-domain mismatch (K8s ticket vs Linux user SOP) fail-closed"
     # On any failure, be permissive — don't block on LLM errors
     return True, "LLM Judge unavailable — defaulting to permissive"
 
@@ -2118,7 +2153,9 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
 
             # Early cross-domain guard: DB2/CloudBeaver ticket must never match Linux SOPs
             _ticket_is_db2 = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui", "cloudbeaver access", "cloud baever", "cloud beaver"])
-            _ticket_is_k8s = any(k in q_low for k in ["kubernetes", "k8s", "argocd", "kubectl"])
+            # NOTE: uses the SHARED K8S_DOMAIN_KEYWORDS so this Guard triggers on
+            # the SAME tokens as the later LLM-RAG-Judge gate (no more gap).
+            _ticket_is_k8s = any(k in q_low for k in K8S_DOMAIN_KEYWORDS)
             _ticket_is_jenkins = any(k in q_low for k in ["jenkins", "initialadminpassword"])
 
             # STRICT DB2 EXCLUSIVE FILTER: Only KB0000025 (provision) or KB0000042 (delete) allowed for DB2 tickets
@@ -2267,8 +2304,24 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             # --- Universal LLM RAG Judge gate for K8s tickets ---
             # When a K8s-related candidate scores high purely via dense embedding,
             # the booster may never fire but we still need to validate relevance.
-            _ticket_is_k8s_domain = any(k in q_low for k in ["kubernetes", "k8s", "kubectl", "pod", "kubelet", "argocd", "deployment", "namespace"])
+            _ticket_is_k8s_domain = any(k in q_low for k in K8S_DOMAIN_KEYWORDS)
             if _ticket_is_k8s_domain:
+                # HARD cross-domain block: a K8s-domain ticket must NEVER resolve to
+                # a Linux user-management SOP, regardless of the LLM Judge. Dense
+                # embeddings conflate "delete container" with "delete user"; this
+                # guard removes that failure mode even when the Judge is offline.
+                if cand_number in LINUX_USER_SOP_NUMBERS:
+                    logger.warning(
+                        f"🛡️ Hard Cross-Domain Guard: K8s ticket [{ticket_number}] "
+                        f"matched Linux user-management SOP [{cand_number}] "
+                        f"'{cand_art.get('title', '')}' (dense score {cand_score:.4f}). "
+                        f"Rejecting without invoking LLM Judge — entity-type mismatch."
+                    )
+                    next_best_info = (
+                        f"[{cand_number}] rejected — Linux user SOP blocked for "
+                        f"K8s-domain ticket (entity-type mismatch)."
+                    )
+                    continue
                 _judge_approved_direct, _judge_reason_direct = verify_rag_match_intent_with_llm(
                     short_desc, desc, cand_number, cand_art.get("title", ""),
                     cand_art.get("steps", cand_art.get("commands", []))
@@ -3351,6 +3404,34 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                 logger.info(f"🟢 Execution approved! Human operator approved synthesized SOP for [{number}]. Proceeding...")
                 sop_commands = my_approval.get("proposedCommands", sop_commands)
 
+    # ── HARD GUARD: synthesized (KB_NEW) SOPs must NEVER execute without an
+    # explicit human APPROVED approval. This enforces the design principle that
+    # remediation runs strictly off validated SOPs, never off LLM-improvised
+    # commands that were only submitted/escalated. (Belt-and-suspenders on the
+    # riskLevel=HIGH gating — also closes the gap where a previously-submitted
+    # synthesized approval could fall through to execution without approval.)
+    if is_new_use_case and not (my_approval and my_approval.get("status") == "APPROVED"):
+        logger.warning(
+            f"⛔ Executing synthesized SOP for [{number}] without HITL approval is BLOCKED by design. "
+            f"Escalating to DevOps Team — a real SOP must be human-approved before execution."
+        )
+        post_timeline_update(inc_id, number, short_desc, ci_name, "ON_HOLD", "🔐 Human-in-the-Loop Gate", "FAILED",
+                             "Execution blocked: synthesized SOP requires human approval before execution.")
+        guard_note = (
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"⛔ EXECUTION BLOCKED BY DESIGN POLICY\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎫 Ticket: [{number}] {short_desc}\n"
+            f"No matching SOP existed in the KB (RAG miss). A draft SOP was synthesized by the LLM,\n"
+            f"but the agent is NOT permitted to execute improvised commands without human approval.\n"
+            f"State: ON_HOLD — a human must review & approve the drafted SOP in Control Tower first.\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
+        add_work_note(token, inc_id, guard_note, author="🤖 Unix Auto-Resolver Agent")
+        update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
+        locked_incident_sessions.add(inc_id)
+        return
+
     # 4. Execute SSH Commands dynamically via LLM ReAct Tool Calling
     processed_in_progress_incidents.add(inc_id)
 
@@ -3613,7 +3694,27 @@ Respond ONLY in valid JSON format:
                     "sourceIncidentIds": [inc_id]
                 }
                 logger.info(f"💾 Saving approved and verified new SOP to knowledge base...")
-                save_new_kb_article_to_storage(new_sop_data_to_store)
+                _persisted = save_new_kb_article_to_storage(new_sop_data_to_store)
+                _persist_kb_num = (_persisted or {}).get("number")
+                _persist_title = (_persisted or {}).get("title", new_sop_data.get("title", short_desc))
+                _index_ok = bool(_persisted) and bool(_persist_kb_num) and bool(_persisted.get("_chromadb_indexed"))
+                if _persist_kb_num:
+                    persist_note = (
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🧠 KNOWLEDGE PERSISTED — A REAL SOP NOW EXISTS\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🎫 Ticket: [{number}] {short_desc}\n"
+                        f"📚 New SOP authored & saved: [{_persist_kb_num}] '{_persist_title}'\n"
+                        f"🔗 ChromaDB vector index: {'✅ verified present — future tickets will match this SOP via RAG.' if _index_ok else '⚠️ NOT confirmed — run reindex_chromadb.py so future RAG can find it.'}\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    )
+                    add_work_note(token, inc_id, persist_note, author="🧠 AI Knowledge Synthesizer")
+                else:
+                    logger.error(f"❌ Persistence FAILED for synthesized SOP on [{number}] — no KB article was created. Escalation may be needed.")
+                    add_work_note(token, inc_id,
+                        f"⚠️ KNOWLEDGE PERSIST FAILED for [{number}] {short_desc} — the synthesized SOP could not be saved to the KB. "
+                        f"Escalate so a human-authored SOP is created for future occurrences.",
+                        author="🧠 AI Knowledge Synthesizer")
 
     resolved_incident_sessions.add(inc_id)
     locked_incident_sessions.add(inc_id)
