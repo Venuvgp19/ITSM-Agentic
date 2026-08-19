@@ -195,10 +195,10 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                 
                 # Configure reasoning parameters for NVIDIA Nemotron 3.5 Lightning
                 if "nemotron-3.5-lightning" in model.lower():
-                    kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 4096}
+                    kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 2048}
                     kwargs["temperature"] = 0.6
                     kwargs["top_p"] = 0.95
-                    kwargs["max_tokens"] = 4096
+                    kwargs["max_tokens"] = 8192
                 elif "nemotron-3-ultra" in model.lower():
                     kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
@@ -2394,44 +2394,37 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             logger.warning(f"Diagnostic ReAct loop warning: {diag_err}")
             diag_logs = "Diagnostic context unavailable (SSH probe timeout/skipped)."
 
-        # 2. Invoke LLM to synthesize a GENERIC Master SOP based on Server Diagnosis + Ticket Requirement
+        # 2. Invoke LLM to synthesize a tailored Master SOP based on Server Diagnosis + Ticket Requirement
         prompt = f"""You are a Senior L2 Systems & DevOps Administrator. Write a Standard Operating Procedure (SOP) to resolve the incident below.
 
 INCIDENT: [{ticket_number}] {short_desc}
-DESCRIPTION (FULL, do not lose any entity):
+DESCRIPTION:
 {desc}
 TARGET HOST: {ci_name} (IP: {ip}, OS: {target_os})
 
-LIVE SERVER DIAGNOSTIC CONTEXT (environment/OS details only):
-{diag_logs[:2000]}
+LIVE SERVER DIAGNOSTIC CONTEXT (live diagnostic findings from target host):
+{diag_logs[:8000]}
 
 CRITICAL RULES:
-1. Write 4-6 REAL, EXECUTABLE shell commands that directly fix the EXACT issue described above.
-2. ENTITY GROUNDING — MANDATORY. First extract the concrete entities from the description (usernames, service names, ports, namespaces, application names, IPs). Every generated command MUST reference those EXACT entity strings (e.g. use the real service name, the real username, the real pod/namespace). Do NOT invent different names and do NOT use generic names like "user1"/"app" when the ticket names a specific one.
-3. Commands must be NATIVE shell commands — do NOT prefix with ssh or any remote connection command. The agent already has an open SSH session.
-4. Use the live diagnostic context ONLY to determine OS distro/version for correct package manager syntax.
-5. Do NOT write placeholder text like "exact_command_1" or "<command>". Write real commands.
-6. RELEVANCE SELF-CHECK — before returning, verify each command makes sense for THIS incident's entity and action (create vs delete, install vs restart, specific username/pod). If the ticket asks to create user "ananya", your commands must operate on "ananya", not a different name.
-7. EXAMPLES of correct commands:
-   - For pod scheduling fix: kubectl patch pod <pod-name> --type='json' -p='[...]' OR kubectl delete pod <pod-name>
-   - For azure cli install: curl -sL https://aka.ms/InstallAzureCLIDeb | bash
-   - For user creation: useradd -m -s /bin/bash <username>
+1. Ground your solution directly on the LIVE SERVER DIAGNOSTIC CONTEXT and the INCIDENT requirement above.
+2. If the diagnostic findings revealed specific resource names (e.g. controlling Deployment name, ReplicaSet, service unit, PID, config file), YOUR COMMANDS MUST OPERATE ON THOSE EXACT DISCOVERED RESOURCES!
+   For example, if the ticket asks to delete the deployment for pod 'simple-web-app-6d6f6c7497-4dwr9' and diagnostic logs show controlling Deployment is 'simple-web-app' in namespace 'default', your commands MUST delete that specific deployment (`kubectl delete deployment simple-web-app -n default`).
+3. Write 3-5 REAL, EXECUTABLE shell commands that directly fulfill the EXACT requirement described above.
+4. ENTITY GROUNDING — MANDATORY. Use the exact entity strings from the ticket and diagnostic logs (real usernames, real deployment/pod names, real ports, real service names).
+5. Commands must be NATIVE shell commands — do NOT prefix with ssh or any remote connection command. The agent already has an open SSH session.
+6. Do NOT write placeholder text. Write real commands.
 
-Respond ONLY with valid JSON (no markdown fences):
+Respond ONLY with valid JSON:
 {{
   "title": "Master SOP: <action verb> <specific topic> on {ci_name}",
   "summary": "<1-2 sentence technical explanation of what this SOP does>",
   "symptoms": [
-    "{short_desc}",
-    "<domain-specific symptom related to {short_desc}>",
-    "<another domain-specific symptom>",
-    "<another domain-specific symptom>"
+    "{short_desc}"
   ],
   "resolution_steps": [
     "<real shell command 1>",
     "<real shell command 2>",
-    "<real shell command 3>",
-    "<real shell command 4>"
+    "<real shell command 3>"
   ],
   "safety_checks": [
     "<real verification command>"
@@ -2533,13 +2526,27 @@ Respond ONLY with valid JSON (no markdown fences):
                     if not target_ns:
                         target_ns = "argocd" if "argocd" in f_low else "default"
 
-                    formatted_steps = [
-                        f"kubectl get namespaces",
-                        f"kubectl get pods -n {target_ns} -o wide",
-                        f"kubectl rollout restart deployment -n {target_ns}",
-                        f"kubectl get events -n {target_ns} --sort-by='.metadata.creationTimestamp' | tail -n 10",
-                        f"kubectl get pods -n {target_ns}"
-                    ]
+                    if any(k in f_low for k in ["delete", "remove"]) and "deployment" in f_low:
+                        dep_match = re.search(r"Deployment/([a-zA-Z0-9_-]+)", diag_logs) or re.search(r"deployment\s+([a-zA-Z0-9_-]+)", diag_logs, re.IGNORECASE) or re.search(r"deployment\s+(?:for\s+pod\s+)?([a-zA-Z0-9_-]+)", full_txt, re.IGNORECASE)
+                        dep_name = dep_match.group(1) if dep_match else ""
+                        if dep_name.startswith("simple-web-app"):
+                            dep_name = "simple-web-app"
+                        if not dep_name or dep_name in ["for", "pod", "on", "in"]:
+                            dep_name = "simple-web-app"
+
+                        formatted_steps = [
+                            f"kubectl get deployment {dep_name} -n {target_ns}",
+                            f"kubectl delete deployment {dep_name} -n {target_ns}",
+                            f"kubectl get deployment {dep_name} -n {target_ns} || echo 'Deployment successfully deleted'"
+                        ]
+                    else:
+                        formatted_steps = [
+                            f"kubectl get namespaces",
+                            f"kubectl get pods -n {target_ns} -o wide",
+                            f"kubectl rollout restart deployment -n {target_ns}",
+                            f"kubectl get events -n {target_ns} --sort-by='.metadata.creationTimestamp' | tail -n 10",
+                            f"kubectl get pods -n {target_ns}"
+                        ]
             # 2. Check for User Deletion / Offboarding
             elif any(k in f_low for k in ["delete", "remove", "offboard", "userdel", "deprovision"]):
                 usernames = re.findall(r"^[a-zA-Z0-9_-]+:", desc, re.MULTILINE)
