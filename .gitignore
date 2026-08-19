@@ -15,6 +15,7 @@ __pycache__/
 eval_log_output.txt
 *.pyc
 *.pptx
+!Enterprise_Autonomous_ITSM_Platform_Presentation.pptx
 ~$*
 login.json
 query
