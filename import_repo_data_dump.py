@@ -5,13 +5,13 @@ import subprocess
 sys.stdout.reconfigure(encoding='utf-8')
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
-SQL_DUMP_PATH = os.path.join(REPO_ROOT, "itsm_db_dump.sql")
+SQL_DUMP_PATH = os.path.join(REPO_ROOT, "database_dump.sql")
 
 if not os.path.exists(SQL_DUMP_PATH):
     print(f"❌ SQL dump file not found: {SQL_DUMP_PATH}")
     sys.exit(1)
 
-print("--- RESTORING POSTGRESQL DATA FROM NATIVE SQL DUMP (itsm_db_dump.sql) ---")
+print("--- RESTORING POSTGRESQL DATA FROM NATIVE SQL DUMP (database_dump.sql) ---")
 
 cmd = f'psql -U itsm_user -d itsm_db -h 127.0.0.1 -p 5432 -f "{SQL_DUMP_PATH}"'
 print(f"Executing: {cmd}")
