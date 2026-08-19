@@ -17,6 +17,7 @@ eval_log_output.txt
 *.pptx
 !Enterprise_Autonomous_ITSM_Platform_Presentation.pptx
 !Autonomous_ITSM_Platform_Product_Presentation.pptx
+!Autonomous_ITSM_Platform_Proactive_Presentation.pptx
 ~$*
 login.json
 query
