@@ -1896,8 +1896,9 @@ def verify_rag_match_intent_with_llm(short_desc, desc, sop_number, sop_title, so
             f"CANDIDATE SOP: [{sop_number}] {sop_title}\n"
             f"SOP COMMANDS:\n{json.dumps(sop_commands, indent=2)}\n\n"
             "DECISION RULES:\n"
-            "- APPROVE if the SOP commands directly resolve the root cause shown in the incident.\n"
-            "- REJECT if the SOP addresses a different failure mode (e.g. Kubelet service crash vs pod NodeSelector mismatch, or password reset vs user creation).\n"
+            "- APPROVE if the SOP procedure/commands directly resolve the root cause shown in the incident (e.g. user creation + sudo for user creation tickets).\n"
+            "- Note: SOPs are parameterized templates. Example usernames (e.g. 'venu', 'pablo', '{username}') and host IPs are dynamically substituted during execution. Do NOT reject an SOP solely because of placeholder user/host names if the operational commands match.\n"
+            "- REJECT if the SOP addresses a fundamentally different failure mode (e.g. Kubelet crash vs pod NodeSelector mismatch, DB2 vs Linux OS user, or password reset vs user creation).\n"
             "- REJECT if the SOP is too generic and its commands would not help the specific issue described.\n\n"
             "Respond in STRICT JSON only (no markdown, no explanation outside JSON):\n"
             '{"approved": true|false, "reason": "<one sentence explanation>"}'
@@ -2347,11 +2348,11 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
             next_cand_score = rag_results[idx + 1].get("score", 0.0) if idx + 1 < len(rag_results) else 0.0
             score_margin = cand_score - next_cand_score
             requires_judge = (cand_score < 0.82) or (score_margin < 0.08) or _ticket_is_k8s
-
             if requires_judge:
+                _cand_cmds = cand_art.get("resolutionSteps", cand_art.get("steps", cand_art.get("commands", [])))
                 _judge_approved, _judge_reason = verify_rag_match_intent_with_llm(
                     short_desc, desc, cand_number, cand_art.get("title", ""),
-                    cand_art.get("steps", cand_art.get("commands", []))
+                    _cand_cmds
                 )
                 if not _judge_approved:
                     logger.warning(
