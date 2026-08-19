@@ -489,9 +489,9 @@ export class AgentGovernanceService implements OnModuleInit {
 
   private async updateIncidentToRejected(incidentId: string, rejectorName: string, reason: string) {
     try {
-      const cleanId = incidentId.toUpperCase();
+      const cleanId = (incidentId || '').toUpperCase();
       const inc = await this.prisma.incident.findFirst({
-        where: { OR: [{ id: cleanId }, { number: cleanId }] }
+        where: { OR: [{ id: incidentId }, { id: cleanId }, { number: cleanId }, { number: incidentId }] }
       });
       if (inc) {
         let activities = Array.isArray(inc.activitiesJson) ? inc.activitiesJson as any[] : [];
@@ -515,9 +515,9 @@ export class AgentGovernanceService implements OnModuleInit {
 
   private async updateIncidentToInProgress(incidentId: string, approverName: string) {
     try {
-      const cleanId = incidentId.toUpperCase();
+      const cleanId = (incidentId || '').toUpperCase();
       const inc = await this.prisma.incident.findFirst({
-        where: { OR: [{ id: cleanId }, { number: cleanId }] }
+        where: { OR: [{ id: incidentId }, { id: cleanId }, { number: cleanId }, { number: incidentId }] }
       });
       if (inc) {
         let activities = Array.isArray(inc.activitiesJson) ? inc.activitiesJson as any[] : [];

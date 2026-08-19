@@ -3158,9 +3158,35 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
     number = incident.get("number", inc_id)
     short_desc = incident.get("shortDescription", "")
     desc = incident.get("description", "")
+    my_approval = None
 
-    # Check if an APPROVED approval request exists for this incident FIRST
+    # Check if an approval request already exists for this incident
     approvals = fetch_agent_approvals(token)
+    rejected_appr = next((a for a in approvals if a.get("incidentId") == inc_id and a.get("status") == "REJECTED"), None)
+    if rejected_appr:
+        logger.warning(f"❌ Execution rejected: Approval request ({rejected_appr.get('id')}) for [{number}] was REJECTED by human operator.")
+        post_timeline_update(inc_id, number, short_desc, ci_name or "Target Host", "FAILED", "🔐 Human-in-the-Loop Gate", "FAILED", f"SOP execution rejected: {rejected_appr.get('rejectionReason', 'Rejected by operator')}")
+        reject_note = (
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🤖 Unix Auto-Resolver Agent: REMEDIATION REJECTED BY HUMAN OPERATOR\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"Feedback: {rejected_appr.get('rejectionReason', 'No reason provided')}\n"
+            f"Assigned To: DevOps Team for manual processing.\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
+        add_work_note(token, inc_id, reject_note)
+        update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
+        locked_incident_sessions.add(inc_id)
+        return
+
+    pending_appr = next((a for a in approvals if a.get("incidentId") == inc_id and a.get("status") == "PENDING"), None)
+    if pending_appr:
+        post_timeline_update(inc_id, number, short_desc, ci_name or "Target Host", "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", "SOP pending review. Awaiting operator approval.")
+        logger.info(f"⏳ Ticket [{number}] is PENDING human operator review in Control Tower (http://localhost:5173). Paused awaiting 'Approve & Execute'...")
+        update_incident_status(token, inc_id, "ON_HOLD")
+        locked_incident_sessions.add(inc_id)
+        return
+
     approved_appr = next((a for a in approvals if a.get("incidentId") == inc_id and a.get("status") == "APPROVED"), None)
 
     if approved_appr:
@@ -3293,6 +3319,7 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
     
     if approved_appr:
         logger.info(f"🟢 Execution approved! Found existing APPROVED approval ({approved_appr.get('id')}) for [{number}]. Executing approved commands...")
+        my_approval = approved_appr
         try:
             requests.post(f"http://localhost:4000/api/v1/agent/approvals/{approved_appr.get('id')}/consume", timeout=3)
         except Exception:
@@ -3439,7 +3466,7 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                     update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
                     locked_incident_sessions.add(inc_id)
                     return
-            elif status == "APPROVED":
+            elif status in ["APPROVED", "EXECUTED"]:
                 post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔐 Human-in-the-Loop Gate", "SUCCESS", f"SOP approved by operator ({my_approval.get('approver', 'Human Admin')}). Proceeding to execute.")
                 logger.info(f"🟢 Execution approved! Human operator approved synthesized SOP for [{number}]. Proceeding...")
                 sop_commands = my_approval.get("proposedCommands", sop_commands)
@@ -3450,7 +3477,7 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
     # commands that were only submitted/escalated. (Belt-and-suspenders on the
     # riskLevel=HIGH gating — also closes the gap where a previously-submitted
     # synthesized approval could fall through to execution without approval.)
-    if is_new_use_case and not (my_approval and my_approval.get("status") == "APPROVED"):
+    if is_new_use_case and not (my_approval and my_approval.get("status") in ["APPROVED", "EXECUTED"]):
         logger.warning(
             f"⛔ Executing synthesized SOP for [{number}] without HITL approval is BLOCKED by design. "
             f"Escalating to DevOps Team — a real SOP must be human-approved before execution."
