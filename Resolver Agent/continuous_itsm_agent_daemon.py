@@ -286,10 +286,13 @@ def safe_json_parse(text):
     """
     if not text:
         return {}
-    if isinstance(text, (dict, list)):
+    if isinstance(text, (list, dict)):
         return text
+    if isinstance(text, tuple):
+        text = text[0]
     if not isinstance(text, str):
         return {}
+    text = clean_thinking_text(text)
     s = text.strip()
     try:
         return json.loads(s)
@@ -1899,7 +1902,7 @@ def verify_rag_match_intent_with_llm(short_desc, desc, sop_number, sop_title, so
             "Respond in STRICT JSON only (no markdown, no explanation outside JSON):\n"
             '{"approved": true|false, "reason": "<one sentence explanation>"}'
         )
-        result_text = invoke_llm_with_fallback(
+        result_text, used_model = invoke_llm_with_fallback(
             messages=[{"role": "user", "content": prompt}],
             call_label=f"LLM RAG Judge [{sop_number}]"
         )
