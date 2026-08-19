@@ -1,11 +1,19 @@
 import json
 import re
 from ..config import logger
-from ..llm import invoke_llm_with_fallback
+from ..llm import invoke_llm_with_fallback as default_invoke_llm
 from ..ssh.session import PersistentSSHSession
 
-def run_read_only_diagnostic_react_loop(ip, user, password, short_desc, desc, number, ci_name, target_os="Linux/Unix"):
+def run_read_only_diagnostic_react_loop(
+    ip, user, password, short_desc, desc, number, ci_name,
+    target_os="Linux/Unix",
+    ssh_session_factory=None,
+    llm_invoker=None
+):
     logger.info(f"🔎 Starting Read-Only Diagnostic ReAct Loop for {number} on host {ip} ({ci_name})")
+    invoker = llm_invoker or default_invoke_llm
+    session_factory = ssh_session_factory or (lambda _ip, _u, _p: PersistentSSHSession(_ip, _u, _p))
+
     tools = [
         {
             "type": "function",
@@ -72,13 +80,13 @@ def run_read_only_diagnostic_react_loop(ip, user, password, short_desc, desc, nu
         r">\s*/(?!dev/null)", r">\s*[a-zA-Z0-9_\.]"
     ]
 
-    session = PersistentSSHSession(ip, user, password)
+    session = session_factory(ip, user, password)
     try:
         while turn < max_turns:
             turn += 1
             logger.info(f"🔍 Read-Only Diagnostic ReAct Loop Turn {turn} for {number}...")
             try:
-                msg, used_model = invoke_llm_with_fallback(
+                msg, used_model = invoker(
                     messages=messages,
                     tools=tools,
                     return_message=True,

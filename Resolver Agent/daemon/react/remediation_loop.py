@@ -1,12 +1,23 @@
 import json
 from ..config import logger
-from ..llm import invoke_llm_with_fallback, clean_thinking_text
+from ..session_state import default_session_state
+from ..llm import invoke_llm_with_fallback as default_invoke_llm, clean_thinking_text
 from ..ssh.session import PersistentSSHSession
 from ..safety.validator import is_allowed_command_adaptation
 from ..itsm.dashboard import post_timeline_update
 
-def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, number, inc_id, ci_name, desc=""):
+def run_dynamic_react_loop(
+    ip, user, password, guide_commands, short_desc, number, inc_id, ci_name,
+    desc="",
+    session_state=None,
+    ssh_session_factory=None,
+    llm_invoker=None
+):
     logger.info(f"🚀 Starting Dynamic ReAct Loop for {number}")
+    state = session_state or default_session_state
+    invoker = llm_invoker or default_invoke_llm
+    session_factory = ssh_session_factory or (lambda _ip, _u, _p: PersistentSSHSession(_ip, _u, _p))
+
     tools = [
         {
             "type": "function",
@@ -53,18 +64,19 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
     max_turns = 10
     turn = 0
     
-    session = PersistentSSHSession(ip, user, password)
+    session = session_factory(ip, user, password)
     try:
         while turn < max_turns:
             turn += 1
             logger.info(f"🔄 ReAct Loop Turn {turn} for {number}...")
             
             try:
-                msg, used_model = invoke_llm_with_fallback(
+                msg, used_model = invoker(
                     messages=messages, 
                     tools=tools, 
                     return_message=True, 
-                    call_label=f"ReAct Loop Turn {turn}"
+                    call_label=f"ReAct Loop Turn {turn}",
+                    session_state=state
                 )
                 if not msg:
                     raise Exception("All fallback models failed to return a valid response.")

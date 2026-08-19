@@ -6,6 +6,7 @@ from collections import defaultdict
 import urllib3
 import httpx
 from openai import OpenAI
+from .session_state import SessionStateManager, default_session_state
 
 # Configure UTF-8 encoding for stdout
 if hasattr(sys.stdout, "reconfigure"):
@@ -35,7 +36,6 @@ def acquire_lock():
         try:
             with open(LOCK_FILE, "r") as f:
                 old_pid = int(f.read().strip())
-            # Check if that PID is still alive
             import psutil
             if psutil.pid_exists(old_pid):
                 logger.error(f"❌ Another daemon instance is already running (PID {old_pid}). Exiting to prevent duplicate execution.")
@@ -58,11 +58,17 @@ def release_lock():
         pass
 
 # ----------------------------------------------------
-# Thread Safety & Strict Concurrency Locks
+# Backward-Compatible State Aliases
 # ----------------------------------------------------
-host_execution_locks = defaultdict(threading.Lock)
+host_execution_locks = default_session_state.host_execution_locks
 incident_execution_lock = threading.Lock()
-active_processing_incidents = set()
+active_processing_incidents = default_session_state.active_processing_incidents
+processed_new_incidents = default_session_state.processed_new_incidents
+processed_in_progress_incidents = default_session_state.processed_in_progress_incidents
+submitted_approval_incidents = default_session_state.submitted_approval_incidents
+locked_incident_sessions = default_session_state.locked_incident_sessions
+resolved_incident_sessions = default_session_state.resolved_incident_sessions
+TOKEN_USAGE_SESSION = default_session_state.token_usage_dict
 
 # ----------------------------------------------------
 # Configuration
@@ -114,14 +120,6 @@ FALLBACK_MODELS = [
     "mistralai/mistral-7b-instruct-v0.3",
     "deepseek-ai/deepseek-r1"
 ]
-
-# Session-wide token usage accumulator
-TOKEN_USAGE_SESSION = {
-    "calls": [],           # list of per-call dicts
-    "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-}
 
 # Saved Inventory & Credentials for Configuration Items
 CI_CREDENTIALS = {
@@ -226,10 +224,3 @@ llm_client = OpenAI(
     base_url=GENAI_LAB_URL,
     http_client=custom_httpx_client
 )
-
-# Sets to prevent duplicate processing loop and guarantee SINGLE action per incident
-processed_new_incidents = set()
-processed_in_progress_incidents = set()
-submitted_approval_incidents = set()
-locked_incident_sessions = set()
-resolved_incident_sessions = set()

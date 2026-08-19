@@ -6,8 +6,9 @@ from ..config import (
     K8S_DOMAIN_KEYWORDS,
     LINUX_USER_SOP_NUMBERS,
 )
-from ..llm import invoke_llm_with_fallback, safe_json_parse
-from ..rag.vector_db import vector_db
+from ..session_state import default_session_state
+from ..llm import invoke_llm_with_fallback as default_invoke_llm, safe_json_parse
+from ..rag.vector_db import vector_db as default_vector_db
 from ..rag.hybrid_search import (
     distill_incident_query,
     search_hybrid_kb,
@@ -20,7 +21,18 @@ from ..safety.relevance_audit import post_synthesis_relevance_audit
 from ..react.diagnostic_loop import run_read_only_diagnostic_react_loop
 from ..itsm.dashboard import post_timeline_update
 
-def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articles, incident_id, target_os="Linux/Unix"):
+def evaluate_and_get_sop(
+    ticket_number, short_desc, desc, ci_name, ip, kb_articles, incident_id,
+    target_os="Linux/Unix",
+    vdb=None,
+    session_state=None,
+    llm_invoker=None,
+    ssh_session_factory=None
+):
+    active_vdb = vdb if vdb is not None else default_vector_db
+    state = session_state or default_session_state
+    invoker = llm_invoker or default_invoke_llm
+
     # 1. Distill incident into clean dense query and BM25 lexical tokens
     dense_query, lexical_tokens = distill_incident_query(short_desc, desc)
     logger.info(f"🔎 Distilled Incident RAG Query: '{dense_query}' (Lexical tokens: {len(lexical_tokens)})")
@@ -28,7 +40,7 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
     # 2. Execute Hybrid Search (ChromaDB nv-embed-v1 + BM25Okapi RRF Fusion)
     rag_results = []
     try:
-        rag_results = search_hybrid_kb(dense_query, lexical_tokens, kb_articles, vector_db, limit=12)
+        rag_results = search_hybrid_kb(dense_query, lexical_tokens, kb_articles, active_vdb, limit=12)
     except Exception as e:
         logger.warning(f"Hybrid RAG search encountered error: {e}")
 
@@ -158,7 +170,12 @@ def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articl
         
         diag_logs = ""
         try:
-            diag_logs = run_read_only_diagnostic_react_loop(ip, "root", "root123", short_desc, desc, ticket_number, ci_name, target_os)
+            diag_logs = run_read_only_diagnostic_react_loop(
+                ip, "root", "root123", short_desc, desc, ticket_number, ci_name,
+                target_os=target_os,
+                ssh_session_factory=ssh_session_factory,
+                llm_invoker=invoker
+            )
             logger.info(f"🔍 Dynamic Server Diagnostic Context Captured ({len(diag_logs)} bytes)")
             post_timeline_update(incident_id, ticket_number, short_desc, ci_name, "RUNNING", "🔍 Read-Only Diagnostic Probe", "SUCCESS", f"Captured {len(diag_logs)} bytes of live diagnostic logs.")
         except Exception as diag_err:
@@ -203,10 +220,11 @@ Respond ONLY with valid JSON:
 }}"""
         plan = {}
         try:
-            plan_content, used_model = invoke_llm_with_fallback(
+            plan_content, used_model = invoker(
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
-                call_label=f"SOP Synthesis [{ticket_number}]"
+                call_label=f"SOP Synthesis [{ticket_number}]",
+                session_state=state
             )
             if plan_content:
                 plan = safe_json_parse(plan_content)
@@ -257,7 +275,6 @@ Respond ONLY with valid JSON:
 
             formatted_steps.append(s_clean)
 
-        # Deterministic Fallback Parser if LLM output was empty or sanitized to 0 steps
         if not formatted_steps:
             logger.warning(f"⚠️ Synthesized steps were empty for [{ticket_number}]. Invoking Deterministic Fallback Extractor...")
             full_txt = f"{short_desc} {desc}"
@@ -481,10 +498,11 @@ Respond ONLY in JSON:
 """
         plan = {}
         try:
-            plan_content, used_model = invoke_llm_with_fallback(
+            plan_content, used_model = invoker(
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
-                call_label=f"SOP Parameterization [{ticket_number}]"
+                call_label=f"SOP Parameterization [{ticket_number}]",
+                session_state=state
             )
             if plan_content:
                 plan = safe_json_parse(plan_content)

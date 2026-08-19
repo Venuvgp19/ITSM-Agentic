@@ -4,30 +4,12 @@ import re
 import urllib.request
 import requests
 import paramiko
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .config import (
-    logger,
-    ITSM_BASE_URL,
-    POLL_INTERVAL_SECONDS,
-    TOKEN_USAGE_SESSION,
-    acquire_lock,
-    release_lock,
-    host_execution_locks,
-    incident_execution_lock,
-    active_processing_incidents,
-    processed_new_incidents,
-    processed_in_progress_incidents,
-    submitted_approval_incidents,
-    locked_incident_sessions,
-    resolved_incident_sessions,
-)
-from .llm import invoke_llm_with_fallback
-from .rag.vector_db import vector_db, sync_vector_db_with_kb
-from .itsm.client import (
-    get_auth_token,
-    fetch_incident_queue,
-    fetch_kb_articles,
+from ..config import logger, ITSM_BASE_URL
+from ..session_state import default_session_state
+from ..llm import invoke_llm_with_fallback as default_invoke_llm
+from ..rag.vector_db import vector_db as default_vector_db
+from ..itsm.client import (
     add_work_note,
     fetch_agent_approvals,
     submit_agent_approval,
@@ -36,17 +18,27 @@ from .itsm.client import (
     save_new_kb_article_to_storage,
     resolve_ci_credentials,
 )
-from .itsm.dashboard import (
+from ..itsm.dashboard import (
     post_history_entry_to_dashboard,
     post_timeline_update,
     format_execution_proof_work_note,
 )
-from .ssh.session import PersistentSSHSession, detect_target_os
-from .sop.synthesizer import evaluate_and_get_sop
-from .react.remediation_loop import run_dynamic_react_loop
-from .react.post_verification import verify_post_remediation_status
+from ..ssh.session import PersistentSSHSession, detect_target_os
+from ..sop.synthesizer import evaluate_and_get_sop
+from ..react.remediation_loop import run_dynamic_react_loop
+from ..react.post_verification import verify_post_remediation_status
 
-def prepare_new_incident_sop(token, incident, kb_articles):
+def prepare_new_incident_sop(
+    token, incident, kb_articles,
+    session_state=None,
+    vdb=None,
+    llm_invoker=None,
+    ssh_session_factory=None
+):
+    state = session_state or default_session_state
+    active_vdb = vdb if vdb is not None else default_vector_db
+    invoker = llm_invoker or default_invoke_llm
+
     inc_id = incident.get("id")
     number = incident.get("number", inc_id)
     short_desc = incident.get("shortDescription", "")
@@ -72,20 +64,21 @@ def prepare_new_incident_sop(token, incident, kb_articles):
         )
         post_timeline_update(inc_id, number, short_desc, "Unspecified CI", "ESCALATED", "🖥️ Target CI Validation", "FAILED", f"Target host/CI is unspecified. Escalated to {team_member}.")
         add_work_note(token, inc_id, clarify_note)
-        update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member)
+        update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
         return
 
     logger.info(f"⚡ Processing NEW Incident: [{number}] '{short_desc}' | Resolved CI: {ci_name}")
-    processed_new_incidents.add(inc_id)
+    state.mark_processed_new(inc_id)
 
     ip = ci_info["ip"]
     user = ci_info["user"]
 
     is_new_use_case, kb_num, kb_title, reasoning, sop_commands, new_sop_data = evaluate_and_get_sop(
-        number, short_desc, desc, ci_name, ip, kb_articles, inc_id
+        number, short_desc, desc, ci_name, ip, kb_articles, inc_id,
+        vdb=active_vdb, session_state=state, llm_invoker=invoker, ssh_session_factory=ssh_session_factory
     )
 
-    update_incident_status(token, inc_id, "IN_PROGRESS")
+    update_incident_status(token, inc_id, "IN_PROGRESS", session_state=state)
 
     if is_new_use_case:
         post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔍 RAG SOP Retrieval", "SUCCESS", "RAG Miss: No matching SOP. Forwarding to Knowledge Synthesizer.")
@@ -111,33 +104,50 @@ def prepare_new_incident_sop(token, incident, kb_articles):
         )
     add_work_note(token, inc_id, transition_msg)
 
-def solve_in_progress_incident(token, incident, kb_articles):
+def solve_in_progress_incident(
+    token, incident, kb_articles,
+    session_state=None,
+    vdb=None,
+    llm_invoker=None,
+    ssh_session_factory=None
+):
+    state = session_state or default_session_state
     inc_id = incident.get("id")
     number = incident.get("number", inc_id)
-    short_desc = incident.get("shortDescription", "")
-    desc = incident.get("description", "")
 
-    with incident_execution_lock:
-        if inc_id in active_processing_incidents:
-            logger.info(f"🔒 Incident [{number}] is currently being processed by another thread. Skipping.")
-            return
-        active_processing_incidents.add(inc_id)
+    # Atomic per-incident processing check
+    if not state.try_acquire_incident_processing(inc_id):
+        logger.info(f"🔒 Incident [{number}] is currently being processed by another thread. Skipping.")
+        return
 
     ci_info, ci_name = resolve_ci_credentials(incident)
     host_ip = (ci_info or {}).get("ip", "default_host")
-    host_lock = host_execution_locks[host_ip]
+    host_lock = state.get_host_lock(host_ip)
 
     try:
         logger.info(f"🔒 Acquiring SSH execution lock for host [{ci_name} / {host_ip}] on Incident [{number}]...")
         with host_lock:
             logger.info(f"🔑 Host lock acquired for [{ci_name} / {host_ip}] — Executing SOP for Incident [{number}]...")
-            _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, ci_name)
+            _solve_in_progress_incident_internal(
+                token, incident, kb_articles, ci_info, ci_name,
+                session_state=state, vdb=vdb, llm_invoker=llm_invoker, ssh_session_factory=ssh_session_factory
+            )
     finally:
-        with incident_execution_lock:
-            active_processing_incidents.discard(inc_id)
+        state.release_incident_processing(inc_id)
         logger.info(f"🔓 Released host execution lock for [{ci_name} / {host_ip}] on Incident [{number}].")
 
-def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, ci_name):
+def _solve_in_progress_incident_internal(
+    token, incident, kb_articles, ci_info, ci_name,
+    session_state=None,
+    vdb=None,
+    llm_invoker=None,
+    ssh_session_factory=None
+):
+    state = session_state or default_session_state
+    active_vdb = vdb if vdb is not None else default_vector_db
+    invoker = llm_invoker or default_invoke_llm
+    session_factory = ssh_session_factory or (lambda _ip, _u, _p: PersistentSSHSession(_ip, _u, _p))
+
     inc_id = incident.get("id")
     number = incident.get("number", inc_id)
     short_desc = incident.get("shortDescription", "")
@@ -158,28 +168,28 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
         add_work_note(token, inc_id, reject_note)
-        update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
-        locked_incident_sessions.add(inc_id)
+        update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
+        state.lock_session(inc_id)
         return
 
     pending_appr = next((a for a in approvals if a.get("incidentId") == inc_id and a.get("status") == "PENDING"), None)
     if pending_appr:
         post_timeline_update(inc_id, number, short_desc, ci_name or "Target Host", "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", "SOP pending review. Awaiting operator approval.")
         logger.info(f"⏳ Ticket [{number}] is PENDING human operator review in Control Tower (http://localhost:5173). Paused awaiting 'Approve & Execute'...")
-        update_incident_status(token, inc_id, "ON_HOLD")
-        locked_incident_sessions.add(inc_id)
+        update_incident_status(token, inc_id, "ON_HOLD", session_state=state)
+        state.lock_session(inc_id)
         return
 
     approved_appr = next((a for a in approvals if a.get("incidentId") == inc_id and a.get("status") == "APPROVED"), None)
 
     if approved_appr:
-        if inc_id in locked_incident_sessions:
+        if state.is_locked(inc_id):
             logger.info(f"🔓 Un-locking Incident [{number}] — Human approval granted! Proceeding with execution.")
-            locked_incident_sessions.remove(inc_id)
-    elif inc_id in locked_incident_sessions:
+            state.unlock_session(inc_id)
+    elif state.is_locked(inc_id):
         logger.info(f"🔒 Incident [{number}] is locked from re-processing in this session. Skipping duplicate execution.")
         return
-    elif inc_id in resolved_incident_sessions:
+    elif state.is_resolved(inc_id):
         logger.info(f"🔒 Incident [{number}] is already RESOLVED — locked from re-processing this session.")
         return
 
@@ -201,8 +211,8 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
         )
         post_timeline_update(inc_id, number, short_desc, "Unspecified CI", "ESCALATED", "🖥️ Target CI Validation", "FAILED", f"Target host/CI is unspecified. Escalated to {team_member}.")
         add_work_note(token, inc_id, clarify_note)
-        update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member)
-        locked_incident_sessions.add(inc_id)
+        update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
+        state.lock_session(inc_id)
         return
 
     logger.info(f"🚀 Remediation Agent Executing IN_PROGRESS Incident: [{number}] '{short_desc}' | Resolved CI: {ci_name}")
@@ -219,7 +229,7 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
 
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🖥️ Target CI Validation", "SUCCESS", f"Detected OS: {target_os}. Validation complete.")
 
-    # 2. Autonomous CPU/Memory Threshold Check (for CPU/Memory alert tickets)
+    # 2. Autonomous CPU/Memory Threshold Check
     full_text = f"{short_desc} {desc}".lower()
     is_user_mgmt_ticket = any(k in full_text for k in ["user", "userdel", "delete user", "offboard", "pamsudo", "sudoers", "account", "/etc/passwd", "deprovision"])
     
@@ -283,8 +293,8 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                 logger.info(f"✅ AUTO-RESOLVE: Both CPU ({cpu_pct:.2f}%) and Memory ({mem_pct:.2f}%) below 90% — Auto-resolving ticket")
                 post_timeline_update(inc_id, number, short_desc, ci_name, "SUCCESS", "📊 Autonomous Threshold Check", "SUCCESS", f"AUTO-RESOLVED: CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}% (both < 90%)")
                 add_work_note(token, inc_id, f"🤖 AUTO-RESOLVED: Resource utilization within normal thresholds (CPU: {cpu_pct:.2f}%, Memory: {mem_pct:.2f}%). No action required.", author="🤖 Unix Auto-Resolver Agent")
-                update_incident_status(token, inc_id, "RESOLVED")
-                resolved_incident_sessions.add(inc_id)
+                update_incident_status(token, inc_id, "RESOLVED", session_state=state)
+                state.mark_resolved(inc_id)
                 return
             else:
                 is_resource_alert_exceeded = True
@@ -317,7 +327,8 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
         logger.info(f"🎯 Direct Resource Alert SOP Match: Using [{kb_num}] '{kb_title}' for ticket [{number}]")
     else:
         is_new_use_case, kb_num, kb_title, reasoning, sop_commands, new_sop_data = evaluate_and_get_sop(
-            number, short_desc, desc, ci_name, ip, kb_articles, inc_id, target_os=target_os
+            number, short_desc, desc, ci_name, ip, kb_articles, inc_id,
+            target_os=target_os, vdb=active_vdb, session_state=state, llm_invoker=invoker, ssh_session_factory=session_factory
         )
 
         if is_new_use_case:
@@ -333,8 +344,8 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                         rejected_appr = a
             my_approval = pending_appr or rejected_appr
 
-            if not my_approval and inc_id not in submitted_approval_incidents:
-                submitted_approval_incidents.add(inc_id)
+            if not my_approval and not state.has_submitted_approval(inc_id):
+                state.mark_submitted_approval(inc_id)
                 res_steps = (new_sop_data or {}).get("resolution_steps", [])
                 formatted_res_steps = []
                 for step in res_steps:
@@ -394,8 +405,8 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     )
                     add_work_note(token, inc_id, notice_note, author="🧠 AI Knowledge Synthesizer")
-                    update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
-                    locked_incident_sessions.add(inc_id)
+                    update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
+                    state.lock_session(inc_id)
                 else:
                     logger.warning(f"⛔ Refusing to submit approval for [{number}] — the synthesized SOP resolved to 0 usable commands.")
                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "🔐 Human-in-the-Loop Gate", "FAILED", "SOP synthesis produced 0 usable commands; escalation required.")
@@ -409,8 +420,8 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     )
                     add_work_note(token, inc_id, notice_note, author="🧠 AI Knowledge Synthesizer")
-                    update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
-                    locked_incident_sessions.add(inc_id)
+                    update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
+                    state.lock_session(inc_id)
                 return
                 
             elif my_approval:
@@ -418,8 +429,8 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                 if status == "PENDING":
                     post_timeline_update(inc_id, number, short_desc, ci_name, "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", "SOP pending review. Awaiting operator approval.")
                     logger.info(f"⏳ Ticket [{number}] is PENDING human operator review in Control Tower (http://localhost:5173). Paused awaiting 'Approve & Execute'...")
-                    update_incident_status(token, inc_id, "ON_HOLD")
-                    locked_incident_sessions.add(inc_id)
+                    update_incident_status(token, inc_id, "ON_HOLD", session_state=state)
+                    state.lock_session(inc_id)
                     return
                 elif status == "REJECTED":
                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "🔐 Human-in-the-Loop Gate", "FAILED", f"SOP execution rejected: {my_approval.get('rejectionReason')}")
@@ -433,8 +444,8 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     )
                     add_work_note(token, inc_id, reject_note)
-                    update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
-                    locked_incident_sessions.add(inc_id)
+                    update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
+                    state.lock_session(inc_id)
                     return
             elif status in ["APPROVED", "EXECUTED"]:
                 post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔐 Human-in-the-Loop Gate", "SUCCESS", f"SOP approved by operator ({my_approval.get('approver', 'Human Admin')}). Proceeding to execute.")
@@ -459,15 +470,18 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
         add_work_note(token, inc_id, guard_note, author="🤖 Unix Auto-Resolver Agent")
-        update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team")
-        locked_incident_sessions.add(inc_id)
+        update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
+        state.lock_session(inc_id)
         return
 
     # 4. Execute SSH Commands dynamically via LLM ReAct Tool Calling
-    processed_in_progress_incidents.add(inc_id)
+    state.mark_processed_in_progress(inc_id)
 
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"LLM is dynamically orchestrating execution...")
-    success, exec_log = run_dynamic_react_loop(ip, user, password, sop_commands, short_desc, number, inc_id, ci_name, desc=desc)
+    success, exec_log = run_dynamic_react_loop(
+        ip, user, password, sop_commands, short_desc, number, inc_id, ci_name,
+        desc=desc, session_state=state, ssh_session_factory=session_factory, llm_invoker=invoker
+    )
 
     if not success:
         if "SERVER_UNREACHABLE" in exec_log:
@@ -488,9 +502,9 @@ def _solve_in_progress_incident_internal(token, incident, kb_articles, ci_info, 
             )
             post_timeline_update(inc_id, number, short_desc, ci_name, "ESCALATED", "📡 Host Reachability Check", "FAILED", f"Server {ip} unreachable via SSH. Exited ReAct loop & escalated to {team_member}.")
             add_work_note(token, inc_id, unreachable_note)
-            update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member)
-            locked_incident_sessions.add(inc_id)
-            resolved_incident_sessions.add(inc_id)
+            update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
+            state.lock_session(inc_id)
+            state.mark_resolved(inc_id)
             return
 
         post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "💻 Dynamic SSH Execution", "FAILED", f"Dynamic SSH execution failed: {exec_log[:200]}")
@@ -547,26 +561,24 @@ Respond ONLY in valid JSON format:
         post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🧪 Verification Tests", "RUNNING", "Running LLM verification models on SSH execution log...")
         logger.info("Evaluating live SSH execution proof with LLM Engine...")
         try:
-            eval_content, eval_model = invoke_llm_with_fallback(
+            eval_content, eval_model = invoker(
                 messages=[{"role": "user", "content": eval_prompt}],
                 response_format={"type": "json_object"},
-                call_label=f"SSH Output Evaluation [{number}]"
+                call_label=f"SSH Output Evaluation [{number}]",
+                session_state=state
             )
             if eval_content:
                 evaluation = json.loads(eval_content) if isinstance(eval_content, str) else eval_content
                 if isinstance(evaluation, list) and len(evaluation) > 0: evaluation = evaluation[0]
                 logger.info(f"Verified live SSH proof using model: '{eval_model}'")
-                inc_calls = [c for c in TOKEN_USAGE_SESSION["calls"] if number in c.get("label", "")]
-                if inc_calls:
-                    inc_prompt = sum(c["prompt_tokens"] for c in inc_calls)
-                    inc_completion = sum(c["completion_tokens"] for c in inc_calls)
-                    inc_total = sum(c["total_tokens"] for c in inc_calls)
+                inc_summary = state.get_incident_token_summary(number)
+                if inc_summary.get("count", 0) > 0:
                     logger.info(
                         f"📊 ━━ INCIDENT TOKEN SUMMARY [{number}] ━━ "
-                        f"LLM calls={len(inc_calls)} | "
-                        f"prompt={inc_prompt:,} | completion={inc_completion:,} | "
-                        f"TOTAL={inc_total:,} tokens "
-                        f"(~${inc_total / 1_000_000 * 8.00:.4f} USD @ $8/1M tokens)"
+                        f"LLM calls={inc_summary['count']} | "
+                        f"prompt={inc_summary['prompt_tokens']:,} | completion={inc_summary['completion_tokens']:,} | "
+                        f"TOTAL={inc_summary['total_tokens']:,} tokens "
+                        f"(~${inc_summary['estimated_usd']:.4f} USD @ $8/1M tokens)"
                     )
         except Exception as e:
             logger.error(f"LLM Evaluation failed for {number}: {e}")
@@ -578,7 +590,6 @@ Respond ONLY in valid JSON format:
             "proof_summary": "System responded cleanly to SSH commands and reported normal operational metrics." if success else "SOP execution failed during SSH session."
         }
 
-    # Hard physical probe guard for Application Outage
     is_user_ticket = any(k in short_desc.lower() for k in ["user", "id", "account", "pamsudo", "sudo", "privilege", "permission", "useradd", "provision"])
     is_app_outage = any(
         (k in short_desc.lower() and (k != "down" or "download" not in short_desc.lower()))
@@ -621,15 +632,15 @@ Respond ONLY in valid JSON format:
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
         add_work_note(token, inc_id, escalation_note)
-        update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member)
-        locked_incident_sessions.add(inc_id)
-        resolved_incident_sessions.add(inc_id)
+        update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
+        state.lock_session(inc_id)
+        state.mark_resolved(inc_id)
         logger.info(f"🔒 Incident [{number}] is now ESCALATED — locked from re-processing this session.")
         return
 
     # 7. Mandatory Post-Remediation Proof-of-Fix Guard
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔬 Post-Remediation Verification", "RUNNING", "Running mandatory post-remediation proof-of-fix verification...")
-    proof_session = PersistentSSHSession(ip, user, password)
+    proof_session = session_factory(ip, user, password)
     try:
         post_fix_ok, post_fix_evidence = verify_post_remediation_status(
             proof_session, short_desc, desc, sop_commands, exec_log, number
@@ -664,9 +675,9 @@ Respond ONLY in valid JSON format:
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
         add_work_note(token, inc_id, escalation_note)
-        update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member)
-        locked_incident_sessions.add(inc_id)
-        resolved_incident_sessions.add(inc_id)
+        update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
+        state.lock_session(inc_id)
+        state.mark_resolved(inc_id)
         logger.info(f"🔒 Incident [{number}] is now ESCALATED (post-remediation guard) — locked from re-processing.")
         return
 
@@ -691,7 +702,7 @@ Respond ONLY in valid JSON format:
         f"Verification: {evaluation.get('proof_summary', 'Verified normal operational metrics.')}\n"
         f"Post-Remediation Guard: {post_fix_evidence}"
     )
-    if update_incident_status(token, inc_id, "RESOLVED", res_code, res_notes):
+    if update_incident_status(token, inc_id, "RESOLVED", res_code, res_notes, session_state=state):
         logger.info(f"🎉 Successfully RESOLVED IN_PROGRESS Incident [{number}]!")
         post_history_entry_to_dashboard(
             inc_id,
@@ -721,7 +732,7 @@ Respond ONLY in valid JSON format:
                     "sourceIncidentIds": [inc_id]
                 }
                 logger.info(f"💾 Saving approved and verified new SOP to knowledge base...")
-                _persisted = save_new_kb_article_to_storage(new_sop_data_to_store)
+                _persisted = save_new_kb_article_to_storage(new_sop_data_to_store, vdb=active_vdb)
                 _persist_kb_num = (_persisted or {}).get("number")
                 _persist_title = (_persisted or {}).get("title", new_sop_data.get("title", short_desc))
                 _index_ok = bool(_persisted) and bool(_persist_kb_num) and bool(_persisted.get("_chromadb_indexed"))
@@ -743,113 +754,4 @@ Respond ONLY in valid JSON format:
                         f"Escalate so a human-authored SOP is created for future occurrences.",
                         author="🧠 AI Knowledge Synthesizer")
 
-    resolved_incident_sessions.add(inc_id)
-    locked_incident_sessions.add(inc_id)
-
-def start_continuous_monitoring():
-    acquire_lock()
-    import atexit
-    atexit.register(release_lock)
-
-    logger.info("=" * 75)
-    logger.info("🚀 Starting Continuous ITSM Agent Daemon (Gemini 3.1 Pro Preview)")
-    logger.info("   Mode: SELF-LEARNING SOP GENERATION & DUAL-STAGE REMEDIATION")
-    logger.info(f"   Polling Interval: Every {POLL_INTERVAL_SECONDS} seconds")
-    logger.info(f"   Target System: ITSM Platform ({ITSM_BASE_URL})")
-    logger.info("=" * 75)
-
-    escalated_incident_ids: set = set()
-
-    while True:
-        try:
-            token = get_auth_token()
-            if not token:
-                logger.warning("Auth token unavailable, retrying in next cycle...")
-                time.sleep(POLL_INTERVAL_SECONDS)
-                continue
-
-            incidents = fetch_incident_queue(token)
-            kb_articles = fetch_kb_articles(token)
-
-            if not hasattr(start_continuous_monitoring, 'sync_counter'):
-                start_continuous_monitoring.sync_counter = 4
-            start_continuous_monitoring.sync_counter += 1
-            if start_continuous_monitoring.sync_counter % 5 == 0:
-                sync_vector_db_with_kb(token, None, vector_db)
-
-            in_progress_tickets = []
-            approvals_list = fetch_agent_approvals(token)
-            approved_inc_ids = {
-                a.get("incidentId") for a in approvals_list if a.get("status") == "APPROVED"
-            }
-
-            for inc in incidents:
-                inc_id = inc.get("id")
-                state = str(inc.get("state", "")).upper().strip()
-
-                if state == "IN_PROGRESS":
-                    if inc_id in escalated_incident_ids:
-                        escalated_incident_ids.remove(inc_id)
-                    if inc_id in resolved_incident_sessions:
-                        resolved_incident_sessions.remove(inc_id)
-                    if inc_id in locked_incident_sessions:
-                        locked_incident_sessions.remove(inc_id)
-                    if inc_id in processed_in_progress_incidents:
-                        processed_in_progress_incidents.remove(inc_id)
-
-                if inc_id in approved_inc_ids and inc_id in escalated_incident_ids:
-                    escalated_incident_ids.remove(inc_id)
-                    logger.info(f"🔓 Un-locking Incident [{inc.get('number', inc_id)}] — Human approval granted! Proceeding with execution.")
-
-                is_approved_on_hold = (state == "ON_HOLD" and inc_id in approved_inc_ids)
-                if (state == "IN_PROGRESS" or is_approved_on_hold) and inc_id not in escalated_incident_ids and inc_id not in resolved_incident_sessions:
-                    in_progress_tickets.append(inc)
-
-            if in_progress_tickets:
-                max_parallel = min(len(in_progress_tickets), 10)
-                logger.info(f"⚡ Resolver Agent: Discovered {len(in_progress_tickets)} incident(s). Launching ASYNC PARALLEL Worker Pool (Max Workers = {max_parallel})...")
-                
-                def process_ticket_worker(inc_item):
-                    inc_id_item = inc_item.get("id")
-                    num_item = inc_item.get("number", inc_id_item)
-                    try:
-                        logger.info(f"🚀 [Parallel Worker Thread] Starting remediation on Incident [{num_item}]")
-                        solve_in_progress_incident(token, inc_item, kb_articles)
-                        
-                        updated = fetch_incident_queue(token)
-                        for u in updated:
-                            if u.get("id") == inc_id_item:
-                                u_state = str(u.get("state", "")).upper()
-                                u_apprs = fetch_agent_approvals(token)
-                                has_pending_or_approved = any(
-                                    a.get("incidentId") == inc_id_item and a.get("status") in ("PENDING", "APPROVED")
-                                    for a in u_apprs
-                                )
-                                if u_state in ("RESOLVED", "CLOSED"):
-                                    escalated_incident_ids.add(inc_id_item)
-                                    logger.info(f"🔒 Incident [{num_item}] is now {u_state} — locked from re-processing.")
-                                elif u_state == "ON_HOLD" and not has_pending_or_approved:
-                                    escalated_incident_ids.add(inc_id_item)
-                                    logger.info(f"🔒 Incident [{num_item}] is now ON_HOLD (escalated/failed) — locked from re-processing.")
-                                break
-                    except Exception as worker_err:
-                        logger.error(f"Error in parallel worker for ticket [{num_item}]: {worker_err}")
-
-                with ThreadPoolExecutor(max_workers=max_parallel) as executor:
-                    futures = [executor.submit(process_ticket_worker, inc) for inc in in_progress_tickets[:10]]
-                    for future in as_completed(futures):
-                        try:
-                            future.result()
-                        except Exception as f_err:
-                            logger.error(f"Parallel worker thread execution error: {f_err}")
-            else:
-                logger.info("💤 Queue Scan: No IN_PROGRESS tickets assigned for Resolver Agent remediation. Waiting...")
-
-        except KeyboardInterrupt:
-            logger.info("🛑 Stopping Continuous ITSM Agent Daemon.")
-            release_lock()
-            break
-        except Exception as e:
-            logger.error(f"Unexpected error in daemon loop: {e}")
-
-        time.sleep(POLL_INTERVAL_SECONDS)
+    state.mark_resolved(inc_id)

@@ -11,9 +11,9 @@ from .config import (
     NVIDIA_API_KEY,
     NVIDIA_BASE_URL,
     FALLBACK_MODELS,
-    TOKEN_USAGE_SESSION,
     custom_httpx_client
 )
+from .session_state import default_session_state
 
 def get_current_model_config():
     try:
@@ -27,9 +27,7 @@ def get_current_model_config():
 def clean_thinking_text(text: str) -> str:
     if not text:
         return ""
-    # Strip XML tags <thought>...</thought> and <thinking>...</thinking>
     text = re.sub(r'<(?:thought|thinking)>.*?</(?:thought|thinking)>', '', text, flags=re.DOTALL | re.IGNORECASE)
-    # Strip lines starting with thinking headers
     lines = []
     skip = False
     for line in text.splitlines():
@@ -90,11 +88,12 @@ def safe_json_parse(text):
             pass
     return {}
 
-def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_format=None, tools=None, return_message=False):
+def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_format=None, tools=None, return_message=False, session_state=None):
     """
     Invokes LLM with automatic retry (3x) per model and fallback across high-performing NVIDIA NIM & GenAI models.
-    Captures and accumulates token usage from every API response.
+    Captures and records token usage in the provided or default SessionStateManager.
     """
+    state = session_state or default_session_state
     config = get_current_model_config()
 
     default_api_key = GENAI_API_KEY
@@ -138,7 +137,7 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
 
                 res = client.chat.completions.create(**kwargs)
 
-                # Token tracking
+                # Token tracking via SessionStateManager
                 usage = getattr(res, "usage", None)
                 if usage:
                     pt = getattr(usage, "prompt_tokens", 0) or 0
@@ -151,14 +150,11 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                         "completion_tokens": ct,
                         "total_tokens":      tt,
                     }
-                    TOKEN_USAGE_SESSION["calls"].append(call_record)
-                    TOKEN_USAGE_SESSION["prompt_tokens"]     += pt
-                    TOKEN_USAGE_SESSION["completion_tokens"] += ct
-                    TOKEN_USAGE_SESSION["total_tokens"]      += tt
+                    state.record_token_call(call_record)
                     logger.info(
                         f"📊 Token Usage [{call_label}] model={model} "
                         f"prompt={pt:,} completion={ct:,} total={tt:,} "
-                        f"| session_total={TOKEN_USAGE_SESSION['total_tokens']:,}"
+                        f"| session_total={state.get_total_tokens():,}"
                     )
                 
                 msg = res.choices[0].message

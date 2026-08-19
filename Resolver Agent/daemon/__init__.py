@@ -1,3 +1,8 @@
+from .session_state import (
+    SessionStateManager,
+    default_session_state,
+)
+
 from .config import (
     logger,
     acquire_lock,
@@ -110,10 +115,13 @@ from .orchestrator import (
     prepare_new_incident_sop,
     solve_in_progress_incident,
     _solve_in_progress_incident_internal,
+    poll_and_dispatch_incidents,
     start_continuous_monitoring,
 )
 
 __all__ = [
+    "SessionStateManager",
+    "default_session_state",
     "logger",
     "acquire_lock",
     "release_lock",
@@ -201,5 +209,6 @@ __all__ = [
     "prepare_new_incident_sop",
     "solve_in_progress_incident",
     "_solve_in_progress_incident_internal",
+    "poll_and_dispatch_incidents",
     "start_continuous_monitoring",
 ]

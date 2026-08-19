@@ -4,10 +4,10 @@ from ..config import (
     ITSM_BASE_URL,
     MODEL_NAME,
     CI_CREDENTIALS,
-    resolved_incident_sessions,
 )
+from ..session_state import default_session_state
 from ..llm import get_embedding, build_kb_embed_text
-from ..rag.vector_db import ChromaVectorDB
+from ..rag.vector_db import ChromaVectorDB, vector_db as default_vector_db
 from ..rag.hybrid_search import sanitize_kb_title
 
 DEPARTMENT_TEAM_MEMBERS = {
@@ -58,8 +58,6 @@ def fetch_kb_articles(token):
 
 def add_work_note(token, incident_id, note_text, author="🤖 Unix Auto-Resolver Agent"):
     headers = {"Authorization": f"Bearer {token}"}
-    
-    # Check if a duplicate work note already exists for key headers
     try:
         inc_res = requests.get(f"{ITSM_BASE_URL}/incidents/{incident_id}", headers=headers, timeout=5)
         if inc_res.status_code == 200:
@@ -100,7 +98,8 @@ def submit_agent_approval(token, approval_data):
         logger.error(f"Error submitting agent approval request: {e}")
         return False
 
-def update_incident_status(token, incident_id, state, resolution_code=None, resolution_notes=None, assigned_to=None):
+def update_incident_status(token, incident_id, state, resolution_code=None, resolution_notes=None, assigned_to=None, session_state=None):
+    state_mgr = session_state or default_session_state
     headers = {"Authorization": f"Bearer {token}"}
     payload = {"state": state}
     if resolution_code:
@@ -115,7 +114,7 @@ def update_incident_status(token, incident_id, state, resolution_code=None, reso
             res = requests.patch(f"{ITSM_BASE_URL}/incidents/{incident_id}", headers=headers, json=payload, timeout=5)
         
         if state == "RESOLVED":
-            resolved_incident_sessions.add(incident_id)
+            state_mgr.mark_resolved(incident_id)
             logger.info(f"🔒 Incident [{incident_id}] state saved as RESOLVED in PostgreSQL DB — locked from re-processing.")
             
         return res.status_code in [200, 201]
@@ -123,11 +122,12 @@ def update_incident_status(token, incident_id, state, resolution_code=None, reso
         logger.error(f"Failed to update status for {incident_id}: {e}")
         return False
 
-def save_new_kb_article_to_storage(new_article_data):
+def save_new_kb_article_to_storage(new_article_data, vdb=None):
     """
     Persists a dynamically generated SOP Knowledge Base Article directly into the Single Master Database via NestJS API.
     Only called AFTER the Resolver Agent successfully resolves the incident!
     """
+    active_vdb = vdb or default_vector_db
     try:
         target_title = str(new_article_data.get("title", "")).strip().lower()
         target_tokens = set(t for t in target_title.split() if len(t) > 3)
@@ -168,7 +168,6 @@ def save_new_kb_article_to_storage(new_article_data):
                                     logger.info(f"✅ Successfully merged new resolution steps and enriched symptoms into {kb.get('number')}")
                                     updated_kb = patch_res.json()
                                     try:
-                                        vdb = ChromaVectorDB()
                                         content_to_embed = build_kb_embed_text(
                                             title=kb.get('title', ''),
                                             summary=kb.get('summary', ''),
@@ -176,8 +175,8 @@ def save_new_kb_article_to_storage(new_article_data):
                                             root_cause=kb.get('rootCause', '')
                                         )
                                         emb = get_embedding(content_to_embed, input_type="passage")
-                                        if emb:
-                                            vdb.add_kb_embedding(kb.get('number'), kb.get('number'), kb.get('title'), emb)
+                                        if emb and active_vdb:
+                                            active_vdb.add_kb_embedding(kb.get('number'), kb.get('number'), kb.get('title'), emb)
                                             logger.info(f"⚡ Re-indexed vector embeddings for {kb.get('number')} in ChromaDB with enriched RAG coverage.")
                                     except Exception as vec_err:
                                         logger.warning(f"Failed to re-index vector embedding: {vec_err}")
@@ -207,7 +206,6 @@ def save_new_kb_article_to_storage(new_article_data):
             logger.info(f"✨ PERSISTED NEW SOP ARTICLE TO DATABASE VIA API: {new_article.get('number')} - {new_article.get('title')}")
             _indexed_ok = False
             try:
-                vdb = ChromaVectorDB()
                 symptom_list = new_article.get('symptoms', [])
                 content_to_embed = build_kb_embed_text(
                     title=new_article.get('title', ''),
@@ -216,9 +214,9 @@ def save_new_kb_article_to_storage(new_article_data):
                     root_cause=new_article.get('rootCause', '')
                 )
                 emb = get_embedding(content_to_embed, input_type="passage")
-                if emb:
-                    vdb.add_kb_embedding(new_article.get('number'), new_article.get('number'), new_article.get('title'), emb)
-                    _indexed_numbers = vdb.get_indexed_numbers()
+                if emb and active_vdb:
+                    active_vdb.add_kb_embedding(new_article.get('number'), new_article.get('number'), new_article.get('title'), emb)
+                    _indexed_numbers = active_vdb.get_indexed_numbers()
                     if new_article.get('number') in _indexed_numbers:
                         _indexed_ok = True
                         logger.info(f"⚡ Indexed new vector embedding for {new_article.get('number')} in ChromaDB (verified present).")
@@ -243,11 +241,9 @@ def resolve_ci_credentials(incident):
     short_desc = (incident.get("shortDescription") or "").lower()
     desc = (incident.get("description") or "").lower()
 
-    # 1. Try mapping the explicit CI name if it is defined and exists in CI_CREDENTIALS
     if ci_name and ci_name in CI_CREDENTIALS:
         return CI_CREDENTIALS[ci_name], ci_name
 
-    # 2. Scan shortDescription and description for references to known IP addresses or CI names
     for key, info in CI_CREDENTIALS.items():
         if info["ip"] in short_desc or info["ip"] in desc:
             return info, key
@@ -257,5 +253,4 @@ def resolve_ci_credentials(incident):
         if key_no_spaces in short_desc or key_no_spaces in desc:
             return info, key
 
-    # 3. No fallback to default host
     return None, None
