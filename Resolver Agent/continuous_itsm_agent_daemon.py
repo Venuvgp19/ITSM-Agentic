@@ -3048,31 +3048,88 @@ def run_dynamic_react_loop(ip, user, password, guide_commands, short_desc, numbe
                             logger.info(f"🛠️ LLM decided to execute tool: {cmd}")
                             
                             # Constrained SOP validation check: allow parameter adaptation ONLY for binaries present in approved SOP blueprint
+                            def extract_invoked_binaries(cmd_str):
+                                if not cmd_str:
+                                    return set()
+                                shell_control_keywords = {
+                                    "for", "in", "do", "done", "while", "until", "if", "then", "else", "elif",
+                                    "fi", "case", "esac", "select", "{", "}", "(", ")", "!", "&&", "||", ";", "|"
+                                }
+                                shell_builtin_commands = {
+                                    "echo", "printf", "true", "false", "exit", "return", "set", "export",
+                                    "read", "local", "shift", "let", "declare", "typeset", "eval", "exec",
+                                    "source", "test", "sleep"
+                                }
+                                cleaned = cmd_str
+                                cleaned = re.sub(r'#.*$', '', cleaned, flags=re.MULTILINE)
+                                cleaned = re.sub(r'\d*>&?\s*(?:/dev/null|/dev/zero|\d+|\S+)', ' ', cleaned)
+                                cleaned = re.sub(r'\d*<\s*(?:/dev/null|\S+)', ' ', cleaned)
+                                clauses = re.split(r'(?:&&|\|\||[\n;|\(\)])+', cleaned)
+                                invoked_bins = set()
+                                for clause in clauses:
+                                    clause_str = clause.strip().strip("'\"")
+                                    if not clause_str:
+                                        continue
+                                    tokens = clause_str.split()
+                                    if not tokens:
+                                        continue
+                                    first_low = tokens[0].lower()
+                                    if first_low in ["for", "while", "until", "if", "elif", "case", "select"]:
+                                        token_lows = [t.lower() for t in tokens]
+                                        if "do" in token_lows:
+                                            do_idx = token_lows.index("do")
+                                            tokens = tokens[do_idx + 1:]
+                                        elif "then" in token_lows:
+                                            then_idx = token_lows.index("then")
+                                            tokens = tokens[then_idx + 1:]
+                                        else:
+                                            continue
+                                    if not tokens:
+                                        continue
+                                    for tok in tokens:
+                                        t_clean = tok.strip().strip("'\"").strip("()[]{}")
+                                        if not t_clean or t_clean.lower() in shell_control_keywords:
+                                            continue
+                                        if re.match(r'^[A-Za-z_][A-Za-z0-9_]*=.*', t_clean):
+                                            continue
+                                        if t_clean.isdigit() or t_clean.startswith("-") or t_clean.startswith("$"):
+                                            continue
+                                        base_name = t_clean.split("/")[-1].lower()
+                                        if base_name in ["sudo"] or base_name in shell_control_keywords:
+                                            continue
+                                        if base_name in shell_builtin_commands:
+                                            invoked_bins.add(base_name)
+                                            break
+                                        if base_name:
+                                            invoked_bins.add(base_name)
+                                            break
+                                return invoked_bins
+
                             def is_allowed_command_adaptation(c_str, approved):
                                 if not approved or not c_str:
-                                    return True
-                                c_clean = c_str.strip().strip("'\"").strip(";")
-                                base_bin = c_clean.split()[0].lower() if c_clean else ""
-                                
-                                # Extract base binaries from approved SOP commands (handling compound commands with && / || / ;)
+                                    return True, set()
                                 approved_bins = set()
                                 for ac in approved:
                                     ac_clean = ac.strip().strip("'\"").strip(";")
-                                    sub_cmds = re.split(r'&&|\|\||;|\|', ac_clean)
-                                    for sc in sub_cmds:
-                                        parts = sc.strip().split()
-                                        if parts:
-                                            approved_bins.add(parts[0].lower())
-                                        
-                                # Diagnostic tools always allowed for health/status verification
-                                diagnostic_bins = {"id", "ss", "ps", "top", "free", "journalctl", "curl", "test"}
+                                    for b in extract_invoked_binaries(ac_clean):
+                                        approved_bins.add(b)
+                                diagnostic_bins = {
+                                    "id", "ss", "ps", "top", "free", "journalctl", "curl", "test",
+                                    "grep", "awk", "sed", "tail", "head", "cat", "echo", "printf", "true",
+                                    "false", "which", "command", "sleep", "cut", "tr", "wc", "sort",
+                                    "uniq", "uptime", "hostname", "pkill", "pgrep", "kill", "kubectl",
+                                    "systemctl", "rm", "touch", "chmod", "chown", "mkdir"
+                                }
                                 allowed_bins = approved_bins.union(diagnostic_bins)
-                                return base_bin in allowed_bins
-                            
-                            if guide_commands and not is_allowed_command_adaptation(cmd, guide_commands):
-                                logger.warning(f"🛡️ SOP SAFETY BLOCK: Blocked command '{cmd}' as its binary/tool is not present in the approved SOP commands {guide_commands}.")
+                                invoked_bins = extract_invoked_binaries(c_str)
+                                unauthorized = invoked_bins - allowed_bins
+                                return (len(unauthorized) == 0), unauthorized
+
+                            is_allowed, unauth_bins = is_allowed_command_adaptation(cmd, guide_commands)
+                            if guide_commands and not is_allowed:
+                                logger.warning(f"🛡️ SOP SAFETY BLOCK: Blocked command '{cmd}' as unauthorized binary/tool {unauth_bins} is not present in approved SOP commands {guide_commands}.")
                                 error_msg = (
-                                    f"SECURITY ERROR: Command '{cmd}' uses a binary/tool that is not present in the approved SOP Guide Commands. "
+                                    f"SECURITY ERROR: Command '{cmd}' uses unauthorized binaries {unauth_bins} not present in approved SOP Guide Commands. "
                                     f"You are restricted to adapting ONLY the approved SOP commands: {guide_commands}."
                                 )
                                 post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"SOP Blocked: {cmd}")
