@@ -62,27 +62,30 @@ print(f"Found {len(rows)} KB articles. Synchronizing with Vector Store...")
 ids = []
 embeddings = []
 metadatas = []
+documents = []
 
 for idx, row in enumerate(rows):
     kb_id, number, title, category, summary, symptoms, root_cause, resolution_steps = row
 
-    symptoms_str = ""
-    if isinstance(symptoms, list):
-        symptoms_str = " ".join(symptoms)
-    elif isinstance(symptoms, str):
-        symptoms_str = symptoms
+    # Build canonical embed text for passage retrieval
+    doc_text = daemon.build_kb_embed_text(
+        title=title or "",
+        summary=summary or "",
+        symptoms=symptoms,
+        root_cause=root_cause or ""
+    )
 
-    PASSAGE_PREFIX = "Represent the IT knowledge article for retrieval: "
-    doc_text = PASSAGE_PREFIX + f"Title: {title}\nCategory: {category}\nSummary: {summary or ''}\nSymptoms: {symptoms_str}\nRoot Cause: {root_cause or ''}"
-
-    emb = daemon.get_embedding(doc_text)
+    # Use asymmetric 'passage' instruction for nv-embed-v1
+    emb = daemon.get_embedding(doc_text, input_type="passage")
 
     ids.append(str(kb_id or number))
     embeddings.append(emb)
+    documents.append(doc_text)
     metadatas.append({
-        "number": number or "",
-        "title": title or "",
-        "category": category or "",
+        "number": str(number or ""),
+        "title": str(title or ""),
+        "category": str(category or ""),
+        "summary": str(summary or "")[:500],
     })
     print(f"  Processed [{idx+1}/{len(rows)}]: {number} - {title}")
 
@@ -92,7 +95,13 @@ try:
         batch_ids = ids[i:i+BATCH_SIZE]
         batch_embs = embeddings[i:i+BATCH_SIZE]
         batch_metas = metadatas[i:i+BATCH_SIZE]
-        collection.upsert(ids=batch_ids, embeddings=batch_embs, metadatas=batch_metas)
+        batch_docs = documents[i:i+BATCH_SIZE]
+        collection.upsert(
+            ids=batch_ids,
+            embeddings=batch_embs,
+            metadatas=batch_metas,
+            documents=batch_docs
+        )
         print(f"  Indexed batch {i//BATCH_SIZE + 1}: {len(batch_ids)} articles")
     print(f"SUCCESS: Indexed {len(ids)} KB articles into ChromaDB Vector Store!")
 except Exception as e:

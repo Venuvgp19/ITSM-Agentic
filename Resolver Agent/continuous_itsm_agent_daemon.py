@@ -9,6 +9,7 @@ import requests
 import httpx
 import paramiko
 import re
+_re = re
 from openai import OpenAI
 
 # Configure UTF-8 encoding for stdout
@@ -256,7 +257,7 @@ def clean_thinking_text(text: str) -> str:
     if not text:
         return ""
     # Strip XML tags <thought>...</thought> and <thinking>...</thinking>
-    text = _re.sub(r'<(?:thought|thinking)>.*?</(?:thought|thinking)>', '', text, flags=_re.DOTALL | _re.IGNORECASE)
+    text = re.sub(r'<(?:thought|thinking)>.*?</(?:thought|thinking)>', '', text, flags=re.DOTALL | re.IGNORECASE)
     # Strip lines starting with thinking headers
     lines = []
     skip = False
@@ -430,47 +431,240 @@ submitted_approval_incidents = set()
 locked_incident_sessions = set()
 resolved_incident_sessions = set()
 
-# Cosine Similarity & Keyword Vector space model for RAG
-KEYWORDS = [
-    "ssh", "sshd", "kubelet", "kubernetes", "k8s", "containerd", "docker", "podman",
-    "service", "status", "restart", "fail", "error", "refused", "timeout", 
-    "port", "disk", "space", "full", "permission", "denied", "key", "auth", 
-    "login", "etcd", "apiserver", "scheduler", "controller", "active", "inactive",
-    "dead", "crashloopbackoff", "exit", "log", "memory", "cpu",
-    "nexacore", "8080", "worker1ol", "worker", "portal", "unreachable", "gateway",
-    "user", "users", "account", "accounts", "id", "asha", "praneeth", "venu", "sudo",
-    "passwordless", "privileges", "wheel", "virtualenv", "snappy", "python",
-    "sssd", "kernel", "pam", "database", "postgres", "pool", "vacuum", "firewalld",
-    "unblock", "oom", "ram", "utilization", "threshold", "exceeded", "load",
-    "db2", "beaver", "cloudbeaver", "dbeaver", "testdb", "db2server", "db2inst1", "50000"
-]
+# ---------------------------------------------------------------------------
+# Lexical Tokenizer & Pure-Python BM25Okapi Hybrid Ranking Engine
+# ---------------------------------------------------------------------------
+import math
+from collections import Counter
 
-def cosine_similarity(v1, v2):
-    if len(v1) != len(v2):
-        return 0.0
-    dot_prod = sum(a*b for a, b in zip(v1, v2))
-    mag1 = sum(a*a for a in v1) ** 0.5
-    mag2 = sum(b*b for b in v2) ** 0.5
-    if mag1 * mag2 == 0:
-        return 0.0
-    return dot_prod / (mag1 * mag2)
+def tokenize_text(text: str) -> list[str]:
+    """Extracts lowercase alpha-numeric tokens and splits hyphenated/dotted sub-parts."""
+    if not text:
+        return []
+    text_clean = re.sub(r'[^\w\s\-\.\/]', ' ', text.lower())
+    raw_tokens = re.findall(r'[a-z0-9_\-\.\/]+', text_clean)
+    tokens = []
+    for t in raw_tokens:
+        t_clean = t.strip('.-_/')
+        if len(t_clean) >= 2:
+            tokens.append(t_clean)
+            subparts = re.split(r'[\-_/.]+', t_clean)
+            if len(subparts) > 1:
+                for sp in subparts:
+                    if len(sp) >= 2:
+                        tokens.append(sp)
+    return tokens
 
-def get_keyword_vector(text, target_dim=4096):
-    text_lower = text.lower()
-    vector = []
-    for kw in KEYWORDS:
-        count = text_lower.count(kw)
-        vector.append(float(count))
-    mag = sum(x*x for x in vector) ** 0.5
-    if mag > 0:
-        norm_vec = [x / mag for x in vector]
-    else:
-        norm_vec = [0.0] * len(KEYWORDS)
-    
-    # Pad vector to target_dim (4096) for ChromaDB dimension consistency
-    if len(norm_vec) < target_dim:
-        norm_vec.extend([0.0] * (target_dim - len(norm_vec)))
-    return norm_vec[:target_dim]
+
+class BM25Okapi:
+    """Zero-dependency, fast in-memory BM25Okapi lexical retrieval index."""
+    def __init__(self, corpus: list[list[str]], k1: float = 1.5, b: float = 0.75):
+        self.k1 = k1
+        self.b = b
+        self.corpus_size = len(corpus)
+        self.avgdl = (sum(len(doc) for doc in corpus) / self.corpus_size) if self.corpus_size > 0 else 1.0
+        self.doc_freqs = []
+        self.idf = {}
+        self.doc_len = [len(doc) for doc in corpus]
+
+        nd = {}
+        for doc in corpus:
+            frequencies = Counter(doc)
+            self.doc_freqs.append(frequencies)
+            for word in frequencies:
+                nd[word] = nd.get(word, 0) + 1
+
+        for word, freq in nd.items():
+            self.idf[word] = math.log((self.corpus_size - freq + 0.5) / (freq + 0.5) + 1.0)
+
+    def get_scores(self, query: list[str]) -> list[float]:
+        scores = [0.0] * self.corpus_size
+        if not self.corpus_size or not query:
+            return scores
+        for q in query:
+            if q not in self.idf:
+                continue
+            idf_val = self.idf[q]
+            for i, doc_freq in enumerate(self.doc_freqs):
+                if q in doc_freq:
+                    freq = doc_freq[q]
+                    l = self.doc_len[i]
+                    denom = freq + self.k1 * (1 - self.b + self.b * (l / self.avgdl))
+                    scores[i] += idf_val * (freq * (self.k1 + 1)) / (denom if denom > 0 else 1.0)
+        return scores
+
+
+def distill_incident_query(short_desc: str, desc: str) -> tuple[str, list[str]]:
+    """
+    Distills raw incident short_desc + desc into:
+    1. A high-signal dense query string (free of terminal dumps/volume specs).
+    2. A list of key lexical tokens for BM25.
+    """
+    short_desc = short_desc or ""
+    desc = desc or ""
+
+    # Strip ephemeral hostnames, worker names, IP addresses from short description
+    clean_short = re.sub(
+        r'workernode\d+hl|worker\d+ol|worker\d+|control\s*plane|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b',
+        '',
+        short_desc,
+        flags=re.IGNORECASE
+    )
+    clean_short = re.sub(r'\s+', ' ', clean_short).strip()
+
+    extracted_signals = []
+
+    # 1. K8s events & states
+    k8s_events = re.findall(
+        r'(?:Warning\s+)?(FailedScheduling|CrashLoopBackOff|OOMKilled|ImagePullBackOff|ErrImagePull|Evicted|NodeNotReady|NodeAffinity|NodeSelector|0/\d+\s+nodes\s+are\s+available[^\.\n\r]+)',
+        desc,
+        flags=re.IGNORECASE
+    )
+    for ev in k8s_events[:2]:
+        c_ev = re.sub(r'\[root@[^\]]+\]#?', '', ev).strip()
+        if c_ev and len(c_ev) < 150:
+            extracted_signals.append(c_ev)
+
+    # 2. Linux / Web services / OS signals
+    service_sigs = re.findall(
+        r'(?:Active:\s*failed|502\s*Bad\s*Gateway|Connection\s*refused|Unit\s+[\w\.\-]+\s+failed|ModuleNotFoundError:[^\n\r]+|high\s+memory|high\s+cpu|disk\s+full)',
+        desc,
+        flags=re.IGNORECASE
+    )
+    for ss in service_sigs[:2]:
+        extracted_signals.append(ss.strip())
+
+    # 3. DB2 / Database signals
+    db_sigs = re.findall(
+        r'(?:SQL\d+[A-Z]|DB21034E|SQLSTATE=\d+|db2start|db2stop|cloudbeaver)',
+        desc,
+        flags=re.IGNORECASE
+    )
+    for ds in db_sigs[:2]:
+        extracted_signals.append(ds.strip())
+
+    # 4. User management tokens
+    user_tokens = re.findall(
+        r'(?:Pamsudo\d+|user\d+|userdel|useradd|sudoers|passwordless\s+sudo|python\s+virtual\s+environment|virtualenv)',
+        f"{short_desc} {desc}",
+        flags=re.IGNORECASE
+    )
+    if user_tokens:
+        extracted_signals.extend(list(set(user_tokens))[:3])
+
+    combined_parts = [clean_short]
+    if extracted_signals:
+        combined_parts.append(" | Signal: " + " ".join(extracted_signals))
+
+    dense_query = " ".join(combined_parts).strip()
+    lexical_tokens = tokenize_text(f"{short_desc} {' '.join(extracted_signals)}")
+    return dense_query, lexical_tokens
+
+
+def search_hybrid_kb(dense_query_text: str, lexical_tokens: list[str], kb_articles: list[dict], vector_db, limit: int = 12) -> list[dict]:
+    """
+    Executes true Hybrid Search combining Dense Vector Retrieval (nv-embed-v1)
+    and BM25Okapi Lexical Matching via Reciprocal Rank Fusion (RRF).
+    """
+    if not kb_articles:
+        return []
+
+    # 1. Dense Semantic Search from ChromaDB
+    dense_hits_map = {}  # number -> (score, rank)
+    try:
+        dense_emb = get_embedding(dense_query_text, input_type="query")
+        if dense_emb and vector_db:
+            raw_dense = vector_db.search_kb(dense_emb, limit=max(limit * 2, 20))
+            for rank, hit in enumerate(raw_dense):
+                num = hit.get("number")
+                if num:
+                    dense_hits_map[num] = (hit.get("score", 0.0), rank)
+    except Exception as e:
+        logger.warning(f"Dense vector retrieval error in hybrid search: {e}")
+
+    # 2. BM25 Lexical Search
+    doc_tokens_list = []
+    kb_num_list = []
+    for art in kb_articles:
+        num = art.get("number")
+        title = art.get("title", "")
+        summary = art.get("summary", "")
+        symptoms = art.get("symptoms", [])
+        sym_str = " ".join(symptoms) if isinstance(symptoms, list) else str(symptoms or "")
+        root_cause = art.get("rootCause", "")
+        category = art.get("category", "")
+
+        art_text = f"{title} {summary} {sym_str} {root_cause} {category}"
+        doc_tokens = tokenize_text(art_text)
+        doc_tokens_list.append(doc_tokens)
+        kb_num_list.append(num)
+
+    bm25 = BM25Okapi(doc_tokens_list)
+    bm25_scores = bm25.get_scores(lexical_tokens)
+
+    # Rank by BM25 score
+    bm25_ranked_indices = sorted(range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True)
+    bm25_hits_map = {}  # number -> (norm_score, rank)
+    max_bm25 = max(bm25_scores) if bm25_scores and max(bm25_scores) > 0 else 1.0
+
+    for rank, idx in enumerate(bm25_ranked_indices):
+        num = kb_num_list[idx]
+        norm_bm25 = bm25_scores[idx] / max_bm25 if max_bm25 > 0 else 0.0
+        bm25_hits_map[num] = (norm_bm25, rank)
+
+    # 3. Reciprocal Rank Fusion (RRF)
+    # RRF Score = 0.6 / (60 + dense_rank) + 0.4 / (60 + bm25_rank)
+    MAX_RRF = (0.6 / 60.0) + (0.4 / 60.0)
+
+    hybrid_results = []
+    all_kb_dict = {art.get("number"): art for art in kb_articles}
+    all_numbers = set(list(dense_hits_map.keys()) + list(all_kb_dict.keys()))
+
+    for num in all_numbers:
+        art = all_kb_dict.get(num)
+        if not art:
+            continue
+
+        dense_score, dense_rank = dense_hits_map.get(num, (0.0, 999))
+        norm_bm25, bm25_rank = bm25_hits_map.get(num, (0.0, 999))
+
+        rrf = (0.6 / (60.0 + dense_rank)) + (0.4 / (60.0 + bm25_rank))
+        norm_rrf = min(1.0, rrf / MAX_RRF)
+
+        # Weighted hybrid score: 55% dense semantic similarity + 45% normalized RRF
+        if dense_score > 0:
+            blended_score = round(0.55 * dense_score + 0.45 * norm_rrf, 4)
+        else:
+            blended_score = round(0.50 * norm_bm25 + 0.50 * norm_rrf, 4)
+
+        hybrid_results.append({
+            "number": num,
+            "title": art.get("title", ""),
+            "score": blended_score,
+            "dense_score": dense_score,
+            "bm25_score": norm_bm25,
+            "rrf_score": norm_rrf,
+            "article": art
+        })
+
+    hybrid_results.sort(key=lambda x: x["score"], reverse=True)
+    return hybrid_results[:limit]
+
+
+def sanitize_kb_title(title: str) -> str:
+    """Sanitizes synthesized SOP titles to remove ephemeral pod names and host identifiers."""
+    if not title:
+        return "Master SOP: Standard Operational Procedure"
+    clean = re.sub(r'[\r\n\t]+', ' ', title).strip()
+    clean = re.sub(r'\s+', ' ', clean)
+    clean = re.sub(r'\b(pod\s+)?simple-web-app-\w+\b', 'Kubernetes Pod', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b(node1HL|workernode\d+hl|worker\d+ol)\b', 'Cluster Node', clean, flags=re.IGNORECASE)
+    if len(clean) > 130:
+        first_clause = re.split(r'[\.\(\;]', clean)[0].strip()
+        clean = first_clause if len(first_clause) >= 20 else clean[:120].rsplit(' ', 1)[0]
+    if not clean.lower().startswith("master sop:") and not clean.lower().startswith("sop:"):
+        clean = f"Master SOP: {clean}"
+    return clean
 
 
 # ---------------------------------------------------------------------------
@@ -1073,8 +1267,9 @@ def save_new_kb_article_to_storage(new_article_data):
             except Exception as check_err:
                 logger.warning(f"Error checking existing KBs for deduplication: {check_err}")
 
+        clean_title = sanitize_kb_title(new_article_data.get("title", "Troubleshooting & SOP: New Issue"))
         payload = {
-            "title": new_article_data.get("title", "Troubleshooting & SOP: New Issue"),
+            "title": clean_title,
             "category": new_article_data.get("category", "Unix - OS & Services"),
             "configurationItem": new_article_data.get("configurationItem", "Worker 1"),
             "summary": new_article_data.get("summary", "Dynamically synthesized SOP article."),
@@ -2048,304 +2243,134 @@ def _build_relevance_verdict(kept, dropped, entities, confidence, judged, ticket
 
 
 def evaluate_and_get_sop(ticket_number, short_desc, desc, ci_name, ip, kb_articles, incident_id, target_os="Linux/Unix"):
-    # 1. Dual-Vector RAG Strategy: Raw Query + Normalized Operational Intent Fusion
+    # 1. Distill incident into clean dense query and BM25 lexical tokens
+    dense_query, lexical_tokens = distill_incident_query(short_desc, desc)
+    logger.info(f"🔎 Distilled Incident RAG Query: '{dense_query}' (Lexical tokens: {len(lexical_tokens)})")
+
+    # 2. Execute Hybrid Search (ChromaDB nv-embed-v1 + BM25Okapi RRF Fusion)
     rag_results = []
-    raw_query = f"{short_desc} {desc}"
-    query_text = raw_query
-    
-    # Dynamic Operational Intent Normalization (Strips hostnames, IPs, specific numbers & ranges for pure RAG matching)
-    clean_text = re.sub(r'worker\d+ol|workernode\d+hl|control\s*plane|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '', short_desc, flags=re.IGNORECASE)
-    clean_text = re.sub(r'\b\d+\s*users\b|pamsudo\d+(\s*to\s*pamsudo\d+)?|\buser\d+\b', 'user account', clean_text, flags=re.IGNORECASE)
-    norm_query = clean_text.strip() if clean_text.strip() else raw_query
-
     try:
-        # Query embeddings use 'query' input_type (nv-embed-v1 asymmetric retrieval)
-        raw_emb  = get_embedding(raw_query,  input_type="query")
-        norm_emb = get_embedding(norm_query, input_type="query") if norm_query != raw_query else None
-        
-        results_raw = vector_db.search_kb(raw_emb, limit=10) if raw_emb else []
-        results_norm = vector_db.search_kb(norm_emb, limit=10) if norm_emb else []
-
-        # Merge results, taking max score for each KB
-        combined_dict = {}
-        for r in results_raw + results_norm:
-            num = r["number"]
-            if num not in combined_dict or r.get("score", 0) > combined_dict[num].get("score", 0):
-                combined_dict[num] = r
-                
-        rag_results = sorted(list(combined_dict.values()), key=lambda x: x.get("score", 0), reverse=True)
+        rag_results = search_hybrid_kb(dense_query, lexical_tokens, kb_articles, vector_db, limit=12)
     except Exception as e:
-        logger.warning(f"Dense vector search failed: {e}")
-    
-    # 2. Keyword Tie-Breaker for Edge Cases (0.35 <= Dense Score < RAG_SIMILARITY_THRESHOLD)
-    if rag_results:
-        top_score = rag_results[0].get("score", 0.0)
-        if 0.35 <= top_score < RAG_SIMILARITY_THRESHOLD:
-            logger.info(f"🔍 Dense RAG Score ({top_score:.4f}) in edge-case range (0.35-{RAG_SIMILARITY_THRESHOLD}). Running Keyword Tie-Breaker...")
-            try:
-                kw_emb = get_keyword_vector(query_text)
-                kw_hits = vector_db.search_kb(kw_emb, limit=5)
-                kw_dict = {h["number"]: h["score"] for h in kw_hits}
-                
-                for r in rag_results:
-                    num = r["number"]
-                    if num in kw_dict:
-                        dense_val = r["score"]
-                        blended = round(0.75 * dense_val + 0.25 * kw_dict[num], 4)
-                        # Never lower dense score — only boost if keyword match adds value
-                        r["score"] = max(dense_val, blended)
-                        logger.info(f"   ↳ Evaluated [{num}] score: {r['score']:.4f} (Dense: {dense_val}, Kw: {kw_dict[num]})")
-                
-                rag_results.sort(key=lambda x: x["score"], reverse=True)
-            except Exception as kw_err:
-                logger.warning(f"Keyword tie-breaker failed: {kw_err}")
-    
-    # 3. Fallback to keyword search if vector search returns nothing
+        logger.warning(f"Hybrid RAG search encountered error: {e}")
+
+    # Fallback to pure keyword search if hybrid search produced no results
     if not rag_results:
         rag_results = search_kb_without_embeddings(short_desc, desc, kb_articles)
-    
+
     is_new = True
     matched_kb = None
     similarity_score = 0.0
     top_match = None
-    next_best_info = ""  # Initialize here to avoid "referenced before assignment" when rag_results is empty
-    
-    q_low = query_text.lower()
+    next_best_info = ""
+
+    q_low = f"{short_desc} {desc}".lower()
     is_credential_task = any(k in q_low for k in ["credential", "password", "retrieve credentials", "get credentials", "login credentials", "admin password", "jenkins credentials", "argocd credentials", "jenkins server credentials"])
     is_deletion_task = any(k in q_low for k in ["delete", "remove", "offboard", "userdel", "deprovision", "deactivate", "delete all"]) and not is_credential_task
     is_creation_task = any(k in q_low for k in ["create", "provision", "add user", "useradd", "new user"]) and not is_deletion_task and not is_credential_task
 
-    # Count user lines in description or check bulk keywords
     user_line_count = len(re.findall(r"^[a-zA-Z0-9_-]+:", desc, re.MULTILINE))
     is_bulk_req = any(k in q_low for k in ["20 users", "5 users", "pamsudo1 to", "user01 to", "bulk", "multiple users", "users pamsudo", "delete all", "all the users", "users mentioned"]) or user_line_count > 1
     is_single_user_req = not is_bulk_req
 
-    if rag_results:
-        best_candidate_evaluated = rag_results[0]
-        top_inspected_score = best_candidate_evaluated.get("score", 0.0)
-        next_best_info = ""
+    _ticket_is_db2 = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui", "cloudbeaver access", "cloud baever", "cloud beaver"])
+    _ticket_is_k8s = any(k in q_low for k in K8S_DOMAIN_KEYWORDS)
+    _ticket_is_jenkins = any(k in q_low for k in ["jenkins", "initialadminpassword"])
 
-        for candidate in rag_results:
+    if rag_results:
+        for idx, candidate in enumerate(rag_results):
             cand_score = candidate.get("score", 0.0)
             cand_number = candidate.get("number")
-            
+
             cand_art = None
             for art in kb_articles:
                 if art.get("number") == cand_number:
                     cand_art = art
                     break
-            
+
             if not cand_art:
                 continue
 
             kb_text = f"{cand_art.get('title', '')} {cand_art.get('summary', '')}".lower()
-            is_app_sop = any(k in kb_text for k in ["nexacore", "http", "portal", "web server", "bad gateway", "502"])
-            is_bulk_sop = any(k in kb_text for k in ["20 ", "20 users", "20 restricted", "user01 to user20", "bulk linux user"])
             kb_title = cand_art.get('title', '').lower()
-            # DB2 provisioning SOP contains REVOKE/DELETE commands as part of provisioning steps — classify by title first
-            # KB0000042 is the DB2 deletion SOP — do NOT shield it from deletion classification
+            is_bulk_sop = any(k in kb_text for k in ["20 ", "20 users", "20 restricted", "user01 to user20", "bulk linux user"])
+            is_linux_only_sop = any(k in kb_text for k in ["linux user account", "linux account", "useradd", "sudoers", "pamsudo"]) and "db2" not in kb_text
+
             is_db2_provisioning_sop = "db2" in kb_title and any(k in kb_title for k in ["provisioning", "provision", "access", "cloudbeaver"]) and cand_number != "KB0000042"
             is_db2_deletion_sop = cand_number == "KB0000042" or ("db2" in kb_title and any(k in kb_title for k in ["deletion", "revocation", "remove", "offboard"]))
             is_sop_deletion = (is_db2_deletion_sop) or (not is_db2_provisioning_sop and any(k in kb_text for k in ["delete", "deletion", "remove", "offboard", "offboarding", "deprovision", "deprovisioning", "userdel"]))
             is_sop_provision = any(k in kb_text for k in ["create", "creation", "provision", "provisioning", "add user", "useradd", "passwordless sudo"]) and not is_sop_deletion
             is_sop_user_mgmt = is_sop_deletion or is_sop_provision
-            is_linux_only_sop = any(k in kb_text for k in ["linux user account", "linux account", "useradd", "sudoers", "pamsudo"]) and "db2" not in kb_text
 
-            # Early cross-domain guard: DB2/CloudBeaver ticket must never match Linux SOPs
-            _ticket_is_db2 = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui", "cloudbeaver access", "cloud baever", "cloud beaver"])
-            # NOTE: uses the SHARED K8S_DOMAIN_KEYWORDS so this Guard triggers on
-            # the SAME tokens as the later LLM-RAG-Judge gate (no more gap).
-            _ticket_is_k8s = any(k in q_low for k in K8S_DOMAIN_KEYWORDS)
-            _ticket_is_jenkins = any(k in q_low for k in ["jenkins", "initialadminpassword"])
-
-            # STRICT DB2 EXCLUSIVE FILTER: Only KB0000025 (provision) or KB0000042 (delete) allowed for DB2 tickets
+            # ── 1. HARD CROSS-DOMAIN GUARDS ──
             _db2_allowed_sops = ["KB0000025", "KB0000042"]
             if _ticket_is_db2 and cand_number not in _db2_allowed_sops:
-                logger.warning(f"\U0001f6e1\ufe0f Strict DB2 Guard: DB2/CloudBeaver ticket [{ticket_number}] — only DB2 SOPs allowed. Blocked [{cand_number}] '{cand_art.get('title', '')}'. Skipping.")
-                next_best_info = f"Candidate [{cand_number}] blocked — DB2 ticket only permits KB0000025/KB0000042."
-                continue
-            if _ticket_is_k8s and is_linux_only_sop and cand_number not in ["KB0000039", "KB0000026", "KB0000040"]:
-                logger.warning(f"\U0001f6e1\ufe0f Domain Guard: K8s ticket [{ticket_number}] matched Linux-only SOP [{cand_number}]. Skipping.")
-                next_best_info = f"Candidate [{cand_number}] skipped — Linux SOP blocked for K8s ticket."
+                logger.warning(f"🛡️ Strict DB2 Guard: DB2 ticket [{ticket_number}] blocked non-DB2 SOP [{cand_number}] '{cand_art.get('title', '')}'.")
+                next_best_info = f"Candidate [{cand_number}] blocked — DB2 ticket only permits DB2 SOPs."
                 continue
 
-            # Action Direction & Quantity Safety Filter Check
-            is_user_account_ticket = any(k in q_low for k in ["user", "users", "pamsudo", "account", "userdel", "useradd", "offboard", "deprovision", "delete 5 users", "delete user"])
-            is_software_sop = any(k in kb_title for k in ["docker", "kubernetes", "nexacore", "postgresql", "spooler", "firewalld", "nginx", "apache"])
-            
-            if is_user_account_ticket and is_deletion_task and is_software_sop:
-                logger.warning(f"🛡️ Category Guard: User Deletion ticket [{ticket_number}] matched Software Removal SOP [{cand_number}] '{cand_art.get('title', '')}'. Omitting & inspecting next best candidate...")
-                next_best_info = f"Candidate [{cand_number}] omitted — User Deletion ticket cannot match Software Removal SOP."
-                continue
+            if _ticket_is_k8s:
+                if cand_number in LINUX_USER_SOP_NUMBERS or is_linux_only_sop:
+                    logger.warning(f"🛡️ Hard Cross-Domain Guard: K8s ticket [{ticket_number}] matched Linux user SOP [{cand_number}] '{cand_art.get('title', '')}'. Rejecting.")
+                    next_best_info = f"[{cand_number}] rejected — Linux user SOP blocked for K8s ticket."
+                    continue
 
+            # ── 2. ACTION DIRECTION & QUANTITY GUARDS ──
             if is_credential_task and is_sop_user_mgmt:
-                logger.warning(f"🛡️ Action Mismatch Guard: Credential Retrieval ticket [{ticket_number}] matched Account Management SOP [{cand_number}] '{cand_art.get('title', '')}'. Omitting & inspecting next best candidate...")
-                next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch (Credential Retrieval vs Account Management)."
+                logger.warning(f"🛡️ Action Mismatch Guard: Credential Retrieval ticket [{ticket_number}] matched Account Management SOP [{cand_number}]. Skipping.")
+                next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch."
                 continue
             elif is_deletion_task and is_sop_provision:
-                logger.warning(f"🛡️ Action Mismatch Guard: User Deletion ticket [{ticket_number}] matched Provisioning SOP [{cand_number}] '{cand_art.get('title', '')}'. Omitting & inspecting next best candidate...")
+                logger.warning(f"🛡️ Action Mismatch Guard: User Deletion ticket [{ticket_number}] matched Provisioning SOP [{cand_number}]. Skipping.")
                 next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch (Deletion vs Provisioning)."
                 continue
-            elif is_creation_task and not any(k in kb_text for k in ["user", "account", "pamsudo", "sudo", "provisioning", "service account"]):
-                logger.warning(f"🛡️ Category Guard: User Creation ticket [{ticket_number}] matched Non-User SOP [{cand_number}] '{cand_art.get('title', '')}'. Omitting & inspecting next best candidate...")
-                next_best_info = f"Candidate [{cand_number}] omitted (User Creation ticket matched non-user SOP)."
+            elif is_creation_task and is_sop_deletion:
+                logger.warning(f"🛡️ Action Mismatch Guard: User Creation ticket [{ticket_number}] matched Deletion SOP [{cand_number}]. Skipping.")
+                next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch (Creation vs Deletion)."
                 continue
             elif is_single_user_req and is_bulk_sop:
-                logger.warning(f"🛡️ Quantity Mismatch Guard: Single-user ticket [{ticket_number}] matched Bulk SOP [{cand_number}] (Score {cand_score:.4f}). Omitting & inspecting next best candidate...")
-                next_best_info = f"Candidate [{cand_number}] omitted due to Quantity Mismatch (Score {cand_score:.4f})."
+                logger.warning(f"🛡️ Quantity Mismatch Guard: Single-user ticket [{ticket_number}] matched Bulk SOP [{cand_number}]. Skipping.")
+                next_best_info = f"Candidate [{cand_number}] omitted due to Quantity Mismatch."
                 continue
-            
-            # System-wide Generic Intent Pattern Booster (All IT Domains)
-            is_venv_intent = any(k in q_low for k in ["python virtual environment", "python venv", "virtualenv", "virtual environment", "python virtual"])
-            is_venv_sop = cand_number == "KB0000019" or any(k in kb_text for k in ["create python virtual environment", "python virtual environment", "venv", "virtualenv"])
-            
-            # Require specific Linux provisioning keywords — 'user' alone is too broad and causes cross-domain mismatches
-            _linux_create_kw = ["useradd", "pamsudo", "sudoers", "linux user", "linux account", "create linux", "add linux user", "adduser", "provision linux", "create user account", "new user account", "user account creation", "employee onboard"]
-            _db2_or_k8s_in_ticket = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "kubernetes", "k8s", "argocd", "jenkins"])
-            is_user_create_intent = is_creation_task and any(k in q_low for k in _linux_create_kw) and not _db2_or_k8s_in_ticket
-            is_user_create_sop = cand_number in ["KB0000028", "KB0000027", "KB0000021", "KB0000036", "KB0000037"] or ("user account provisioning" in kb_text and "linux" in kb_text)
 
-            _linux_delete_kw = ["userdel", "offboard", "deprovision linux", "delete linux user", "remove linux user", "linux user deletion", "linux account deletion", "employee offboard", "terminate linux"]
-            is_user_delete_intent = is_deletion_task and any(k in q_low for k in _linux_delete_kw) and not _db2_or_k8s_in_ticket
-            is_user_delete_sop = cand_number in ["KB0000038", "KB0000022", "KB0000023"] or ("user account deprovisioning" in kb_text or "bulk deletion" in kb_text)
-
-            is_db2_intent = any(k in q_low for k in ["db2", "ibm db2", "cloudbeaver", "beaver ui", "db2 user", "cloudbeaver access"])
-            # DB2 Create intent → KB0000025, DB2 Delete intent → KB0000042
-            _db2_delete_intent = is_deletion_task and is_db2_intent
-            _db2_create_intent = not is_deletion_task and is_db2_intent
-            is_db2_sop = (cand_number == "KB0000025" and _db2_create_intent) or \
-                         (cand_number == "KB0000042" and _db2_delete_intent) or \
-                         (is_db2_intent and "db2" in kb_text and cand_number in ["KB0000025", "KB0000042"])
-
-            is_external_access_intent = any(k in q_low for k in ["external access", "external world", "cannot access from external", "firewall", "ingress", "nodeport external", "outside world"])
-
-            # K8s scheduling / affinity / selector issues — these are NOT kubelet crashes or credential retrieval
-            _k8s_scheduling_issue = any(k in q_low for k in [
-                "failedscheduling", "node affinity", "node selector", "nodeselector", "node-selector",
-                "affinity", "pending", "0/2 nodes", "didn't match", "pod's node affinity", "troubleshoot"
-            ])
-            _k8s_service_crash = any(k in q_low for k in [
-                "kubelet", "kubelet crash", "kubelet failed", "node not ready", "node notready",
-                "kubernetes node", "k8s node", "worker node down"
-            ])
-            _k8s_argocd = any(k in q_low for k in ["argocd", "argo cd", "argocd credentials", "argocd admin"])
-
-            is_k8s_intent = any(k in q_low for k in ["kubernetes", "k8s", "kubectl", "pod", "namespace", "deployment"])
-
-            # KB0000046 = external ingress/firewall, KB0000026 = kubelet recovery, KB0000039 = pod restart, KB0000040 = argocd credentials
-            is_k8s_external_sop = cand_number == "KB0000046" or "external firewall" in kb_text
-            # KB0000026 kubelet recovery must NEVER fire for scheduling/affinity/pending issues
-            is_k8s_kubelet_sop = cand_number == "KB0000026" or "kubelet" in kb_text
-            is_k8s_pod_sop = cand_number == "KB0000039" or "pod restart" in kb_text or "crashloop" in kb_text
-            is_k8s_argocd_sop = cand_number == "KB0000040" or "argocd" in kb_text
-
-            # Strict K8s sub-domain routing: only boost if SOP sub-domain matches ticket sub-domain
-            is_k8s_sop = False
-            if is_external_access_intent and is_k8s_external_sop:
-                is_k8s_sop = True
-            elif _k8s_service_crash and is_k8s_kubelet_sop and not _k8s_scheduling_issue:
-                is_k8s_sop = True
-            elif _k8s_argocd and is_k8s_argocd_sop:
-                is_k8s_sop = True
-            elif is_k8s_intent and is_k8s_pod_sop and not _k8s_scheduling_issue and not _k8s_service_crash and not is_external_access_intent:
-                is_k8s_sop = True
-
-            is_jenkins_intent = is_credential_task or any(k in q_low for k in ["jenkins", "initialadminpassword"])
-            is_jenkins_sop = cand_number == "KB0000041" or "jenkins" in kb_text
-
-            is_perf_intent = any(k in q_low for k in ["cpu 100", "memory 100", "high cpu", "high memory", "ram utilization", "system performance issue"])
-            is_perf_sop = cand_number in ["KB0468210", "KB0051346", "KB0468207"] or "system performance issue" in kb_text
-
-            _booster_fires = (
-                (is_venv_intent and is_venv_sop) or
-                (is_user_create_intent and is_user_create_sop) or
-                (is_user_delete_intent and is_user_delete_sop) or
-                (is_db2_intent and is_db2_sop) or
-                (is_k8s_sop) or
-                (is_jenkins_intent and is_jenkins_sop) or
-                (is_perf_intent and is_perf_sop)
-            )
-
-            if _booster_fires and cand_score >= INTENT_BOOST_MIN_SCORE:
-                # --- LLM RAG Judge gate: only validate when similarity is ambiguous (below 0.75) ---
-                if cand_score < 0.75:
-                    _judge_approved, _judge_reason = verify_rag_match_intent_with_llm(
-                        short_desc, desc, cand_number, cand_art.get("title", ""),
-                        cand_art.get("steps", cand_art.get("commands", []))
-                    )
-                    if not _judge_approved:
-                        logger.warning(
-                            f"🛡️ LLM RAG Judge REJECTED Intent Boost for [{cand_number}] "
-                            f"'{cand_art.get('title', '')}' (raw score {cand_score:.4f}). "
-                            f"Reason: {_judge_reason}. Treating as RAG Miss candidate."
-                        )
-                        next_best_info = (
-                            f"[{cand_number}] Intent Booster overridden by LLM RAG Judge: {_judge_reason}"
-                        )
-                        continue  # Skip this candidate entirely — fall through to RAG miss
-                    else:
-                        logger.info(
-                            f"✅ LLM RAG Judge APPROVED Intent Boost for [{cand_number}] "
-                            f"'{cand_art.get('title', '')}' (raw score {cand_score:.4f}). "
-                            f"Reason: {_judge_reason}"
-                        )
-
-                logger.info(f"✨ System-wide Intent Booster: Boosted Master SOP [{cand_number}] '{cand_art.get('title', '')}' score from {cand_score:.4f} to {INTENT_BOOST_SCORE} (Domain Intent Match).")
-                cand_score = INTENT_BOOST_SCORE
-
-
+            # ── 3. THRESHOLD & LLM RAG JUDGE VALIDATION ──
             if cand_score < RAG_SIMILARITY_THRESHOLD:
-                logger.info(f"   ↳ Inspected next best candidate [{cand_number}] '{cand_art.get('title', '')}' — Score {cand_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold.")
+                logger.info(f"   ↳ Candidate [{cand_number}] '{cand_art.get('title', '')}' — Score {cand_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold.")
                 if not next_best_info:
-                    next_best_info = f"Next best candidate [{cand_number}] score {cand_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold."
+                    next_best_info = f"Candidate [{cand_number}] score {cand_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold."
                 continue
 
-            # Valid Match Found!
-            # --- Universal LLM RAG Judge gate for K8s tickets ---
-            # When a K8s-related candidate scores high purely via dense embedding,
-            # the booster may never fire but we still need to validate relevance.
-            _ticket_is_k8s_domain = any(k in q_low for k in K8S_DOMAIN_KEYWORDS)
-            if _ticket_is_k8s_domain:
-                # HARD cross-domain block: a K8s-domain ticket must NEVER resolve to
-                # a Linux user-management SOP, regardless of the LLM Judge. Dense
-                # embeddings conflate "delete container" with "delete user"; this
-                # guard removes that failure mode even when the Judge is offline.
-                if cand_number in LINUX_USER_SOP_NUMBERS:
-                    logger.warning(
-                        f"🛡️ Hard Cross-Domain Guard: K8s ticket [{ticket_number}] "
-                        f"matched Linux user-management SOP [{cand_number}] "
-                        f"'{cand_art.get('title', '')}' (dense score {cand_score:.4f}). "
-                        f"Rejecting without invoking LLM Judge — entity-type mismatch."
-                    )
-                    next_best_info = (
-                        f"[{cand_number}] rejected — Linux user SOP blocked for "
-                        f"K8s-domain ticket (entity-type mismatch)."
-                    )
-                    continue
-                _judge_approved_direct, _judge_reason_direct = verify_rag_match_intent_with_llm(
+            # Check confidence and ambiguity margin
+            next_cand_score = rag_results[idx + 1].get("score", 0.0) if idx + 1 < len(rag_results) else 0.0
+            score_margin = cand_score - next_cand_score
+            requires_judge = (cand_score < 0.82) or (score_margin < 0.08) or _ticket_is_k8s
+
+            if requires_judge:
+                _judge_approved, _judge_reason = verify_rag_match_intent_with_llm(
                     short_desc, desc, cand_number, cand_art.get("title", ""),
                     cand_art.get("steps", cand_art.get("commands", []))
                 )
-                if not _judge_approved_direct:
+                if not _judge_approved:
                     logger.warning(
-                        f"🛡️ LLM RAG Judge REJECTED direct K8s match [{cand_number}] "
-                        f"'{cand_art.get('title', '')}' (score {cand_score:.4f}). "
-                        f"Reason: {_judge_reason_direct}. Continuing to next candidate."
+                        f"🛡️ LLM RAG Judge REJECTED candidate [{cand_number}] "
+                        f"'{cand_art.get('title', '')}' (hybrid score {cand_score:.4f}, margin {score_margin:.4f}). "
+                        f"Reason: {_judge_reason}. Inspecting next candidate."
                     )
-                    next_best_info = f"[{cand_number}] rejected by LLM RAG Judge: {_judge_reason_direct}"
+                    next_best_info = f"[{cand_number}] rejected by LLM RAG Judge: {_judge_reason}"
                     continue
                 else:
                     logger.info(
-                        f"✅ LLM RAG Judge APPROVED direct K8s match [{cand_number}] "
-                        f"'{cand_art.get('title', '')}' (score {cand_score:.4f}). "
-                        f"Reason: {_judge_reason_direct}"
+                        f"✅ LLM RAG Judge APPROVED candidate [{cand_number}] "
+                        f"'{cand_art.get('title', '')}' (hybrid score {cand_score:.4f}, margin {score_margin:.4f}). "
+                        f"Reason: {_judge_reason}"
                     )
 
+            # Valid Match Found!
             is_new = False
             matched_kb = cand_art
             top_match = candidate
             similarity_score = cand_score
-            logger.info(f"🎯 RAG Match Selected: Score {similarity_score:.4f} >= {RAG_SIMILARITY_THRESHOLD} threshold -> {cand_number} '{matched_kb.get('title', '')}'")
+            logger.info(f"🎯 Hybrid RAG Match Selected: Score {similarity_score:.4f} >= {RAG_SIMILARITY_THRESHOLD} -> [{cand_number}] '{matched_kb.get('title', '')}'")
             break
     
     if is_new:
