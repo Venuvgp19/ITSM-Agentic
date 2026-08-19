@@ -23,5 +23,4 @@ daemon.lock
 *.tmp
 .~lock.*
 scratch/
-Resolver Agent/chroma_db/
 database_dump_backup.sql
