@@ -214,14 +214,14 @@ Output your analysis in strict JSON format with keys:
 
         if (isNemotron) {
           reqBody.chat_template_kwargs = { enable_thinking: true };
-          reqBody.reasoning_budget = 2048;
+          reqBody.reasoning_budget = 1024;
         }
 
         const response = await fetch(`${baseUrl}/chat/completions`, {
           method: 'POST',
           headers,
           body: JSON.stringify(reqBody),
-          signal: AbortSignal.timeout(60000),
+          signal: AbortSignal.timeout(120000),
         });
 
         if (response.status === 429 || response.status === 503) {
