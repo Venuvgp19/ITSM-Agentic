@@ -190,6 +190,28 @@ export class AgentGovernanceService implements OnModuleInit {
       where: { entityId: dto.incidentId, status: 'PENDING' }
     });
     if (existingPending) {
+      if (dto.proposedCommands && dto.proposedCommands.length > 0) {
+        const existingDetails = (existingPending.details as any) || {};
+        const updatedDetails = {
+          ...existingDetails,
+          model: dto.model || existingDetails.model || 'nvidia/nemotron-3.5-lightning-30b-a3b',
+          summary: dto.summary || existingDetails.summary,
+          proposedCommands: dto.proposedCommands,
+          aiReasoning: dto.aiReasoning || existingDetails.aiReasoning,
+          synthesizerOutput: dto.synthesizerOutput || existingDetails.synthesizerOutput,
+          kbTitle: dto.kbTitle || existingDetails.kbTitle
+        };
+        const updated = await this.prisma.agentApproval.update({
+          where: { id: existingPending.id },
+          data: {
+            details: updatedDetails as any,
+            summary: dto.summary || existingPending.summary,
+            confidenceScore: dto.confidenceScore ? (dto.confidenceScore <= 1.0 ? dto.confidenceScore * 100 : dto.confidenceScore) : existingPending.confidenceScore,
+            timestamp: new Date()
+          }
+        });
+        return this.mapApprovalToDTO(updated);
+      }
       return this.mapApprovalToDTO(existingPending);
     }
 
