@@ -64,17 +64,18 @@ def poll_and_dispatch_incidents(
 
         ci_info, ci_name = resolve_ci_credentials(inc)
         is_unpaused_ci_on_hold = False
-        if ticket_state == "ON_HOLD" and ci_info is not None:
+        if ticket_state == "ON_HOLD" and state.is_unspecified_ci(inc_id) and ci_info is not None:
             is_rejected = any(a.get("incidentId") == inc_id and a.get("status") == "REJECTED" for a in approvals_list)
             if not is_rejected:
                 is_unpaused_ci_on_hold = True
+                state.clear_unspecified_ci(inc_id)
                 if inc_id in escalated_incident_ids:
                     escalated_incident_ids.remove(inc_id)
                 state.unlock_session(inc_id)
                 logger.info(f"🔓 Un-locking Incident [{inc.get('number', inc_id)}] — Valid Configuration Item '{ci_name}' detected on ticket properties! Resuming remediation.")
 
         is_approved_on_hold = (ticket_state == "ON_HOLD" and inc_id in approved_inc_ids)
-        if (ticket_state == "IN_PROGRESS" or is_approved_on_hold or is_unpaused_ci_on_hold) and inc_id not in escalated_incident_ids and not state.is_resolved(inc_id):
+        if (ticket_state == "IN_PROGRESS" or is_approved_on_hold or is_unpaused_ci_on_hold) and inc_id not in escalated_incident_ids and not state.is_resolved(inc_id) and not state.is_locked(inc_id):
             in_progress_tickets.append(inc)
 
     if in_progress_tickets:

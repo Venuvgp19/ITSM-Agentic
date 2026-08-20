@@ -15,6 +15,7 @@ class SessionStateManager:
         self._submitted_approval_incidents = set()
         self._processed_new_incidents = set()
         self._processed_in_progress_incidents = set()
+        self._unspecified_ci_incidents = set()
         self._host_execution_locks = defaultdict(threading.Lock)
         self._token_usage = {
             "calls": [],
@@ -22,6 +23,18 @@ class SessionStateManager:
             "completion_tokens": 0,
             "total_tokens": 0,
         }
+
+    def is_unspecified_ci(self, inc_id: str) -> bool:
+        with self._lock:
+            return inc_id in self._unspecified_ci_incidents
+
+    def mark_unspecified_ci(self, inc_id: str):
+        with self._lock:
+            self._unspecified_ci_incidents.add(inc_id)
+
+    def clear_unspecified_ci(self, inc_id: str):
+        with self._lock:
+            self._unspecified_ci_incidents.discard(inc_id)
 
     # --- Incident Lifecycle & Execution Session Locking ---
     def is_locked(self, inc_id: str) -> bool:

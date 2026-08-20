@@ -64,9 +64,11 @@ def prepare_new_incident_sop(
         )
         post_timeline_update(inc_id, number, short_desc, "Unspecified CI", "ESCALATED", "🖥️ Target CI Validation", "FAILED", f"Target host/CI is unspecified. Escalated to {team_member}.")
         add_work_note(token, inc_id, clarify_note)
+        state.mark_unspecified_ci(inc_id)
         update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
         return
 
+    state.clear_unspecified_ci(inc_id)
     logger.info(f"⚡ Processing NEW Incident: [{number}] '{short_desc}' | Resolved CI: {ci_name}")
     state.mark_processed_new(inc_id)
 
@@ -213,10 +215,12 @@ def _solve_in_progress_incident_internal(
         )
         post_timeline_update(inc_id, number, short_desc, "Unspecified CI", "ESCALATED", "🖥️ Target CI Validation", "FAILED", f"Target host/CI is unspecified. Escalated to {team_member}.")
         add_work_note(token, inc_id, clarify_note)
+        state.mark_unspecified_ci(inc_id)
         update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
         state.lock_session(inc_id)
         return
 
+    state.clear_unspecified_ci(inc_id)
     logger.info(f"🚀 Remediation Agent Executing IN_PROGRESS Incident: [{number}] '{short_desc}' | Resolved CI: {ci_name}")
 
     ip = ci_info["ip"]
