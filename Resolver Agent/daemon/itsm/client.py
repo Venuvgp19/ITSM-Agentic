@@ -1,3 +1,4 @@
+import re
 import requests
 from ..config import (
     logger,
@@ -237,20 +238,62 @@ def save_new_kb_article_to_storage(new_article_data, vdb=None):
         return None
 
 def resolve_ci_credentials(incident):
-    ci_name = incident.get("configurationItem")
+    if not incident or not isinstance(incident, dict):
+        return None, None
+
+    # 1. Collect all possible CI candidate values from incident fields
+    raw_candidates = [
+        incident.get("configurationItem"),
+        incident.get("configurationItemName"),
+        incident.get("ci"),
+        incident.get("ci_name"),
+        incident.get("cmdb_ci"),
+        incident.get("targetCi"),
+        incident.get("target_ci"),
+        incident.get("hostname"),
+        incident.get("configurationItemId")
+    ]
+    
+    ci_candidates = []
+    for c in raw_candidates:
+        if c is not None and not isinstance(c, (dict, list)):
+            s = str(c).strip()
+            if s and s.lower() not in ["null", "none", "undefined", "unspecified ci", "unspecified", ""]:
+                ci_candidates.append(s)
+
+    # 2. Check direct and normalized matching against CI_CREDENTIALS inventory
+    for candidate in ci_candidates:
+        if candidate in CI_CREDENTIALS:
+            return CI_CREDENTIALS[candidate], candidate
+
+        cand_low = candidate.lower()
+        cand_clean = re.sub(r'[^a-z0-9]', '', cand_low)
+
+        for key, info in CI_CREDENTIALS.items():
+            k_low = key.lower()
+            k_clean = re.sub(r'[^a-z0-9]', '', k_low)
+
+            if cand_low == k_low or cand_clean == k_clean:
+                return info, key
+            if len(cand_clean) >= 4 and (cand_clean in k_clean or k_clean in cand_clean):
+                return info, key
+            if info.get("ip") and (info["ip"] == candidate or info["ip"] in candidate):
+                return info, key
+
+    # 3. Fallback: Parse description and shortDescription text
     short_desc = (incident.get("shortDescription") or "").lower()
     desc = (incident.get("description") or "").lower()
-
-    if ci_name and ci_name in CI_CREDENTIALS:
-        return CI_CREDENTIALS[ci_name], ci_name
+    full_text = f"{short_desc} {desc}"
+    clean_text = re.sub(r'[^a-z0-9]', '', full_text)
 
     for key, info in CI_CREDENTIALS.items():
-        if info["ip"] in short_desc or info["ip"] in desc:
+        if info.get("ip") and info["ip"] in full_text:
             return info, key
-        if key.lower() in short_desc or key.lower() in desc:
+        k_low = key.lower()
+        if k_low in full_text:
             return info, key
-        key_no_spaces = key.lower().replace(" ", "")
-        if key_no_spaces in short_desc or key_no_spaces in desc:
+        k_clean = re.sub(r'[^a-z0-9]', '', k_low)
+        if len(k_clean) >= 5 and k_clean in clean_text:
             return info, key
 
     return None, None

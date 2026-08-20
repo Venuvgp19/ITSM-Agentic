@@ -16,6 +16,7 @@ from ..itsm.client import (
     fetch_incident_queue,
     fetch_kb_articles,
     fetch_agent_approvals,
+    resolve_ci_credentials,
 )
 from .incident_lifecycle import solve_in_progress_incident
 
@@ -61,8 +62,19 @@ def poll_and_dispatch_incidents(
             state.unlock_session(inc_id)
             logger.info(f"🔓 Un-locking Incident [{inc.get('number', inc_id)}] — Human approval granted! Proceeding with execution.")
 
+        ci_info, ci_name = resolve_ci_credentials(inc)
+        is_unpaused_ci_on_hold = False
+        if ticket_state == "ON_HOLD" and ci_info is not None:
+            is_rejected = any(a.get("incidentId") == inc_id and a.get("status") == "REJECTED" for a in approvals_list)
+            if not is_rejected:
+                is_unpaused_ci_on_hold = True
+                if inc_id in escalated_incident_ids:
+                    escalated_incident_ids.remove(inc_id)
+                state.unlock_session(inc_id)
+                logger.info(f"🔓 Un-locking Incident [{inc.get('number', inc_id)}] — Valid Configuration Item '{ci_name}' detected on ticket properties! Resuming remediation.")
+
         is_approved_on_hold = (ticket_state == "ON_HOLD" and inc_id in approved_inc_ids)
-        if (ticket_state == "IN_PROGRESS" or is_approved_on_hold) and inc_id not in escalated_incident_ids and not state.is_resolved(inc_id):
+        if (ticket_state == "IN_PROGRESS" or is_approved_on_hold or is_unpaused_ci_on_hold) and inc_id not in escalated_incident_ids and not state.is_resolved(inc_id):
             in_progress_tickets.append(inc)
 
     if in_progress_tickets:
