@@ -502,7 +502,10 @@ Respond ONLY in JSON:
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
                 call_label=f"SOP Parameterization [{ticket_number}]",
-                session_state=state
+                session_state=state,
+                enable_thinking=False,
+                max_tokens=1500,
+                temperature=0.1
             )
             if plan_content:
                 plan = safe_json_parse(plan_content)

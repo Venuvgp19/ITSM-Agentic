@@ -88,9 +88,10 @@ def safe_json_parse(text):
             pass
     return {}
 
-def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_format=None, tools=None, return_message=False, session_state=None):
+def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_format=None, tools=None, return_message=False, session_state=None, enable_thinking=True, max_tokens=None, temperature=None):
     """
     Invokes LLM with automatic retry (3x) per model and fallback across high-performing NVIDIA NIM & GenAI models.
+    Supports enable_thinking=False for sub-second low-latency extraction and classification tasks (RAG Judge, Parameter Extractor).
     Captures and records token usage in the provided or default SessionStateManager.
     """
     state = session_state or default_session_state
@@ -118,7 +119,7 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                     api_key=m_key,
                     base_url=m_url,
                     http_client=custom_httpx_client,
-                    timeout=120.0
+                    timeout=60.0 if not enable_thinking else 120.0
                 )
                 kwargs = {"model": model, "messages": messages}
                 if response_format and not is_nvidia_nim:
@@ -126,14 +127,28 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                 if tools:
                     kwargs["tools"] = tools
                 
-                # Configure reasoning parameters for NVIDIA Nemotron 3.5 Lightning
+                # Configure reasoning parameters for NVIDIA Nemotron models
                 if "nemotron-3.5-lightning" in model.lower():
-                    kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 2048}
-                    kwargs["temperature"] = 0.6
-                    kwargs["top_p"] = 0.95
-                    kwargs["max_tokens"] = 8192
+                    if not enable_thinking:
+                        kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+                        kwargs["temperature"] = temperature if temperature is not None else 0.1
+                        kwargs["max_tokens"] = max_tokens or 512
+                    else:
+                        kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_budget": 2048}
+                        kwargs["temperature"] = temperature if temperature is not None else 0.6
+                        kwargs["top_p"] = 0.95
+                        kwargs["max_tokens"] = max_tokens or 8192
                 elif "nemotron-3-ultra" in model.lower():
                     kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+                    if max_tokens:
+                        kwargs["max_tokens"] = max_tokens
+                    if temperature is not None:
+                        kwargs["temperature"] = temperature
+                else:
+                    if max_tokens:
+                        kwargs["max_tokens"] = max_tokens
+                    if temperature is not None:
+                        kwargs["temperature"] = temperature
 
                 res = client.chat.completions.create(**kwargs)
 
