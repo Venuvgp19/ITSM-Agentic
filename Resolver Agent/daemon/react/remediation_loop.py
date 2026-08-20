@@ -46,7 +46,7 @@ def run_dynamic_react_loop(
                 "RULES FOR MAXIMUM EFFICIENCY & SAFETY:\n"
                 "1. NO DUPLICATE COMMANDS: Never run duplicate checks (e.g. repeating `ps aux`, `ss -tlnp`, `tail`, or `cat` if already performed in a previous turn).\n"
                 "2. COMPLETE APPLICATION STARTUP: If an application or service is down, you MUST execute the startup command AFTER clearing ports/processes.\n"
-                "3. BULK DELETION / OFFBOARDING RULE: If the incident requests deleting users, extract ALL usernames listed in the Incident Full Description payload and execute `userdel -r -f <username>` and `rm -f /etc/sudoers.d/*<username>*` for EVERY SINGLE USER listed!\n"
+                "3. BULK CREATION & DELETION RULE: If the incident requests creating or deleting multiple users, you MUST process EVERY SINGLE USER requested in the Incident payload (e.g. all 5 users, user01..user20). Combine user creation, password assignment, and sudo permissions into chained one-liners (e.g. `id -u $u &>/dev/null || (useradd -m -s /bin/bash $u && echo '$u:$pass' | chpasswd && echo '$u ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/99-$u && chmod 440 /etc/sudoers.d/99-$u)`) or bash loops (`for u in ...; do ...; done`) to complete the entire batch in 1-2 turns rather than executing separate individual sub-commands across many turns.\n"
                 "4. PERMISSION VS SERVICE RESTART RULE: If the incident requests granting user access/sudoers rules for a target command (e.g. 'permission to execute systemctl restart sshd'), DO NOT execute that target command (e.g. DO NOT run `systemctl restart sshd`) on the live host unless the approved SOP explicitly instructs to restart it!\n"
                 "5. OUTPUT FORMAT DIRECTIVE: Perform internal reasoning silently. Do NOT output internal `<thought>` or `<thinking>` tags or chain-of-thought blocks in your responses. Output ONLY direct tool calls and concise execution summaries.\n"
                 "6. ONE-PASS VERIFICATION: Once all operations are executed and verified, IMMEDIATELY STOP calling tools and output your final summary.\n"
@@ -61,7 +61,7 @@ def run_dynamic_react_loop(
     full_exec_log = ""
     is_success = True
     
-    max_turns = 10
+    max_turns = max(35, len(guide_commands) * 5)
     turn = 0
     
     session = session_factory(ip, user, password)
@@ -76,7 +76,10 @@ def run_dynamic_react_loop(
                     tools=tools, 
                     return_message=True, 
                     call_label=f"ReAct Loop Turn {turn}",
-                    session_state=state
+                    session_state=state,
+                    enable_thinking=False,
+                    max_tokens=1024,
+                    temperature=0.1
                 )
                 if not msg:
                     raise Exception("All fallback models failed to return a valid response.")

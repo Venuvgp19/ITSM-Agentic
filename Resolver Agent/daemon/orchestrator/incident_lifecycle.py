@@ -573,7 +573,10 @@ Respond ONLY in valid JSON format:
                 messages=[{"role": "user", "content": eval_prompt}],
                 response_format={"type": "json_object"},
                 call_label=f"SSH Output Evaluation [{number}]",
-                session_state=state
+                session_state=state,
+                enable_thinking=False,
+                max_tokens=600,
+                temperature=0.0
             )
             if eval_content:
                 evaluation = json.loads(eval_content) if isinstance(eval_content, str) else eval_content

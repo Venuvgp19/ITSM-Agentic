@@ -484,10 +484,10 @@ CRITICAL PYTHON VIRTUAL ENVIRONMENT PARAMETERIZATION RULE (KB0000019):
   - Replace /opt/{{venv_name}} and `pip install {{packages}}` across all resolution steps.
 
 CRITICAL MULTI-USER & BULK EXPANSION RULE (PROVISIONING & DELETION):
-- If the incident description requests MULTIPLE users, a RANGE of users, or BULK DELETION of a list of users (e.g. "Delete all the users mentioned below"):
-  - You MUST extract ALL target usernames from the description text (e.g. parse all username lines from `/etc/passwd` dumps or list of names: [venu, asha, rajesh, ananya, priya, vikram, nexacore, Siva, user01, praneeth, User01..20, Pamsudo1..5, jboss, pamsudo1..5, ignio]).
+- If the incident description requests MULTIPLE users, a RANGE of users (e.g. "pamsudo1 to pamsudo5", "user01..user20", "5 users"), or BULK DELETION of a list of users:
+  - You MUST extract ALL target usernames from the description text (e.g. [pamsudo1, pamsudo2, pamsudo3, pamsudo4, pamsudo5] or all names parsed from `/etc/passwd` dumps).
+  - For PROVISIONING tickets: Combine useradd, chpasswd, and sudoers drop-in creation into chained one-liners per user (e.g. `id -u $u &>/dev/null || (useradd -m -s /bin/bash $u && echo '$u:$pass' | chpasswd && echo '$u ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/99-$u && chmod 440 /etc/sudoers.d/99-$u)`) or output full steps for EVERY SINGLE USER in the extracted list.
   - For DELETION / OFFBOARDING tickets: REPLICATE the user deletion commands (`rm -f /etc/sudoers.d/$user /etc/sudoers.d/99-$user; pkill -9 -u $user 2>/dev/null || true; userdel -r -f $user 2>/dev/null || true`) for EVERY SINGLE USER in the extracted list!
-  - For PROVISIONING tickets: REPLICATE user creation and sudoers steps for EVERY SINGLE USER in the list. Do NOT process only 1 user when multiple are requested!
 
 For USER DELETION / OFFBOARDING SOP (KB0000038 / KB0000022 / KB0000023), extract:
 - {{username_list}}: Extract ALL usernames listed in the incident description and expand userdel commands for ALL of them.

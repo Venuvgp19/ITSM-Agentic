@@ -90,7 +90,11 @@ def run_read_only_diagnostic_react_loop(
                     messages=messages,
                     tools=tools,
                     return_message=True,
-                    call_label=f"Diagnostic ReAct Turn {turn}"
+                    call_label=f"Diagnostic ReAct Turn {turn}",
+                    session_state=state,
+                    enable_thinking=False,
+                    max_tokens=1024,
+                    temperature=0.1
                 )
                 
                 if not msg:
