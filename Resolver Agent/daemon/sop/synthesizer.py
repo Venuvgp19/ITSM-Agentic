@@ -27,7 +27,8 @@ def evaluate_and_get_sop(
     vdb=None,
     session_state=None,
     llm_invoker=None,
-    ssh_session_factory=None
+    ssh_session_factory=None,
+    department=None
 ):
     active_vdb = vdb if vdb is not None else default_vector_db
     state = session_state or default_session_state
@@ -35,12 +36,12 @@ def evaluate_and_get_sop(
 
     # 1. Distill incident into clean dense query and BM25 lexical tokens
     dense_query, lexical_tokens = distill_incident_query(short_desc, desc)
-    logger.info(f"🔎 Distilled Incident RAG Query: '{dense_query}' (Lexical tokens: {len(lexical_tokens)})")
+    logger.info(f"🔎 Distilled Incident RAG Query: '{dense_query}' (Lexical tokens: {len(lexical_tokens)}) | Target Dept: '{department or 'Global'}'")
 
-    # 2. Execute Hybrid Search (ChromaDB nv-embed-v1 + BM25Okapi RRF Fusion)
+    # 2. Execute Department-Partitioned Hybrid Search (ChromaDB nv-embed-v1 + BM25Okapi RRF Fusion)
     rag_results = []
     try:
-        rag_results = search_hybrid_kb(dense_query, lexical_tokens, kb_articles, active_vdb, limit=12)
+        rag_results = search_hybrid_kb(dense_query, lexical_tokens, kb_articles, active_vdb, limit=12, department=department)
     except Exception as e:
         logger.warning(f"Hybrid RAG search encountered error: {e}")
 
@@ -443,6 +444,7 @@ Respond ONLY with valid JSON:
         new_sop_data = {
             "title": kb_title,
             "summary": summary,
+            "category": department or "DevOps Team",
             "resolution_steps": formatted_steps,
             "safety_checks": safety_checks,
             "reasoning": reasoning,

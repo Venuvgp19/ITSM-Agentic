@@ -19,6 +19,48 @@ def cosine_similarity(v1, v2):
         return 0.0
     return dot / (norm1 * norm2)
 
+def infer_kb_department(kb):
+    cat = str(kb.get("category", "")).lower()
+    title = str(kb.get("title", "")).lower()
+    summary = str(kb.get("summary", "")).lower()
+    steps_list = kb.get("resolutionSteps", [])
+    steps_str = " ".join(steps_list if isinstance(steps_list, list) else [str(steps_list)]).lower()
+    full_text = f"{cat} {title} {summary} {steps_str}"
+
+    if any(k in full_text for k in ["db2", "database", "postgres", "postgresql", "mysql", "tablespace", "cloudbeaver", "beaver ui", "oracle"]):
+        return "DBA Team"
+    if any(k in full_text for k in ["az ", "azure", "kubectl", "kubernetes", "k8s", "podman", "docker", "helm", "argocd", "jenkins", "budget", "distutils", "snappy", "setuptools"]):
+        return "DevOps Ops"
+    if any(k in full_text for k in ["nexacore", "sap-sso", "sso recovery", "webapp", "web app"]):
+        return "App Support"
+    if any(k in full_text for k in ["vpn gateway", "bgp", "vlan", "switch", "router", "iptables", "dns"]):
+        return "Network Ops"
+    if any(k in full_text for k in ["certificate", "tls", "security audit", "vulnerability"]):
+        return "SecOps"
+    if any(k in full_text for k in ["useradd", "userdel", "usermod", "sudoers", "chpasswd", "sssd", "pam", "linux user", "unix", "drop_caches", "high cpu", "high memory"]):
+        return "Unix"
+    
+    return "Global"
+
+def normalize_department_filters(department: str = None) -> list[str]:
+    if not department:
+        return []
+    d = str(department).strip()
+    d_low = d.lower()
+    if any(k in d_low for k in ["devops", "cloud", "k8s", "azure", "kubernetes"]):
+        return ["DevOps Ops", "DevOps Team", "Global", "Common"]
+    if any(k in d_low for k in ["unix", "linux", "os"]):
+        return ["Unix", "Unix / Linux", "Global", "Common"]
+    if any(k in d_low for k in ["dba", "database", "db"]):
+        return ["DBA Team", "DBA", "Global", "Common"]
+    if any(k in d_low for k in ["app support", "app", "web"]):
+        return ["App Support", "Global", "Common"]
+    if any(k in d_low for k in ["network", "netops"]):
+        return ["Network Ops", "Global", "Common"]
+    if any(k in d_low for k in ["secops", "security"]):
+        return ["SecOps", "Global", "Common"]
+    return [d, "Global", "Common"]
+
 class ChromaVectorDB:
     def __init__(self, db_dir=None):
         if db_dir is None:
@@ -61,12 +103,17 @@ class ChromaVectorDB:
                 return set()
         return set()
 
-    def add_kb_embedding(self, kb_id, number, title, embedding, updated_at=None, document=None):
+    def add_kb_embedding(self, kb_id, number, title, embedding, updated_at=None, document=None, department=None):
         if self.collection:
             try:
                 final_id = str(kb_id or number or title)
                 final_num = str(number or kb_id or "")
-                meta = {"number": final_num, "title": str(title)}
+                dept_val = str(department or "Global")
+                meta = {
+                    "number": final_num, 
+                    "title": str(title),
+                    "department": dept_val
+                }
                 if updated_at:
                     meta["updatedAt"] = str(updated_at)
                 kwargs = {
@@ -94,14 +141,35 @@ class ChromaVectorDB:
             except Exception as e:
                 logger.warning(f"Failed to delete KB {number} from ChromaDB: {e}")
 
-    def search_kb(self, query_embedding, limit=3):
+    def search_kb(self, query_embedding, limit=3, department=None):
         if not self.collection:
             return []
         try:
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=limit
-            )
+            allowed_depts = normalize_department_filters(department) if department else []
+            where_filter = None
+            if allowed_depts:
+                if len(allowed_depts) == 1:
+                    where_filter = {"department": allowed_depts[0]}
+                else:
+                    where_filter = {"department": {"$in": allowed_depts}}
+
+            query_kwargs = {
+                "query_embeddings": [query_embedding],
+                "n_results": limit
+            }
+            if where_filter:
+                query_kwargs["where"] = where_filter
+
+            results = self.collection.query(**query_kwargs)
+            
+            # If filtered query returned 0 results, fallback to unconstrained query
+            if (not results or not results.get("ids") or len(results["ids"][0]) == 0) and where_filter:
+                logger.info(f"Department filter '{department}' yielded 0 hits. Performing fallback unpartitioned query...")
+                results = self.collection.query(
+                    query_embeddings=[query_embedding],
+                    n_results=limit
+                )
+
             hits = []
             if results and results["ids"] and len(results["ids"]) > 0:
                 ids = results["ids"][0]
@@ -113,6 +181,7 @@ class ChromaVectorDB:
                         "id": ids[i],
                         "number": metadatas[i].get("number", ids[i]),
                         "title": metadatas[i].get("title", ""),
+                        "department": metadatas[i].get("department", "Global"),
                         "score": similarity
                     })
             return hits
@@ -224,18 +293,20 @@ def sync_vector_db_with_kb(token, client, vdb):
                 root_cause=art.get("rootCause", "")
             )
             
+            dept = infer_kb_department(art)
             should_index = False
             if art_number not in indexed_numbers:
                 should_index = True
             elif art_number in meta_map:
                 stored_updated = meta_map[art_number].get("updatedAt")
-                if str(stored_updated) != str(art_updated):
-                    logger.info(f"Detected updates in {art_number} content/symptoms. Re-indexing...")
+                stored_dept = meta_map[art_number].get("department")
+                if str(stored_updated) != str(art_updated) or not stored_dept or stored_dept != dept:
+                    logger.info(f"Detected updates/department assignment in {art_number} (Dept: {dept}). Re-indexing...")
                     should_index = True
                     
             if should_index:
                 emb = get_embedding(content_to_embed, input_type="passage")
-                vdb.add_kb_embedding(art_id, art_number, title, emb, updated_at=art_updated, document=content_to_embed)
-                logger.info(f"Indexed/Updated KB article {art_number} in vector database (100% SOP RAG Coverage).")
+                vdb.add_kb_embedding(art_id, art_number, title, emb, updated_at=art_updated, document=content_to_embed, department=dept)
+                logger.info(f"Indexed/Updated KB article {art_number} [Dept: {dept}] in vector database (100% SOP RAG Coverage).")
     except Exception as e:
         logger.error(f"Failed to sync KB articles to Vector DB: {e}")

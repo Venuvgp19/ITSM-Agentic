@@ -73,9 +73,11 @@ def prepare_new_incident_sop(
     ip = ci_info["ip"]
     user = ci_info["user"]
 
+    dept = incident.get("department", "DevOps Ops")
     is_new_use_case, kb_num, kb_title, reasoning, sop_commands, new_sop_data = evaluate_and_get_sop(
         number, short_desc, desc, ci_name, ip, kb_articles, inc_id,
-        vdb=active_vdb, session_state=state, llm_invoker=invoker, ssh_session_factory=ssh_session_factory
+        vdb=active_vdb, session_state=state, llm_invoker=invoker, ssh_session_factory=ssh_session_factory,
+        department=dept
     )
 
     update_incident_status(token, inc_id, "IN_PROGRESS", session_state=state)
@@ -326,9 +328,11 @@ def _solve_in_progress_incident_internal(
         new_sop_data = None
         logger.info(f"🎯 Direct Resource Alert SOP Match: Using [{kb_num}] '{kb_title}' for ticket [{number}]")
     else:
+        dept = incident.get("department", "DevOps Ops")
         is_new_use_case, kb_num, kb_title, reasoning, sop_commands, new_sop_data = evaluate_and_get_sop(
             number, short_desc, desc, ci_name, ip, kb_articles, inc_id,
-            target_os=target_os, vdb=active_vdb, session_state=state, llm_invoker=invoker, ssh_session_factory=session_factory
+            target_os=target_os, vdb=active_vdb, session_state=state, llm_invoker=invoker, ssh_session_factory=session_factory,
+            department=dept
         )
 
         if is_new_use_case:

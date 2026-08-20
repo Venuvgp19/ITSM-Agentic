@@ -3,6 +3,7 @@ import requests
 from ..config import logger
 from ..llm import get_embedding
 from .bm25 import BM25Okapi, tokenize_text
+from .vector_db import infer_kb_department, normalize_department_filters
 
 def distill_incident_query(short_desc: str, desc: str) -> tuple[str, list[str]]:
     """
@@ -70,20 +71,29 @@ def distill_incident_query(short_desc: str, desc: str) -> tuple[str, list[str]]:
     lexical_tokens = tokenize_text(f"{short_desc} {' '.join(extracted_signals)}")
     return dense_query, lexical_tokens
 
-def search_hybrid_kb(dense_query_text: str, lexical_tokens: list[str], kb_articles: list[dict], vector_db, limit: int = 12) -> list[dict]:
+def search_hybrid_kb(dense_query_text: str, lexical_tokens: list[str], kb_articles: list[dict], vector_db, limit: int = 12, department: str = None) -> list[dict]:
     """
     Executes true Hybrid Search combining Dense Vector Retrieval (nv-embed-v1)
-    and BM25Okapi Lexical Matching via Reciprocal Rank Fusion (RRF).
+    and BM25Okapi Lexical Matching via Reciprocal Rank Fusion (RRF), scoped to the assigned operational department.
     """
     if not kb_articles:
         return []
 
-    # 1. Dense Semantic Search from ChromaDB
+    # Filter knowledge articles to target department + Global/Common shared runbooks
+    scoped_articles = kb_articles
+    if department:
+        allowed_depts = set(normalize_department_filters(department))
+        filtered = [art for art in kb_articles if infer_kb_department(art) in allowed_depts]
+        if filtered:
+            scoped_articles = filtered
+            logger.info(f"🎯 Domain-Partitioned RAG: Filtered knowledge base from {len(kb_articles)} -> {len(scoped_articles)} SOPs for team '{department}'.")
+
+    # 1. Dense Semantic Search from ChromaDB (with metadata department filter)
     dense_hits_map = {}  # number -> (score, rank)
     try:
         dense_emb = get_embedding(dense_query_text, input_type="query")
         if dense_emb and vector_db:
-            raw_dense = vector_db.search_kb(dense_emb, limit=max(limit * 2, 20))
+            raw_dense = vector_db.search_kb(dense_emb, limit=max(limit * 2, 20), department=department)
             for rank, hit in enumerate(raw_dense):
                 num = hit.get("number")
                 if num:
@@ -91,10 +101,10 @@ def search_hybrid_kb(dense_query_text: str, lexical_tokens: list[str], kb_articl
     except Exception as e:
         logger.warning(f"Dense vector retrieval error in hybrid search: {e}")
 
-    # 2. BM25 Lexical Search
+    # 2. BM25 Lexical Search scoped to department
     doc_tokens_list = []
     kb_num_list = []
-    for art in kb_articles:
+    for art in scoped_articles:
         num = art.get("number")
         title = art.get("title", "")
         summary = art.get("summary", "")
