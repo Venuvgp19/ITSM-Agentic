@@ -41,22 +41,46 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
 
     # --- Linux User Account check ---
     elif any(k in full_text for k in ["useradd", "linux user", "user account", "provision user", "create user", "userdel", "delete user", "offboard", "pamsudo", "sudoers", "permission"]):
-        raw_created = re.findall(r'useradd\s+(?:-[a-zA-Z0-9\-]+\s+|\"[^\"]*\"\s+|\'[^\']*\'\s+)*\"?([a-zA-Z0-9_\-]+)\"?', exec_log)
-        raw_sudoers = re.findall(r'/etc/sudoers\.d/(?:99-)?([a-zA-Z0-9_\-]+)', exec_log)
-        raw_deleted = re.findall(r'userdel\s+(?:-[a-zA-Z0-9\-]+\s+|\"[^\"]*\"\s+|\'[^\']*\'\s+)*\"?([a-zA-Z0-9_\-]+)\"?', exec_log)
+        ignore_terms = {
+            "bin", "bash", "sh", "etc", "sudoers", "root", "command", "systemctl", "restart", 
+            "nexacore", "pamsudox", "puser", "user", "username", "sudo_command", "99-", "90-",
+            "null", "dev", "done", "echo", "true", "false", "item", "var", "u", "i"
+        }
 
-        ignore_terms = {"bin", "bash", "sh", "etc", "sudoers", "root", "command", "systemctl", "restart", "nexacore", "pamsudox", "puser", "user", "username", "sudo_command", "99-"}
-        users_created = list(set([u.strip('"\'') for u in raw_created if u and not u.startswith("-") and not u.startswith("/") and not u.endswith("X") and not u.isupper() and u.lower() not in ignore_terms]))
-        users_from_sudoers = list(set([u.strip('"\'') for u in raw_sudoers if u and not u.startswith("-") and not u.startswith("/") and not u.endswith("X") and not u.isupper() and u.lower() not in ignore_terms]))
-        users_deleted = list(set([u.strip('"\'') for u in raw_deleted if u and not u.startswith("-") and not u.startswith("/") and not u.endswith("X") and not u.isupper() and u.lower() not in ignore_terms]))
+        candidates = set()
+
+        # 1. From bash for loops: for u in user1 user2 ...;
+        loop_matches = re.findall(r'for\s+\w+\s+in\s+([^;]+);', exec_log)
+        for l_body in loop_matches:
+            for token in l_body.split():
+                clean_t = token.strip('"\';$(){}[]')
+                if clean_t and not clean_t.isdigit() and len(clean_t) >= 2 and clean_t.lower() not in ignore_terms:
+                    candidates.add(clean_t)
+
+        # 2. From /etc/passwd style lines in desc
+        passwd_users = re.findall(r'^([a-zA-Z0-9_\-]+):x?:\d+:\d+:', desc, re.MULTILINE)
+        for pu in passwd_users:
+            if pu and not pu.isdigit() and len(pu) >= 2 and pu.lower() not in ignore_terms:
+                candidates.add(pu)
+
+        # 3. From explicit useradd/userdel commands
+        raw_created = re.findall(r'useradd\s+(?:-[a-zA-Z0-9\-]+\s+|\"[^\"]*\"\s+|\'[^\']*\'\s+)*\"?([a-zA-Z0-9_\-]+)\"?', exec_log)
+        raw_deleted = re.findall(r'userdel\s+(?:-[a-zA-Z0-9\-]+\s+|\"[^\"]*\"\s+|\'[^\']*\'\s+)*\"?([a-zA-Z0-9_\-]+)\"?', exec_log)
+        raw_sudoers = re.findall(r'/etc/sudoers\.d/(?:99-|90-)?([a-zA-Z0-9_\-]+)', exec_log)
+
+        for raw in raw_created + raw_deleted + raw_sudoers:
+            clean_r = raw.strip('"\';$(){}[]')
+            if clean_r and not clean_r.isdigit() and len(clean_r) >= 2 and clean_r.lower() not in ignore_terms:
+                candidates.add(clean_r)
 
         is_deletion = any(k in full_text for k in ["delete", "remove", "offboard", "userdel", "deprovision"])
-        users_to_check = users_deleted if is_deletion else (users_created or users_from_sudoers)
+        users_to_check = list(candidates)
 
         if users_to_check:
-            for u in users_to_check[:10]:
+            for u in users_to_check[:15]:
                 ok, out = session.exec_command(f"id {u} 2>&1")
-                exists = "uid=" in out
+                # User exists if output contains 'uid=' and does not contain 'no such user'
+                exists = "uid=" in out and "no such user" not in out.lower()
                 if is_deletion:
                     if exists:
                         is_fixed = False
