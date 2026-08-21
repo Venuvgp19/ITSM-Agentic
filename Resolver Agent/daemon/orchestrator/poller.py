@@ -57,15 +57,16 @@ def poll_and_dispatch_incidents(
                 escalated_incident_ids.remove(inc_id)
             state.reset_incident_locks(inc_id)
 
-        if inc_id in approved_inc_ids:
-            if inc_id in escalated_incident_ids:
-                escalated_incident_ids.remove(inc_id)
-            state.unlock_session(inc_id)
-            logger.info(f"🔓 Un-locking Incident [{inc.get('number', inc_id)}] — Human approval granted! Proceeding with execution.")
+        if inc_id in approved_inc_ids and ticket_state in ["NEW", "IN_PROGRESS", "ON_HOLD"] and not state.is_resolved(inc_id):
+            if inc_id in escalated_incident_ids or state.is_locked(inc_id):
+                if inc_id in escalated_incident_ids:
+                    escalated_incident_ids.remove(inc_id)
+                state.unlock_session(inc_id)
+                logger.info(f"🔓 Un-locking Incident [{inc.get('number', inc_id)}] — Human approval granted! Proceeding with execution.")
 
         ci_info, ci_name = resolve_ci_credentials(inc)
         is_unpaused_ci_on_hold = False
-        if ticket_state == "ON_HOLD" and state.is_unspecified_ci(inc_id) and ci_info is not None:
+        if ticket_state == "ON_HOLD" and state.is_unspecified_ci(inc_id) and ci_info is not None and not state.is_resolved(inc_id):
             is_rejected = any(a.get("incidentId") == inc_id and a.get("status") == "REJECTED" for a in approvals_list)
             if not is_rejected:
                 is_unpaused_ci_on_hold = True
