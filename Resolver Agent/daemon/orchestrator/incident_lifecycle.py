@@ -27,6 +27,7 @@ from ..ssh.session import PersistentSSHSession, detect_target_os
 from ..sop.synthesizer import evaluate_and_get_sop
 from ..react.remediation_loop import run_dynamic_react_loop
 from ..react.post_verification import verify_post_remediation_status
+from ..safety.validator import check_catastrophic_destructive_command
 
 def prepare_new_incident_sop(
     token, incident, kb_articles,
@@ -482,7 +483,29 @@ def _solve_in_progress_incident_internal(
         state.lock_session(inc_id)
         return
 
-    # 4. Execute SSH Commands dynamically via LLM ReAct Tool Calling
+    # 4. Security Policy Gate: Pre-Execution Scan for Catastrophic / Destructive Commands
+    for sc in sop_commands:
+        is_cat, cat_reason = check_catastrophic_destructive_command(sc)
+        if is_cat:
+            logger.critical(f"🚨 TAMPERED / DANGEROUS SOP BLOCKED: Command '{sc}' matches catastrophic blacklist ({cat_reason}). Aborting remediation!")
+            sec_alert_note = (
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🚨 CRITICAL SECURITY ALERT — TAMPERED / DESTRUCTIVE SOP BLOCKED\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🎫 Ticket: [{number}] {short_desc}\n"
+                f"🖥️ Target Host: {ci_name} (IP: {ip})\n"
+                f"⛔ Blocked Dangerous Command: `{sc}`\n"
+                f"🛡️ Policy Violation: {cat_reason}\n"
+                f"Remediation was HALTED immediately. The live host was NOT touched.\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+            add_work_note(token, inc_id, sec_alert_note, author="🛡️ ITSM Security Guard")
+            post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "🛡️ Catastrophic Security Block", "FAILED", f"Blocked command: {sc} ({cat_reason})")
+            update_incident_status(token, inc_id, "ON_HOLD", assigned_to="SecOps Team", session_state=state)
+            state.lock_session(inc_id)
+            return
+
+    # 5. Execute SSH Commands dynamically via LLM ReAct Tool Calling
     state.mark_processed_in_progress(inc_id)
 
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"LLM is dynamically orchestrating execution...")

@@ -61,14 +61,63 @@ def extract_invoked_binaries(cmd_str: str) -> set[str]:
                 break
     return invoked_bins
 
+CATASTROPHIC_DESTRUCTIVE_PATTERNS = [
+    # System Power State / Shutdown / Reboot / Halting
+    (r"\binit\s+[06]\b", "System Halt / Reboot init transition"),
+    (r"\btelinit\s+[06]\b", "System Halt / Reboot telinit transition"),
+    (r"\b(shutdown|poweroff|reboot|halt)\b", "Host Power State Termination / Reboot command"),
+    (r"\bsystemctl\s+(poweroff|reboot|halt|rescue|emergency)\b", "Systemd System-Level Power/Rescue state change"),
+    
+    # Destructive Filesystem Deletion / Wiping
+    (r"\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+(?:/|/\*|/bin|/sbin|/boot|/etc|/lib|/lib64|/usr|/var|/root|/home)(?:\s|$)", "Root/System Directory Recursive Erasure (rm -rf)"),
+    (r"\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+--no-preserve-root\b", "Unconstrained Root Filesystem Erasure"),
+    (r"\bmkfs(?:\.[a-zA-Z0-9_-]+)?\b", "Filesystem Formatting (mkfs)"),
+    (r"\b(wipefs|fdisk|parted|gdisk|sfdisk)\b", "Disk Partition Table Manipulation / Wiping"),
+    (r"\bdd\s+.*(?:of=/dev/(?:sd[a-zA-Z0-9]+|nvme[a-zA-Z0-9]+|vd[a-zA-Z0-9]+|hd[a-zA-Z0-9]+|mmcblk[a-zA-Z0-9]+|null|zero|mem|kmem|port))\b", "Raw Block Device Bit-Level Overwrite (dd)"),
+    
+    # Fork bombs & System Freezes
+    (r":\(\)\s*\{\s*:\|:&\s*\};:", "Bash Fork Bomb DoS exploit"),
+    
+    # Raw Block Device redirection
+    (r">\s*/dev/(?:sda|sdb|sdc|sdd|nvme[0-9]+|vda|vdb|kmem|mem|port)\b", "Raw Disk/Memory Device Stream Overwrite"),
+    
+    # Mass File Destruction
+    (r"\bshred\s+.*(?:/|/\*|/etc|/var|/boot)\b", "System-level Secure File Shredding"),
+    (r"\btruncate\s+.*-s\s+0\s+/(?:etc|bin|sbin|usr|boot)\b", "Critical System Binary/Config Truncation"),
+]
+
+def check_catastrophic_destructive_command(cmd_str: str) -> tuple[bool, str]:
+    """
+    Evaluates a shell command against hard-coded catastrophic safety patterns.
+    Returns (is_catastrophic: bool, reason: str).
+    Under NO circumstances will commands matching these rules be executed,
+    even if present in an approved SOP or synthesized by an LLM.
+    """
+    if not cmd_str:
+        return False, ""
+    cleaned = re.sub(r'#.*$', '', cmd_str, flags=re.MULTILINE).strip()
+    for pattern, reason in CATASTROPHIC_DESTRUCTIVE_PATTERNS:
+        if re.search(pattern, cleaned, re.IGNORECASE):
+            return True, reason
+    return False, ""
+
 def is_allowed_command_adaptation(c_str: str, approved: list[str]) -> tuple[bool, set[str]]:
     """
-    Validates that every command/binary invoked inside `c_str` is either present in the approved
-    SOP commands or belongs to the standard safe diagnostic/built-in toolset.
+    Validates that every command/binary invoked inside `c_str` is safe and either present
+    in the approved SOP commands or belongs to the standard safe diagnostic/built-in toolset.
     Returns (is_allowed: bool, unauthorized_binaries: set).
     """
-    if not approved or not c_str:
+    if not c_str:
         return True, set()
+    
+    # Hard global catastrophic block
+    is_catastrophic, cat_reason = check_catastrophic_destructive_command(c_str)
+    if is_catastrophic:
+        return False, {f"FORBIDDEN_CATASTROPHIC_COMMAND ({cat_reason})"}
+
+    if not approved:
+        return True, set()
+
     approved_bins = set()
     for ac in approved:
         ac_clean = ac.strip().strip("'\"").strip(";")

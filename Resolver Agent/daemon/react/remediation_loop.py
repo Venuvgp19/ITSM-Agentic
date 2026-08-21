@@ -93,13 +93,13 @@ def run_dynamic_react_loop(
                             logger.info(f"🛠️ LLM decided to execute tool: {cmd}")
                             
                             is_allowed, unauth_bins = is_allowed_command_adaptation(cmd, guide_commands)
-                            if guide_commands and not is_allowed:
-                                logger.warning(f"🛡️ SOP SAFETY BLOCK: Blocked command '{cmd}' as unauthorized binary/tool {unauth_bins} is not present in approved SOP commands {guide_commands}.")
+                            if not is_allowed:
+                                logger.critical(f"🛡️ SOP / ENTERPRISE SAFETY BLOCK: Blocked command '{cmd}' as forbidden/unauthorized: {unauth_bins}")
                                 error_msg = (
-                                    f"SECURITY ERROR: Command '{cmd}' uses unauthorized binaries {unauth_bins} not present in approved SOP Guide Commands. "
-                                    f"You are restricted to adapting ONLY the approved SOP commands: {guide_commands}."
+                                    f"SECURITY ERROR: Command '{cmd}' is prohibited by enterprise safety guard ({unauth_bins}). "
+                                    f"Destructive/unauthorized operations are strictly forbidden."
                                 )
-                                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"SOP Blocked: {cmd}")
+                                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🛡️ Security Block", "FAILED", f"Security Block: {cmd}")
                                 messages.append({
                                     "role": "tool",
                                     "tool_call_id": tc.id,

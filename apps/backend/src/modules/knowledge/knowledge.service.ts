@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IncidentService } from '../incidents/incident.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -204,6 +204,10 @@ export class KnowledgeService {
       throw new NotFoundException(`Knowledge Article ${id} not found.`);
     }
 
+    if (Array.isArray(dto.resolutionSteps)) {
+      this.validateResolutionStepsSafety(dto.resolutionSteps);
+    }
+
     const updated = await this.prisma.knowledgeArticle.update({
       where: { id: existing.id },
       data: {
@@ -219,6 +223,30 @@ export class KnowledgeService {
     });
 
     return this.mapKBToDTO(updated);
+  }
+
+  private validateResolutionStepsSafety(steps: string[]) {
+    const CATASTROPHIC_PATTERNS = [
+      { regex: /\binit\s+[06]\b/i, reason: "System Halt / Reboot init transition" },
+      { regex: /\btelinit\s+[06]\b/i, reason: "System Halt / Reboot telinit transition" },
+      { regex: /\b(shutdown|poweroff|reboot|halt)\b/i, reason: "Host Power State Termination / Reboot command" },
+      { regex: /\bsystemctl\s+(poweroff|reboot|halt|rescue|emergency)\b/i, reason: "Systemd System-Level Power/Rescue state change" },
+      { regex: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+(\/|\/\*|\/etc|\/boot|\/bin|\/usr|\/var|\/home|\/root)(\s|$)/i, reason: "Root/System Directory Recursive Erasure" },
+      { regex: /\bmkfs(\.\w+)?\b/i, reason: "Filesystem Formatting (mkfs)" },
+      { regex: /\b(wipefs|fdisk|parted|gdisk)\b/i, reason: "Disk Partition Table Wiping" },
+      { regex: /\bdd\s+.*(of=\/dev\/[a-z]+|of=\/dev\/nvme[0-9]+)/i, reason: "Raw Block Device Bit-Level Overwrite (dd)" },
+      { regex: /:\(\)\s*\{\s*:\|:&\s*\};:/i, reason: "Bash Fork Bomb DoS exploit" },
+      { regex: />\s*\/dev\/(sda|sdb|sdc|sdd|nvme[0-9]+|vda|vdb|kmem|mem)/i, reason: "Raw Disk Device Stream Overwrite" },
+    ];
+
+    for (const step of steps) {
+      const s = String(step || '').trim();
+      for (const pat of CATASTROPHIC_PATTERNS) {
+        if (pat.regex.test(s)) {
+          throw new BadRequestException(`Security Policy Violation: Resolution step '${s}' is forbidden (${pat.reason}).`);
+        }
+      }
+    }
   }
 
   private getDynamicConfig() {
@@ -686,6 +714,10 @@ If no existing Master SOP is a semantic match, reply with "NONE" and nothing els
 
   async createArticle(dto: any) {
     const tenantId = dto.tenantId || 'tenant_acme_01';
+
+    if (Array.isArray(dto.resolutionSteps)) {
+      this.validateResolutionStepsSafety(dto.resolutionSteps);
+    }
 
     // Strict Deduplication Guard: Prevent duplicate creation if an article with identical title already exists
     if (dto.title) {
