@@ -260,6 +260,8 @@ model Incident {
   assignedToName     String?
   assignmentGroupId  String?
   configurationItemId String?
+  openedAt           DateTime?     @default(now())
+  slaDueAt           DateTime?
   resolvedAt         DateTime?
   closedAt           DateTime?
   resolutionNotes    String?

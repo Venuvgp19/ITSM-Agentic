@@ -22,7 +22,7 @@ export class IncidentService {
     return {
       entity: 'Incident',
       table: 'incidents',
-      totalFields: 16,
+      totalFields: 20,
       fields: [
         { name: 'id', label: 'Sys ID', type: 'UUID', required: true, readOnly: true },
         { name: 'number', label: 'Incident Number', type: 'String', required: true, readOnly: true },
@@ -38,7 +38,12 @@ export class IncidentService {
         { name: 'configurationItem', label: 'Configuration Item (CI)', type: 'Reference (CI)', required: false, readOnly: false },
         { name: 'resolutionCode', label: 'Resolution Code (Close Code)', type: 'Enum', required: false, readOnly: false, options: resolutionCodes },
         { name: 'resolutionNotes', label: 'Resolution Notes', type: 'Text', required: false, readOnly: false },
+        { name: 'openedAt', label: 'Opened At', type: 'DateTime', required: false, readOnly: false },
+        { name: 'slaDueAt', label: 'SLA Target Due Date', type: 'DateTime', required: false, readOnly: false },
+        { name: 'resolvedAt', label: 'Resolved Timestamp', type: 'DateTime', required: false, readOnly: false },
+        { name: 'closedAt', label: 'Closed Timestamp', type: 'DateTime', required: false, readOnly: false },
         { name: 'createdAt', label: 'Created Timestamp', type: 'DateTime', required: true, readOnly: true },
+        { name: 'updatedAt', label: 'Updated Timestamp', type: 'DateTime', required: true, readOnly: true },
         { name: 'activities', label: 'Activity Log Stream', type: 'Array<Activity>', required: false, readOnly: false },
       ],
     };
@@ -51,6 +56,21 @@ export class IncidentService {
     return Priority.LOW;
   }
 
+  calculateSlaDueDate(priority: string, baseDate: Date = new Date()): Date {
+    const d = new Date(baseDate);
+    const p = (priority || '').toUpperCase();
+    if (p.includes('P1') || p === 'CRITICAL') {
+      d.setHours(d.getHours() + 4);
+    } else if (p.includes('P2') || p === 'HIGH') {
+      d.setHours(d.getHours() + 8);
+    } else if (p.includes('P3') || p === 'MODERATE' || p === 'MEDIUM') {
+      d.setHours(d.getHours() + 24);
+    } else {
+      d.setHours(d.getHours() + 48);
+    }
+    return d;
+  }
+
   private mapIncidentToDTO(record: any) {
     if (!record) return null;
     return {
@@ -59,6 +79,10 @@ export class IncidentService {
       assignedTo: record.assignedToName,
       caller: record.callerName,
       configurationItem: record.configurationItemName,
+      openedAt: record.openedAt || record.createdAt,
+      slaDueAt: record.slaDueAt,
+      resolvedAt: record.resolvedAt,
+      closedAt: record.closedAt,
     };
   }
 
@@ -80,6 +104,9 @@ export class IncidentService {
     }
     const nextNumber = `INC${String(nextNum).padStart(7, '0')}`;
     const priorityVal = dto.priority || (this.calculatePriority(dto.impact as Impact || Impact.DEPARTMENT, dto.urgency as Urgency || Urgency.HIGH));
+    const now = new Date();
+    const openedDate = (dto as any).openedAt ? new Date((dto as any).openedAt) : now;
+    const slaDue = (dto as any).slaDueAt ? new Date((dto as any).slaDueAt) : this.calculateSlaDueDate(priorityVal, openedDate);
 
     const record = await this.prisma.incident.create({
       data: {
@@ -97,6 +124,10 @@ export class IncidentService {
         resolutionCode: dto.resolutionCode || 'Pending Triage',
         resolutionNotes: dto.resolutionNotes || 'Unassigned ticket pending triage.',
         configurationItemName: dto.configurationItem || 'Unspecified CI',
+        openedAt: openedDate,
+        slaDueAt: slaDue,
+        resolvedAt: (dto as any).resolvedAt ? new Date((dto as any).resolvedAt) : (dto.state === 'RESOLVED' ? now : null),
+        closedAt: (dto as any).closedAt ? new Date((dto as any).closedAt) : (dto.state === 'CLOSED' ? now : null),
         activitiesJson: [
           { id: `act_${nextNumber}_1`, author: dto.caller || 'System Admin', isWorkNote: true, comment: `Logged new incident ticket ${nextNumber}.`, timestamp: new Date().toLocaleTimeString() }
         ]
@@ -162,6 +193,10 @@ export class IncidentService {
       activities = (dto as any).activities;
     }
 
+    const now = new Date();
+    const isResolving = dto.state === 'RESOLVED' && existing.state !== 'RESOLVED';
+    const isClosing = dto.state === 'CLOSED' && existing.state !== 'CLOSED';
+
     const updated = await this.prisma.incident.update({
       where: { id: existing.id },
       data: {
@@ -177,6 +212,10 @@ export class IncidentService {
         priority: dto.priority !== undefined ? dto.priority : undefined,
         configurationItemName: dto.configurationItem || dto.ci !== undefined ? (dto.configurationItem || dto.ci) : undefined,
         callerName: dto.caller !== undefined ? dto.caller : undefined,
+        openedAt: (dto as any).openedAt ? new Date((dto as any).openedAt) : undefined,
+        slaDueAt: (dto as any).slaDueAt ? new Date((dto as any).slaDueAt) : undefined,
+        resolvedAt: (dto as any).resolvedAt ? new Date((dto as any).resolvedAt) : (isResolving ? (existing.resolvedAt || now) : undefined),
+        closedAt: (dto as any).closedAt ? new Date((dto as any).closedAt) : (isClosing ? (existing.closedAt || now) : undefined),
         activitiesJson: activities,
       },
     });
@@ -193,7 +232,8 @@ export class IncidentService {
     if (!existing) throw new NotFoundException(`Incident ${cleanId} not found`);
 
     let activities = (existing.activitiesJson as any[]) || [];
-    const timeStr = new Date().toLocaleTimeString();
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString();
 
     if (state === 'RESOLVED' && existing.state !== 'RESOLVED') {
       activities.push({
@@ -212,6 +252,8 @@ export class IncidentService {
         resolutionCode: resolutionCode || (state === 'RESOLVED' ? 'Server - Kernel & OS Patch' : existing.resolutionCode),
         resolutionNotes: resolutionNotes || existing.resolutionNotes,
         assignedToName: assignedTo || existing.assignedToName,
+        resolvedAt: state === 'RESOLVED' ? (existing.resolvedAt || now) : existing.resolvedAt,
+        closedAt: state === 'CLOSED' ? (existing.closedAt || now) : existing.closedAt,
         activitiesJson: activities,
       },
     });
