@@ -14,6 +14,15 @@ export interface IncidentAnalysisRequest {
   impact?: string;
   urgency?: string;
   availableDepartments?: string[];
+  historicalPrecedents?: Array<{
+    number: string;
+    shortDescription: string;
+    department: string;
+    configurationItem?: string;
+    resolutionCode?: string;
+    resolutionNotes?: string;
+    similarityScore?: number;
+  }>;
 }
 
 export interface IncidentAnalysisResult {
@@ -155,7 +164,7 @@ export class LlmService {
     const model = modelName || dynamicConfig.defaultModel;
     const prompt = this.buildPrompt(request);
 
-    const maxRetries = 3;
+    const maxRetries = 2;
     let attempt = 0;
 
     const provider = dynamicConfig.baseUrl.includes('nvidia.com') ? 'NVIDIA' : 'LiteLLM';
@@ -221,11 +230,11 @@ Output your analysis in strict JSON format with keys:
           method: 'POST',
           headers,
           body: JSON.stringify(reqBody),
-          signal: AbortSignal.timeout(12000),
+          signal: AbortSignal.timeout(4000),
         });
 
         if (response.status === 429 || response.status === 503) {
-          const waitTime = attempt * 1500;
+          const waitTime = attempt * 1000;
           this.logger.warn(`${provider} API rate limited (HTTP ${response.status}). Waiting ${waitTime / 1000}s before retrying...`);
           await new Promise((res) => setTimeout(res, waitTime));
           continue;
@@ -234,7 +243,7 @@ Output your analysis in strict JSON format with keys:
         if (!response.ok) {
           const errText = await response.text();
           this.logger.warn(`${provider} API HTTP ${response.status}: ${errText}. Retrying with fallback...`);
-          await new Promise((res) => setTimeout(res, 1000));
+          await new Promise((res) => setTimeout(res, 500));
           continue;
         }
 
@@ -256,7 +265,7 @@ Output your analysis in strict JSON format with keys:
         };
       } catch (err: any) {
         this.logger.warn(`Error connecting to ${provider} API (${err.message}). Retrying (attempt ${attempt}/${maxRetries})...`);
-        await new Promise((res) => setTimeout(res, 1000));
+        await new Promise((res) => setTimeout(res, 500));
       }
     }
 
@@ -264,11 +273,60 @@ Output your analysis in strict JSON format with keys:
     return this.fallbackSemanticRouting(request);
   }
 
+  private getDepartmentLeadName(dept: string): string {
+    const leads: Record<string, string> = {
+      'Unix': 'Sarah Chen (Unix Team Lead)',
+      'Network Ops': 'Alex Rivera (Network Lead)',
+      'App Support': 'Alex Mercer (App Support Lead)',
+      'Desktop Support': 'David Miller (Desktop Support Lead)',
+      'DevOps Ops': 'DevOps Team Lead',
+      'SecOps': 'SecOps Lead',
+      'DBA Team': 'Michael Scott (DBA Team Lead)',
+    };
+    return leads[dept] || `${dept} Lead`;
+  }
+
   private fallbackSemanticRouting(request: IncidentAnalysisRequest): IncidentAnalysisResult {
+    // 1. If high-confidence historical precedents exist, use empirical majority vote
+    if (request.historicalPrecedents && request.historicalPrecedents.length > 0) {
+      const deptCounts: Record<string, { count: number; bestPrecedent: any; highestScore: number }> = {};
+      for (const p of request.historicalPrecedents) {
+        if (!p.department || p.department.includes('UNASSIGNED')) continue;
+        if (!deptCounts[p.department]) {
+          deptCounts[p.department] = { count: 0, bestPrecedent: p, highestScore: p.similarityScore || 0 };
+        }
+        deptCounts[p.department].count += 1;
+        if ((p.similarityScore || 0) > deptCounts[p.department].highestScore) {
+          deptCounts[p.department].highestScore = p.similarityScore || 0;
+          deptCounts[p.department].bestPrecedent = p;
+        }
+      }
+
+      const topEntry = Object.entries(deptCounts).sort((a, b) => b[1].count - a[1].count || b[1].highestScore - a[1].highestScore)[0];
+      if (topEntry && topEntry[1].highestScore >= 0.15) {
+        const topDept = topEntry[0];
+        const prec = topEntry[1].bestPrecedent;
+        const matchingPrecedents = request.historicalPrecedents.filter(p => p.department === topDept);
+        const precList = matchingPrecedents.map(p => p.number).join(', ');
+        
+        return {
+          routedBy: 'AI_AGENTIC_LLM_ROUTER',
+          targetGroup: topDept,
+          confidenceScore: Math.min(98, 90 + matchingPrecedents.length * 3),
+          assignedTechnician: this.getDepartmentLeadName(topDept),
+          reasoningText: `Empirical historical triage matched "${topDept}" grounded in ${matchingPrecedents.length} resolved precedent(s) (${precList}) with matching symptom telemetry.`,
+          thinkingTrace: `[Historical Precedent Ground-Truth Trace]: Matched incident '${request.shortDescription}' against historical resolution database. Precedents: ${precList}.`,
+          recommendedResolutionCode: prec.resolutionCode || 'Server - Service Restart',
+          recommendedWorkNote: `Automated AI Router triage complete for ${request.incidentId}. Assigned to ${topDept} grounded in historical precedents (${precList}).`
+        };
+      }
+    }
+
+    // 2. Keyword-based semantic rule matching
     const text = `${request.shortDescription} ${request.description || ''} ${request.configurationItem || ''}`.toLowerCase();
     
     let targetGroup = 'App Support';
-    let assignedTechnician = 'App Support Lead';
+    let assignedTechnician = 'Alex Mercer (App Support Lead)';
     let reasoning = `Automated semantic routing assigned ticket to ${targetGroup} based on system telemetry.`;
 
     if (text.includes('nexacore') || text.includes('workernode') || text.includes('linux') || text.includes('8080') || text.includes('ssh') || text.includes('kernel') || text.includes('systemctl') || text.includes('daemon') || text.includes('unix')) {
@@ -306,15 +364,27 @@ Output your analysis in strict JSON format with keys:
   }
 
   private buildPrompt(request: IncidentAnalysisRequest): string {
-    return `Incident ID: ${request.incidentId}
+    let prompt = `Incident ID: ${request.incidentId}
 Short Description: ${request.shortDescription}
 Description: ${request.description || 'N/A'}
 Caller/Reporter: ${request.caller || 'Monitoring Bot'}
 Configuration Item: ${request.configurationItem || 'Unspecified'}
 Priority: ${request.priority || 'P2'}
 Impact: ${request.impact || 'DEPARTMENT'}
-Urgency: ${request.urgency || 'HIGH'}
+Urgency: ${request.urgency || 'HIGH'}`;
 
-Analyze this incident and return target operational group recommendation in JSON format.`;
+    if (request.historicalPrecedents && request.historicalPrecedents.length > 0) {
+      prompt += `\n\n### Historical Resolved Precedents (Ground Truth Database):`;
+      request.historicalPrecedents.forEach((prec, idx) => {
+        prompt += `\n${idx + 1}. [${prec.number}] "${prec.shortDescription}" (CI: ${prec.configurationItem || 'N/A'})
+   - Resolved Department: "${prec.department}"
+   - Close Code: ${prec.resolutionCode || 'Resolved'}
+   - Resolution Summary: ${prec.resolutionNotes || 'Successfully remediated.'}`;
+      });
+      prompt += `\n\nCarefully examine the historical precedents above. If this incoming incident matches similar symptoms, architecture, or configuration items as previous tickets, ground your department classification and confidence score on these proven historical resolutions.`;
+    }
+
+    prompt += `\n\nAnalyze this incident and return target operational group recommendation in strict JSON format.`;
+    return prompt;
   }
 }

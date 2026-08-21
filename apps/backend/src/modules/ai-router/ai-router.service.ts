@@ -119,6 +119,14 @@ export class AiRouterService implements OnModuleInit {
       throw new NotFoundException(`Incident ${incidentId} not found.`);
     }
 
+    // Retrieve historical resolved incidents for grounded few-shot routing
+    const precedents = await this.incidentService.findSimilarResolvedIncidents(
+      tenantId,
+      `${inc.shortDescription} ${inc.description || ''}`,
+      inc.configurationItem,
+      4
+    );
+
     const analysis = await this.llmService.analyzeIncidentWithNvidiaLLM({
       incidentId: inc.number || inc.id,
       shortDescription: inc.shortDescription,
@@ -128,18 +136,20 @@ export class AiRouterService implements OnModuleInit {
       priority: inc.priority,
       impact: inc.impact,
       urgency: inc.urgency,
+      historicalPrecedents: precedents,
     }, await this.getDynamicModelName());
 
     return {
       incident: inc,
       analysis,
+      precedents,
     };
   }
 
   async routeIncident(tenantId: string, incidentId: string) {
     const cleanId = (incidentId || '').toUpperCase();
 
-    const { incident, analysis } = await this.analyzeIncident(tenantId, cleanId);
+    const { incident, analysis, precedents } = await this.analyzeIncident(tenantId, cleanId);
 
     const isAutoRoute = analysis.confidenceScore >= this.config.autoAssignConfidenceThreshold;
     const targetDept = analysis.targetGroup;
@@ -155,10 +165,13 @@ export class AiRouterService implements OnModuleInit {
       });
 
       if (this.config.autoWorkNoteEnabled) {
-        const badge = '🤖 Agentic AI Router (NVIDIA Nemotron 3.5 Lightning)';
+        const badge = '🤖 Historical-Grounded AI Router';
+        const precedentNote = (precedents && precedents.length > 0)
+          ? `\n📚 Matched Historical Precedents: ${precedents.map(p => `[${p.number}] "${p.shortDescription.substring(0, 45)}..." (Resolved: ${p.department})`).join(', ')}`
+          : '';
 
         await this.incidentService.addActivity(tenantId, cleanId, 'ai_router_agent', {
-          comment: `${badge}: Auto-assigned ticket to "${targetDept}" (${assignedTechnician}) with ${analysis.confidenceScore}% confidence.\nReasoning: ${analysis.reasoningText}`,
+          comment: `${badge}: Auto-assigned ticket to "${targetDept}" (${assignedTechnician}) with ${analysis.confidenceScore}% confidence.\nReasoning: ${analysis.reasoningText}${precedentNote}`,
           isWorkNote: true,
         });
       }

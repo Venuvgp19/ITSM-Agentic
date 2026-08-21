@@ -291,4 +291,114 @@ export class IncidentService {
 
     return { deleted: true, id: existing.id, number: existing.number };
   }
+
+  async findSimilarResolvedIncidents(
+    tenantId: string,
+    queryText: string,
+    ciName?: string,
+    limit: number = 4
+  ): Promise<Array<{
+    id: string;
+    number: string;
+    shortDescription: string;
+    department: string;
+    configurationItem?: string;
+    resolutionCode?: string;
+    resolutionNotes?: string;
+    similarityScore: number;
+  }>> {
+    // Fetch all resolved and closed incidents with valid departments
+    const resolvedIncidents = await this.prisma.incident.findMany({
+      where: {
+        tenantId,
+        state: { in: ['RESOLVED', 'CLOSED'] },
+        department: { not: { in: ['UNASSIGNED (No Team)', 'string', ''] } },
+      },
+      select: {
+        id: true,
+        number: true,
+        shortDescription: true,
+        description: true,
+        department: true,
+        configurationItemName: true,
+        resolutionCode: true,
+        resolutionNotes: true,
+      },
+      take: 2000,
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (!resolvedIncidents || resolvedIncidents.length === 0) {
+      return [];
+    }
+
+    const cleanTokens = (text: string): Set<string> => {
+      const stopWords = new Set(['the', 'is', 'at', 'which', 'on', 'and', 'a', 'an', 'in', 'to', 'for', 'of', 'with', 'from', 'by', 'as', 'this', 'that', 'it', 'or', 'be', 'are', 'was', 'were', 'incident', 'record', 'stats', 'telemetry', 'alert', 'details', 'error']);
+      return new Set(
+        (text || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9_\-\.]/g, ' ')
+          .split(/\s+/)
+          .filter(t => t.length > 2 && !stopWords.has(t))
+      );
+    };
+
+    const qTokens = cleanTokens(`${queryText} ${ciName || ''}`);
+    const cleanCi = (ciName || '').toLowerCase().trim();
+
+    const scored = resolvedIncidents.map(inc => {
+      const incText = `${inc.shortDescription} ${inc.description || ''} ${inc.configurationItemName || ''}`;
+      const incTokens = cleanTokens(incText);
+      const incCi = (inc.configurationItemName || '').toLowerCase().trim();
+
+      let matchCount = 0;
+      for (const t of qTokens) {
+        if (incTokens.has(t)) matchCount++;
+      }
+
+      if (matchCount === 0 && (!cleanCi || !incCi || cleanCi !== incCi)) {
+        return {
+          id: inc.id,
+          number: inc.number,
+          shortDescription: inc.shortDescription,
+          department: inc.department,
+          configurationItem: inc.configurationItemName || undefined,
+          resolutionCode: inc.resolutionCode || undefined,
+          resolutionNotes: (inc.resolutionNotes || '').substring(0, 300),
+          similarityScore: 0,
+        };
+      }
+
+      // Compute overlap ratio
+      let score = (matchCount / Math.max(1, qTokens.size));
+
+      // Boost if exact Configuration Item matches
+      if (cleanCi && incCi && (cleanCi === incCi || cleanCi.includes(incCi) || incCi.includes(cleanCi))) {
+        score += 0.35;
+      }
+
+      // Boost specific keyword intersections
+      const domainTerms = ['bgp', 'switch', 'router', 'interface', 'flapping', 'packets', 'postgres', 'pool', 'deadlock', 'database', 'nexacore', '8080', 'useradd', 'password', 'ssh', 'sudo'];
+      for (const dt of domainTerms) {
+        if (qTokens.has(dt) && incTokens.has(dt)) {
+          score += 0.25;
+        }
+      }
+
+      return {
+        id: inc.id,
+        number: inc.number,
+        shortDescription: inc.shortDescription,
+        department: inc.department,
+        configurationItem: inc.configurationItemName || undefined,
+        resolutionCode: inc.resolutionCode || undefined,
+        resolutionNotes: (inc.resolutionNotes || '').substring(0, 300),
+        similarityScore: Math.round(score * 100) / 100,
+      };
+    });
+
+    // Sort by similarity score descending and filter out zero similarity
+    scored.sort((a, b) => b.similarityScore - a.similarityScore);
+    return scored.filter(s => s.similarityScore >= 0.10).slice(0, limit);
+  }
 }
