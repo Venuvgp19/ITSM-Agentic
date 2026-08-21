@@ -12,10 +12,20 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   AlertTriangle,
   FileCheck,
   Calendar,
   Layers,
+  Filter,
+  Info,
+  Save,
+  Lock,
+  Menu,
+  Activity,
+  Settings,
+  MessageSquare
 } from 'lucide-react';
 
 interface ChangeRecord {
@@ -43,11 +53,12 @@ export default function ChangesPage() {
   const [changes, setChanges] = useState<ChangeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [searchField, setSearchField] = useState('All');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [stateFilter, setStateFilter] = useState('ALL');
   const [approvalFilter, setApprovalFilter] = useState('ALL');
   const [page, setPage] = useState(1);
-  const pageSize = 15;
+  const pageSize = 20;
 
   const [selectedChange, setSelectedChange] = useState<ChangeRecord | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -93,7 +104,7 @@ export default function ChangesPage() {
 
   useEffect(() => {
     fetchChanges();
-    const interval = setInterval(fetchChanges, 5000);
+    const interval = setInterval(fetchChanges, 6000);
     return () => clearInterval(interval);
   }, []);
 
@@ -125,20 +136,19 @@ export default function ChangesPage() {
         });
       }
     } catch (err) {
-      console.error('Failed to create change order:', err);
+      console.error('Failed to create change:', err);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleUpdateChange = async (changeId: string, customPayload?: any) => {
+  const handleUpdateChange = async (changeId: string) => {
     try {
       setIsSubmitting(true);
-      const payload = customPayload || editForm;
       const res = await fetch(`/api/v1/changes/${changeId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(editForm),
       });
 
       if (res.ok) {
@@ -147,7 +157,7 @@ export default function ChangesPage() {
         setSelectedChange(updated);
       }
     } catch (err) {
-      console.error('Failed to update change order:', err);
+      console.error('Failed to update change:', err);
     } finally {
       setIsSubmitting(false);
     }
@@ -155,11 +165,13 @@ export default function ChangesPage() {
 
   const filteredChanges = useMemo(() => {
     return changes.filter((c) => {
+      const q = search.toLowerCase();
       const matchesSearch =
-        c.id.toLowerCase().includes(search.toLowerCase()) ||
-        c.title.toLowerCase().includes(search.toLowerCase()) ||
-        c.configurationItem.toLowerCase().includes(search.toLowerCase()) ||
-        c.assignedTo.toLowerCase().includes(search.toLowerCase());
+        !search ||
+        c.id.toLowerCase().includes(q) ||
+        c.title.toLowerCase().includes(q) ||
+        c.configurationItem.toLowerCase().includes(q) ||
+        (c.assignedTo || '').toLowerCase().includes(q);
 
       const matchesType = typeFilter === 'ALL' || c.changeType === typeFilter;
       const matchesState = stateFilter === 'ALL' || c.state === stateFilter;
@@ -169,497 +181,349 @@ export default function ChangesPage() {
     });
   }, [changes, search, typeFilter, stateFilter, approvalFilter]);
 
-  const totalPages = Math.ceil(filteredChanges.length / pageSize);
+  const totalPages = Math.ceil(filteredChanges.length / pageSize) || 1;
   const paginatedChanges = useMemo(() => {
     const start = (page - 1) * pageSize;
     return filteredChanges.slice(start, start + pageSize);
   }, [filteredChanges, page]);
 
   return (
-    <div className="p-8 space-y-8 bg-slate-950 text-slate-100 min-h-screen">
-      {/* Top Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-800">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-brand-500/10 border border-brand-500/30 text-brand-400">
-              <GitCommit className="w-7 h-7" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-                Change Advisory Board (CAB) & Orders
-                <span className="text-xs px-3 py-1 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/30 font-semibold font-mono">
-                  ITIL v4 Change Management
-                </span>
-              </h1>
-              <p className="text-slate-400 text-sm mt-1">
-                Evaluate risk, authorize Requests for Change (RFC), schedule maintenance windows, and enforce backout plans.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={fetchChanges}
-            disabled={loading}
-            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 font-bold text-xs flex items-center gap-2 transition cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
+    <div className="flex flex-col min-h-full bg-[#f8fafc] text-slate-800 font-sans text-xs">
+      {/* 1. Sub-Header with Dropdown Search & Fast Pagination */}
+      <div className="bg-white border-b border-[#cbd5e1] px-4 py-2 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+        <div className="flex items-center gap-3 flex-wrap">
+          <button className="p-1 hover:bg-slate-100 rounded text-slate-700 cursor-pointer">
+            <Menu className="w-4 h-4" />
           </button>
+
+          <span className="text-sm font-extrabold text-[#1a2c30] tracking-tight">
+            Change Orders
+          </span>
+
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-slate-600 font-medium">Search</span>
+            <select
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value)}
+              className="bg-white border border-[#cbd5e1] rounded px-2 py-1 text-xs text-slate-800 font-medium focus:outline-none focus:border-[#288554]"
+            >
+              <option value="All">for text</option>
+              <option value="Number">Change ID</option>
+              <option value="Title">Title</option>
+              <option value="CI">Configuration Item</option>
+            </select>
+
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search..."
+              className="bg-white border border-[#cbd5e1] focus:border-[#288554] rounded px-2.5 py-1 text-xs text-slate-900 placeholder-slate-400 focus:outline-none w-44 transition"
+            />
+          </div>
 
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-400 text-slate-950 font-bold text-xs shadow-lg shadow-brand-500/20 flex items-center gap-2 transition cursor-pointer"
+            className="px-3 py-1 bg-[#288554] hover:bg-[#30bb7b] text-white font-bold rounded flex items-center gap-1 transition cursor-pointer shadow-xs text-xs ml-2"
           >
-            <Plus className="w-4 h-4 text-slate-950" />
-            Submit Request for Change (RFC)
+            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+            <span>New</span>
+          </button>
+        </div>
+
+        {/* Right: Fast Navigation Bar */}
+        <div className="flex items-center gap-2 text-xs text-slate-700 font-mono">
+          <Activity className="w-4 h-4 text-[#288554] mr-1" />
+
+          <button
+            onClick={() => setPage(1)}
+            disabled={page === 1}
+            className="p-1 hover:bg-slate-100 rounded disabled:opacity-30 cursor-pointer"
+            title="First Page"
+          >
+            <ChevronsLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="p-1 hover:bg-slate-100 rounded disabled:opacity-30 cursor-pointer"
+            title="Previous Page"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <span className="border border-[#cbd5e1] bg-white px-2 py-0.5 rounded text-slate-900 font-bold">
+            {page}
+          </span>
+
+          <span className="text-slate-600 text-[11px]">
+            to {Math.min(page * pageSize, filteredChanges.length)} of {filteredChanges.length}
+          </span>
+
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="p-1 hover:bg-slate-100 rounded disabled:opacity-30 cursor-pointer"
+            title="Next Page"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setPage(totalPages)}
+            disabled={page >= totalPages}
+            className="p-1 hover:bg-slate-100 rounded disabled:opacity-30 cursor-pointer"
+            title="Last Page"
+          >
+            <ChevronsRight className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-        <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md space-y-2">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>TOTAL CHANGE ORDERS</span>
-            <GitCommit className="w-4 h-4 text-brand-400" />
-          </div>
-          <div className="text-3xl font-black text-white">{changes.length}</div>
-          <p className="text-[11px] text-slate-500">Persistent Change Catalog</p>
+      {/* 2. Filter Condition Breadcrumbs */}
+      <div className="bg-[#f8fafc] border-b border-[#e2e8f0] px-4 py-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-mono">
+          <MessageSquare className="w-3.5 h-3.5 text-[#288554]" />
+          <Filter className="w-3.5 h-3.5 text-[#288554]" />
+          <span className="text-[#1a2c30] font-bold">
+            All &gt; Type is {typeFilter === 'ALL' ? 'All Types' : typeFilter} &gt; Active = true
+          </span>
         </div>
 
-        <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md space-y-2">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>EMERGENCY RFCS</span>
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
-          </div>
-          <div className="text-3xl font-black text-rose-400">
-            {changes.filter((c) => c.changeType === 'EMERGENCY').length}
-          </div>
-          <p className="text-[11px] text-slate-500">High Risk Fast-Track</p>
-        </div>
-
-        <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md space-y-2">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>AWAITING CAB APPROVAL</span>
-            <FileCheck className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-3xl font-black text-amber-400">
-            {changes.filter((c) => c.approvalState === 'REQUESTED').length}
-          </div>
-          <p className="text-[11px] text-slate-500">Pending Review & Sign-off</p>
-        </div>
-
-        <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md space-y-2">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>APPROVED & SCHEDULED</span>
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-3xl font-black text-emerald-400">
-            {changes.filter((c) => c.approvalState === 'APPROVED' || c.state === 'SCHEDULED').length}
-          </div>
-          <p className="text-[11px] text-slate-500">Maintenance Window Set</p>
-        </div>
-      </div>
-
-      {/* Filter & Search Bar */}
-      <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:w-96">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-          <input
-            type="text"
-            placeholder="Search change orders by ID (e.g. CHG0000010), title, CI, assignee..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-xs text-slate-100 focus:outline-none focus:border-brand-500"
-          />
-        </div>
-
-        <div className="flex items-center gap-3 text-xs w-full md:w-auto overflow-x-auto">
+        <div className="flex items-center gap-2">
           <select
             value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-300 focus:outline-none focus:border-brand-500"
+            onChange={(e) => {
+              setTypeFilter(e.target.value);
+              setPage(1);
+            }}
+            className="bg-white border border-[#cbd5e1] text-slate-800 text-xs rounded px-2 py-1 focus:outline-none"
           >
-            <option value="ALL">All Change Types</option>
-            <option value="STANDARD">STANDARD</option>
-            <option value="NORMAL">NORMAL</option>
-            <option value="EMERGENCY">EMERGENCY</option>
-          </select>
-
-          <select
-            value={approvalFilter}
-            onChange={(e) => setApprovalFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-300 focus:outline-none focus:border-brand-500"
-          >
-            <option value="ALL">All CAB Approvals</option>
-            <option value="NOT_REQUESTED">NOT_REQUESTED</option>
-            <option value="REQUESTED">REQUESTED</option>
-            <option value="APPROVED">APPROVED</option>
-            <option value="REJECTED">REJECTED</option>
+            <option value="ALL">All Types</option>
+            <option value="STANDARD">Standard</option>
+            <option value="NORMAL">Normal</option>
+            <option value="EMERGENCY">Emergency</option>
           </select>
 
           <select
             value={stateFilter}
-            onChange={(e) => setStateFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-300 focus:outline-none focus:border-brand-500"
+            onChange={(e) => {
+              setStateFilter(e.target.value);
+              setPage(1);
+            }}
+            className="bg-white border border-[#cbd5e1] text-slate-800 text-xs rounded px-2 py-1 focus:outline-none"
           >
             <option value="ALL">All States</option>
-            <option value="DRAFT">DRAFT</option>
-            <option value="ASSESS">ASSESS</option>
-            <option value="AUTHORIZE">AUTHORIZE</option>
-            <option value="SCHEDULED">SCHEDULED</option>
-            <option value="IMPLEMENTATION">IMPLEMENTATION</option>
-            <option value="REVIEW">REVIEW</option>
-            <option value="CLOSED">CLOSED</option>
+            <option value="NEW">New</option>
+            <option value="ASSESS">Assess / CAB</option>
+            <option value="SCHEDULED">Scheduled</option>
+            <option value="IMPLEMENT">Implement</option>
+            <option value="REVIEW">Review</option>
+            <option value="CLOSED">Closed</option>
           </select>
         </div>
       </div>
 
-      {/* Change Orders Data Table */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
-        <table className="w-full text-left text-xs text-slate-300">
-          <thead className="bg-slate-950 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-800">
-            <tr>
-              <th className="px-6 py-4">Change ID</th>
-              <th className="px-6 py-4">Type / Risk</th>
-              <th className="px-6 py-4">Change Title & CI</th>
-              <th className="px-6 py-4">CAB Approval</th>
-              <th className="px-6 py-4">State</th>
-              <th className="px-6 py-4">Assigned Team</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/60">
-            {paginatedChanges.map((item) => (
-              <tr
-                key={item.id}
-                onClick={() => {
-                  setSelectedChange(item);
-                  setEditForm({
-                    state: item.state,
-                    approvalState: item.approvalState,
-                    riskScore: item.riskScore,
-                    cabNotes: item.cabNotes,
-                    implementationPlan: item.implementationPlan,
-                    backoutPlan: item.backoutPlan,
-                  });
-                }}
-                className="hover:bg-slate-800/40 cursor-pointer transition-colors"
-              >
-                <td className="px-6 py-4 font-mono font-bold text-brand-400">{item.id}</td>
-                <td className="px-6 py-4 space-y-1">
-                  <span
-                    className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded ${
-                      item.changeType === 'EMERGENCY'
-                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                        : item.changeType === 'NORMAL'
-                        ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30'
-                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    }`}
-                  >
-                    {item.changeType}
+      {/* 3. High-Contrast ServiceNow Light Data Table */}
+      <div className="flex-1 bg-white">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-white border-b-2 border-[#cbd5e1] text-[#2d3748] font-bold text-[11px] sticky top-0 z-10 select-none">
+                <th className="p-2.5 w-8 text-center">
+                  <input type="checkbox" className="rounded border-slate-400 text-[#288554] focus:ring-0" />
+                </th>
+                <th className="p-2.5 w-10 text-center text-[#288554]">
+                  <Settings className="w-3.5 h-3.5 cursor-pointer text-slate-500 hover:text-[#288554]" />
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1 cursor-pointer hover:text-[#0284c7]">
+                    <span className="text-[10px] text-slate-400">☰</span> Change Number
                   </span>
-                  <div className="text-[10px] text-slate-400 font-semibold">Risk Lvl: {item.riskScore}/5</div>
-                </td>
-                <td className="px-6 py-4 max-w-md">
-                  <div className="font-semibold text-slate-100">{item.title}</div>
-                  <div className="text-indigo-300 font-mono text-[11px] font-bold">
-                    Target CI: {item.configurationItem}
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <span
-                    className={`inline-block px-2.5 py-1 text-[10px] font-bold rounded-full ${
-                      item.approvalState === 'APPROVED'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : item.approvalState === 'REQUESTED'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        : item.approvalState === 'REJECTED'
-                        ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {item.approvalState}
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> Short Description
                   </span>
-                </td>
-                <td className="px-6 py-4 font-bold text-slate-200">{item.state}</td>
-                <td className="px-6 py-4 font-semibold text-slate-300">{item.assignedTo}</td>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> Type
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1 cursor-pointer text-[#288554]">
+                    <span className="text-[10px]">☰</span> State ▼
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> Approval
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> Configuration Item
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> Assigned To
+                  </span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination Controls */}
-      <div className="flex items-center justify-between border-t border-slate-800 pt-4 text-xs text-slate-400">
-        <span>
-          Showing {filteredChanges.length > 0 ? (page - 1) * pageSize + 1 : 0} -{' '}
-          {Math.min(page * pageSize, filteredChanges.length)} of {filteredChanges.length} Change Orders
-        </span>
-
-        <div className="flex items-center gap-2">
-          <button
-            disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-            className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 disabled:opacity-50 transition"
-          >
-            <ChevronLeft className="w-4 h-4 text-slate-300" />
-          </button>
-          <span className="font-mono font-bold text-slate-200 px-2">
-            Page {page} of {Math.max(1, totalPages)}
-          </span>
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage(page + 1)}
-            className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 disabled:opacity-50 transition"
-          >
-            <ChevronRight className="w-4 h-4 text-slate-300" />
-          </button>
-        </div>
-      </div>
-
-      {/* Log RFC Modal */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-extrabold text-white text-base flex items-center gap-2">
-                <GitCommit className="w-5 h-5 text-brand-400" /> Submit Request for Change (RFC) Order
-              </h3>
-              <button onClick={() => setIsCreateModalOpen(false)} className="text-slate-400 hover:text-white font-bold">
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateChange} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Change Order Title *</label>
-                <input
-                  type="text"
-                  required
-                  value={createForm.title}
-                  onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
-                  placeholder="e.g. Upgrade NYC Border Router Firmware to v15.4"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-brand-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">Change Type</label>
-                  <select
-                    value={createForm.changeType}
-                    onChange={(e) => setCreateForm({ ...createForm, changeType: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-brand-500"
+            </thead>
+            <tbody className="divide-y divide-[#e5e7eb]">
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="text-center py-16 text-slate-500 font-medium">
+                    Querying Change records from database...
+                  </td>
+                </tr>
+              ) : paginatedChanges.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="text-center py-16 text-slate-500 font-medium">
+                    No change records match the active query.
+                  </td>
+                </tr>
+              ) : (
+                paginatedChanges.map((item, idx) => (
+                  <tr
+                    key={item.id}
+                    onClick={() => {
+                      setSelectedChange(item);
+                      setEditForm({
+                        state: item.state,
+                        approvalState: item.approvalState,
+                        riskScore: item.riskScore,
+                        cabNotes: item.cabNotes || '',
+                        implementationPlan: item.implementationPlan || '',
+                        backoutPlan: item.backoutPlan || '',
+                      });
+                    }}
+                    className={`transition-colors cursor-pointer ${
+                      idx % 2 === 0 ? 'bg-white' : 'bg-[#f2f4f7]'
+                    } hover:bg-[#e6f0f2]`}
                   >
-                    <option value="STANDARD">STANDARD</option>
-                    <option value="NORMAL">NORMAL</option>
-                    <option value="EMERGENCY">EMERGENCY</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">Target CI</label>
-                  <input
-                    type="text"
-                    value={createForm.configurationItem}
-                    onChange={(e) => setCreateForm({ ...createForm, configurationItem: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-indigo-300 font-mono font-bold focus:outline-none focus:border-brand-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">Risk Score (1-5)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={5}
-                    value={createForm.riskScore}
-                    onChange={(e) => setCreateForm({ ...createForm, riskScore: parseInt(e.target.value, 10) || 1 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-bold focus:outline-none focus:border-brand-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Implementation Step-by-Step Plan</label>
-                <textarea
-                  rows={2}
-                  value={createForm.implementationPlan}
-                  onChange={(e) => setCreateForm({ ...createForm, implementationPlan: e.target.value })}
-                  placeholder="e.g. 1. Pre-backup configuration. 2. Install patch. 3. Run health diagnostic."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 focus:outline-none focus:border-brand-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Backout / Rollback Procedure</label>
-                <textarea
-                  rows={2}
-                  value={createForm.backoutPlan}
-                  onChange={(e) => setCreateForm({ ...createForm, backoutPlan: e.target.value })}
-                  placeholder="e.g. Revert to OS partition B snapshot and reset BGP routes."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 focus:outline-none focus:border-brand-500"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 rounded-lg bg-brand-500 text-slate-950 font-bold shadow-lg shadow-brand-500/20"
-                >
-                  {isSubmitting ? 'Submitting...' : 'Submit RFC to CAB'}
-                </button>
-              </div>
-            </form>
-          </div>
+                    <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" className="rounded border-slate-400 text-[#288554] focus:ring-0" />
+                    </td>
+                    <td className="p-2.5 text-center">
+                      <div className="w-4 h-4 rounded-full border border-[#288554] text-[#288554] flex items-center justify-center font-bold text-[10px] mx-auto hover:bg-[#288554] hover:text-white transition">
+                        i
+                      </div>
+                    </td>
+                    <td className="p-2.5 font-mono font-bold text-[#1a2c30] underline hover:text-[#0284c7] whitespace-nowrap">
+                      {item.id}
+                    </td>
+                    <td className="p-2.5 font-medium text-[#2d3748] max-w-md truncate" title={item.title}>
+                      {item.title}
+                    </td>
+                    <td className="p-2.5 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        item.changeType === 'EMERGENCY'
+                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                          : item.changeType === 'NORMAL'
+                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      }`}>
+                        {item.changeType}
+                      </span>
+                    </td>
+                    <td className="p-2.5 whitespace-nowrap">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#e6f7ef] text-[#1e6844] border border-[#30bb7b]/30">
+                        {item.state}
+                      </span>
+                    </td>
+                    <td className="p-2.5 whitespace-nowrap text-[#2d3748] font-medium">
+                      {item.approvalState === 'APPROVED' ? (
+                        <span className="text-emerald-700 font-bold">Approved</span>
+                      ) : item.approvalState === 'REQUESTED' ? (
+                        <span className="text-amber-700 font-bold">CAB Review</span>
+                      ) : (
+                        <span className="text-slate-500">Not Requested</span>
+                      )}
+                    </td>
+                    <td className="p-2.5 font-mono text-[11px] text-[#2d3748] underline hover:text-[#0284c7] whitespace-nowrap">
+                      {item.configurationItem}
+                    </td>
+                    <td className="p-2.5 text-[#2d3748] whitespace-nowrap">{item.assignedTo || 'Unassigned'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
 
-      {/* Change Order Detail & CAB Approval Drawer Modal */}
+      {/* 4. Change Detail Modal */}
       {selectedChange && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-3xl w-full p-6 md:p-8 space-y-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start border-b border-slate-800 pb-4">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-mono mb-1">
-                  <span className="font-bold text-brand-400 bg-brand-500/10 px-2.5 py-1 rounded border border-brand-500/20">
-                    {selectedChange.id}
-                  </span>
-                  <span className="bg-slate-800 text-slate-300 px-2.5 py-1 rounded font-bold">
-                    Type: {selectedChange.changeType}
-                  </span>
-                </div>
-                <h2 className="text-xl font-extrabold text-white">{selectedChange.title}</h2>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#cbd5e1] rounded-xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-[#1a2c30] text-white px-5 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-sm">Change Order: {selectedChange.id}</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-blue-100 text-blue-900 font-bold">
+                  {selectedChange.changeType}
+                </span>
               </div>
-              <button onClick={() => setSelectedChange(null)} className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400">
-                <X className="w-5 h-5" />
+              <button
+                onClick={() => setSelectedChange(null)}
+                className="p-1 rounded text-slate-300 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Quick Action CAB Approval Buttons */}
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-              <span className="text-[10px] font-bold text-slate-500 uppercase block">CAB Quick Approval Actions</span>
-              <div className="flex flex-wrap items-center gap-3 text-xs">
-                <button
-                  onClick={() => handleUpdateChange(selectedChange.id, { approvalState: 'APPROVED', state: 'SCHEDULED' })}
-                  className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition cursor-pointer"
-                >
-                  <ShieldCheck className="w-4 h-4" /> Approve Change Order
-                </button>
-                <button
-                  onClick={() => handleUpdateChange(selectedChange.id, { approvalState: 'REJECTED', state: 'CLOSED' })}
-                  className="px-4 py-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-bold flex items-center gap-2 transition cursor-pointer"
-                >
-                  <X className="w-4 h-4" /> Reject RFC
-                </button>
-                <button
-                  onClick={() => handleUpdateChange(selectedChange.id, { approvalState: 'REQUESTED', state: 'AUTHORIZE' })}
-                  className="px-4 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold transition cursor-pointer"
-                >
-                  Request CAB Review
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                <span className="text-[10px] font-bold text-slate-500 uppercase block">Configuration Item</span>
-                <span className="font-mono text-indigo-300 font-bold">{selectedChange.configurationItem}</span>
+            <div className="p-6 space-y-5 overflow-y-auto flex-1 text-xs bg-[#f8fafc]">
+              <div className="bg-white p-4 rounded border border-[#e2e8f0] shadow-sm space-y-2">
+                <label className="block text-slate-700 font-bold">Change Title</label>
+                <div className="text-sm font-bold text-slate-900">{selectedChange.title}</div>
               </div>
 
-              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                <span className="text-[10px] font-bold text-slate-500 uppercase block">Assigned CAB Team</span>
-                <span className="font-bold text-slate-200">{selectedChange.assignedTo}</span>
-              </div>
-
-              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                <span className="text-[10px] font-bold text-slate-500 uppercase block">Risk Assessment</span>
-                <span className="font-bold text-rose-400">Level {selectedChange.riskScore} / 5</span>
-              </div>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">State</label>
-                  <select
-                    value={editForm.state}
-                    onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-bold focus:outline-none"
-                  >
-                    <option value="DRAFT">DRAFT</option>
-                    <option value="ASSESS">ASSESS</option>
-                    <option value="AUTHORIZE">AUTHORIZE</option>
-                    <option value="SCHEDULED">SCHEDULED</option>
-                    <option value="IMPLEMENTATION">IMPLEMENTATION</option>
-                    <option value="REVIEW">REVIEW</option>
-                    <option value="CLOSED">CLOSED</option>
-                  </select>
+              {/* Implementation Plan Yellow Box */}
+              <div className="bg-[#fffbeb] p-4 rounded border border-[#fde68a] shadow-sm space-y-2">
+                <div className="flex items-center gap-1.5 text-amber-900 font-bold">
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Implementation Runbook & Execution Steps</span>
                 </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Approval Status</label>
-                  <select
-                    value={editForm.approvalState}
-                    onChange={(e) => setEditForm({ ...editForm, approvalState: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-emerald-400 font-bold focus:outline-none"
-                  >
-                    <option value="NOT_REQUESTED">NOT_REQUESTED</option>
-                    <option value="REQUESTED">REQUESTED</option>
-                    <option value="APPROVED">APPROVED</option>
-                    <option value="REJECTED">REJECTED</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 font-bold mb-1">Implementation Step-by-Step Plan</label>
                 <textarea
                   rows={3}
                   value={editForm.implementationPlan}
                   onChange={(e) => setEditForm({ ...editForm, implementationPlan: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-slate-200 font-mono focus:outline-none"
+                  className="w-full bg-white border border-[#fde68a] rounded p-2 text-xs text-amber-950 font-mono focus:outline-none"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-400 font-bold mb-1">Backout / Rollback Procedure</label>
-                <textarea
-                  rows={3}
-                  value={editForm.backoutPlan}
-                  onChange={(e) => setEditForm({ ...editForm, backoutPlan: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-amber-300 font-mono focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 font-bold mb-1">CAB Notes & Recommendations</label>
+              <div className="bg-white p-4 rounded border border-[#e2e8f0] shadow-sm space-y-2">
+                <label className="block text-slate-700 font-bold">Rollback / Backout Plan</label>
                 <textarea
                   rows={2}
-                  value={editForm.cabNotes}
-                  onChange={(e) => setEditForm({ ...editForm, cabNotes: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-purple-300 focus:outline-none"
+                  value={editForm.backoutPlan}
+                  onChange={(e) => setEditForm({ ...editForm, backoutPlan: e.target.value })}
+                  className="w-full bg-white border border-[#cbd5e1] rounded p-2 text-xs text-slate-900 font-mono focus:outline-none"
                 />
               </div>
-            </div>
 
-            <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
-              <button onClick={() => setSelectedChange(null)} className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-bold">
-                Close
-              </button>
-              <button
-                onClick={() => handleUpdateChange(selectedChange.id)}
-                disabled={isSubmitting}
-                className="px-5 py-2 rounded-lg bg-brand-500 text-slate-950 font-bold shadow-lg shadow-brand-500/20"
-              >
-                {isSubmitting ? 'Saving...' : 'Save Change Order'}
-              </button>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedChange(null)}
+                  className="px-4 py-2 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold transition cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateChange(selectedChange.id)}
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded bg-[#288554] hover:bg-[#30bb7b] text-white font-bold transition shadow-sm cursor-pointer disabled:opacity-40"
+                >
+                  {isSubmitting ? 'Saving...' : 'Save Change Order'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

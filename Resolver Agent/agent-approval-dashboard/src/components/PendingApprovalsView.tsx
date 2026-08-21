@@ -19,7 +19,12 @@ import {
   Radio,
   Workflow,
   Lightbulb,
-  FileText
+  FileText,
+  Zap,
+  Clock,
+  ShieldCheck,
+  Play,
+  ArrowRight
 } from 'lucide-react';
 
 export interface SafetyCheck {
@@ -49,6 +54,7 @@ export interface SynthesizerAgentOutput {
   kbTitle: string;
   synthesizedSolution: string;
   trendInsight: string;
+  resolutionSteps?: string[];
 }
 
 export interface AgentApproval {
@@ -77,11 +83,13 @@ export interface AgentApproval {
 
 interface PendingApprovalsViewProps {
   approvals: AgentApproval[];
+  loading?: boolean;
   onApprove: (id: string, proposedCommands?: string[]) => Promise<void>;
   onReject: (id: string, reason: string) => Promise<void>;
+  onRefresh?: () => void;
 }
 
-export function PendingApprovalsView({ approvals, onApprove, onReject }: PendingApprovalsViewProps) {
+export function PendingApprovalsView({ approvals, loading, onApprove, onReject, onRefresh }: PendingApprovalsViewProps) {
   const [expandedId, setExpandedId] = useState<string | null>(approvals[0]?.id || null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState<string>('');
@@ -93,13 +101,26 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
   const getRiskBadge = (risk: string) => {
     switch (risk) {
       case 'CRITICAL':
-        return 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+        return 'bg-rose-500/15 text-rose-300 border-rose-500/40';
       case 'HIGH':
-        return 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+        return 'bg-amber-500/15 text-amber-300 border-amber-500/40';
       case 'MEDIUM':
-        return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30';
+        return 'bg-yellow-500/15 text-yellow-300 border-yellow-500/40';
       default:
-        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+        return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40';
+    }
+  };
+
+  const getTopBorderAccent = (risk: string) => {
+    switch (risk) {
+      case 'CRITICAL':
+        return 'border-t-2 border-t-rose-500';
+      case 'HIGH':
+        return 'border-t-2 border-t-amber-500';
+      case 'MEDIUM':
+        return 'border-t-2 border-t-yellow-500';
+      default:
+        return 'border-t-2 border-t-emerald-500';
     }
   };
 
@@ -155,13 +176,13 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
 
   if (approvals.length === 0) {
     return (
-      <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-16 text-center flex flex-col items-center justify-center shadow-xl">
-        <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-4 shadow-lg shadow-emerald-950/20">
-          <CheckCircle2 className="w-8 h-8 animate-pulse" />
+      <div className="card-21st rounded-2xl p-16 text-center flex flex-col items-center justify-center shadow-2xl">
+        <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-4 shadow-lg shadow-emerald-950/20">
+          <ShieldCheck className="w-7 h-7 text-emerald-400" />
         </div>
-        <h3 className="text-xl font-bold text-slate-100">All Approvals Clear!</h3>
-        <p className="text-sm text-slate-400 max-w-md mt-2 leading-relaxed">
-          There are currently no high-risk autonomous agent operations waiting for human signature. Low-risk background policies are executing clean health sweeps.
+        <h3 className="text-lg font-bold text-white">All Human Approvals Clear!</h3>
+        <p className="text-xs text-zinc-400 max-w-md mt-2 leading-relaxed">
+          There are currently 0 operations waiting for human signature. The Auto-Resolver Daemon is executing low-risk diagnostic sweeps autonomously.
         </p>
       </div>
     );
@@ -177,31 +198,27 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
         return (
           <div
             key={appr.id}
-            className={`bg-[#111827] border transition-all rounded-2xl overflow-hidden shadow-xl ${
-              appr.riskLevel === 'CRITICAL'
-                ? 'border-rose-500/40 hover:border-rose-500/60'
-                : 'border-slate-800 hover:border-slate-700'
-            }`}
+            className={`card-21st rounded-2xl overflow-hidden shadow-2xl transition-all ${getTopBorderAccent(appr.riskLevel)}`}
           >
             {/* Header Card */}
-            <div className="p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5 bg-slate-900/40">
+            <div className="p-5 md:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5 bg-zinc-900/30">
               <div className="flex items-start gap-4">
                 <div
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border shadow-md ${getRiskBadge(
+                  className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${getRiskBadge(
                     appr.riskLevel
                   )}`}
                 >
-                  <ShieldAlert className="w-6 h-6" />
+                  <ShieldAlert className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-cyan-400 bg-cyan-950/80 px-2.5 py-0.5 rounded-md border border-cyan-800/60 shadow-sm">
+                    <span className="font-mono text-xs font-bold text-cyan-300 bg-cyan-950/80 px-2.5 py-0.5 rounded-md border border-cyan-800/60 shadow-sm">
                       {appr.id}
                     </span>
-                    <span className="font-mono text-xs text-slate-400">Target Ticket:</span>
-                    <span className="font-mono text-xs font-extrabold text-slate-100">{appr.incidentId}</span>
+                    <span className="font-mono text-xs text-zinc-400">Ticket:</span>
+                    <span className="font-mono text-xs font-extrabold text-white">{appr.incidentId}</span>
                     <span
-                      className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border tracking-wide ${getRiskBadge(
+                      className={`text-[10px] font-mono font-bold uppercase px-2.5 py-0.5 rounded-full border ${getRiskBadge(
                         appr.riskLevel
                       )}`}
                     >
@@ -209,27 +226,27 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                     </span>
                   </div>
 
-                  <h3 className="text-lg font-bold text-slate-100 mt-2 tracking-tight">{appr.incidentTitle}</h3>
+                  <h3 className="text-base md:text-lg font-bold text-white mt-1.5 tracking-tight">{appr.incidentTitle}</h3>
 
-                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-400 mt-2">
-                    <span className="flex items-center gap-1.5 text-slate-200 font-medium">
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-zinc-400 mt-2">
+                    <span className="flex items-center gap-1.5 text-cyan-300 font-medium">
                       <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
                       {appr.agentName}
                     </span>
-                    <span className="flex items-center gap-1.5 text-slate-400">
-                      <Server className="w-3.5 h-3.5 text-slate-500" />
+                    <span className="flex items-center gap-1.5 text-zinc-300 font-mono text-[11px]">
+                      <Server className="w-3.5 h-3.5 text-zinc-500" />
                       {appr.targetCi}
                     </span>
-                    <span className="text-slate-400 font-mono">LLM: {appr.model}</span>
+                    <span className="text-zinc-400 font-mono text-[11px]">LLM: {appr.model}</span>
                   </div>
                 </div>
               </div>
 
               {/* Confidence Score & Action Buttons */}
-              <div className="flex items-center justify-between lg:justify-end gap-4 pt-4 lg:pt-0 border-t lg:border-t-0 border-slate-800">
-                <div className="text-right px-4 py-2 bg-slate-950/60 rounded-xl border border-slate-800/80 shadow-inner">
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">AI Confidence</div>
-                  <div className="text-base font-black text-emerald-400 flex items-center justify-end gap-1">
+              <div className="flex items-center justify-between lg:justify-end gap-3.5 pt-4 lg:pt-0 border-t lg:border-t-0 border-zinc-800">
+                <div className="text-right px-3.5 py-2 bg-zinc-950/80 rounded-xl border border-zinc-800 shadow-inner">
+                  <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider font-mono">AI Confidence</div>
+                  <div className="text-sm font-black font-mono text-emerald-400 flex items-center justify-end gap-1">
                     <span>{appr.confidenceScore > 100 ? (appr.confidenceScore / 100).toFixed(0) : appr.confidenceScore}%</span>
                   </div>
                 </div>
@@ -238,14 +255,14 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                   <button
                     onClick={() => handleApprove(appr.id)}
                     disabled={isLoading}
-                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-2 shadow-lg shadow-emerald-950/40 active:scale-95 disabled:opacity-50"
+                    className="px-4 py-2 bg-zinc-100 hover:bg-white text-zinc-950 font-extrabold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-lg active:scale-95 disabled:opacity-50 cursor-pointer"
                   >
                     {isLoading ? (
                       <span className="animate-spin">⌛</span>
                     ) : (
                       <>
-                        <Check className="w-4 h-4" />
-                        Approve & Execute
+                        <Check className="w-3.5 h-3.5 text-zinc-950 stroke-[3]" />
+                        Approve & Dispatch
                       </>
                     )}
                   </button>
@@ -256,15 +273,15 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                       setRejectionReason('');
                     }}
                     disabled={isLoading}
-                    className="px-4 py-2.5 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-3.5 py-2 bg-zinc-900 hover:bg-rose-950/40 text-rose-300 border border-zinc-800 hover:border-rose-800 font-bold text-xs rounded-xl transition-all flex items-center gap-1 disabled:opacity-50 cursor-pointer"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-3.5 h-3.5" />
                     Reject
                   </button>
 
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : appr.id)}
-                    className="p-2.5 text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-800 rounded-xl border border-slate-700 transition-all"
+                    className="p-2 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-xl border border-zinc-800 transition-all cursor-pointer"
                   >
                     {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </button>
@@ -274,7 +291,7 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
 
             {/* Rejection Drawer */}
             {isRejecting && (
-              <div className="bg-rose-950/20 border-t border-rose-900/40 p-5 space-y-3">
+              <div className="bg-rose-950/20 border-t border-rose-900/40 p-4 space-y-2.5">
                 <div className="flex items-center gap-2 text-rose-300 text-xs font-bold">
                   <MessageSquare className="w-4 h-4" />
                   Provide Human Operator Rejection Reason:
@@ -283,19 +300,19 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                   value={rejectionReason}
                   onChange={(e) => setRejectionReason(e.target.value)}
                   placeholder="State technical reason for rejecting proposed commands..."
-                  className="w-full bg-[#0b0f19] border border-rose-900/50 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-rose-500 font-sans min-h-[80px]"
+                  className="w-full bg-[#09090b] border border-rose-900/50 rounded-xl p-3 text-xs text-zinc-200 focus:outline-none focus:border-rose-500 font-sans min-h-[75px]"
                 />
                 <div className="flex justify-end gap-2">
                   <button
                     onClick={() => setRejectingId(null)}
-                    className="px-4 py-2 text-xs text-slate-400 hover:text-slate-200 bg-slate-800 rounded-lg"
+                    className="px-3 py-1.5 text-xs text-zinc-400 hover:text-white bg-zinc-800 rounded-lg cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => handleRejectSubmit(appr.id)}
                     disabled={!rejectionReason.trim() || isLoading}
-                    className="px-5 py-2 text-xs bg-rose-600 hover:bg-rose-500 font-bold text-white rounded-lg transition-all disabled:opacity-50"
+                    className="px-4 py-1.5 text-xs bg-rose-600 hover:bg-rose-500 font-bold text-white rounded-lg transition-all disabled:opacity-50 cursor-pointer"
                   >
                     Confirm Rejection
                   </button>
@@ -303,76 +320,65 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
               </div>
             )}
 
-            {/* Expanded 3-AGENT REPORT VIEW */}
+            {/* Expanded Multi-Agent Audit Trace */}
             {isExpanded && (
-              <div className="border-t border-slate-800 p-6 space-y-6 bg-[#0b0f19]/80">
-                <div className="text-xs font-extrabold uppercase text-cyan-400 tracking-wider flex items-center gap-2">
+              <div className="border-t border-zinc-800 p-5 md:p-6 space-y-5 bg-zinc-950/60">
+                <div className="text-xs font-extrabold uppercase text-cyan-400 tracking-wider flex items-center gap-2 font-mono">
                   <Workflow className="w-4 h-4 text-cyan-400" />
-                  Sequential 3-Agent Execution Pipeline Audit Report
+                  Sequential 3-Agent Execution Audit Trace
                 </div>
 
-                {/* 3-Agent Cards Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  {/* AGENT 1: ROUTER AGENT */}
-                  <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-5 space-y-3 shadow-lg">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* AGENT 1: ROUTER */}
+                  <div className="card-21st rounded-xl p-4 space-y-2">
+                    <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
                       <div className="flex items-center gap-2 font-bold text-xs text-amber-400">
-                        <Radio className="w-4 h-4 text-amber-400" />
-                        AGENT 1: 🚦 ROUTER AGENT
+                        <Radio className="w-3.5 h-3.5 text-amber-400" />
+                        AGENT 1: ROUTER AGENT
                       </div>
-                      <span className="text-[10px] font-black text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/50">
+                      <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/50">
                         {appr.routerOutput?.assignedPriority || 'P1 Critical'}
                       </span>
                     </div>
 
-                    <div className="space-y-2 text-xs">
+                    <div className="space-y-1 text-xs">
                       <div>
-                        <span className="text-slate-500 font-medium">Category: </span>
-                        <span className="text-slate-200 font-bold">{appr.routerOutput?.category || 'Infrastructure > Unix'}</span>
+                        <span className="text-zinc-500">Category: </span>
+                        <span className="text-zinc-200 font-bold">{appr.routerOutput?.category || 'Infrastructure > Unix'}</span>
                       </div>
                       <div>
-                        <span className="text-slate-500 font-medium">Impact / Urgency: </span>
-                        <span className="text-slate-200 font-semibold">{appr.routerOutput?.impactUrgency || 'High / High'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 font-medium">Dispatch Queue: </span>
+                        <span className="text-zinc-500">Dispatch Queue: </span>
                         <span className="text-cyan-300 font-mono text-[11px]">{appr.routerOutput?.dispatchRoute || 'Unix Tier 3 Queue'}</span>
-                      </div>
-                      <div className="mt-2 pt-2 border-t border-slate-800/60 text-slate-300 text-[11px] italic bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                        "{appr.routerOutput?.userAcknowledgment || 'Incident acknowledged. Dispatching auto-resolver agent.'}"
                       </div>
                     </div>
                   </div>
 
-                  {/* AGENT 2: RESOLVER AGENT */}
-                  <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-5 space-y-3 shadow-lg">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  {/* AGENT 2: RESOLVER */}
+                  <div className="card-21st rounded-xl p-4 space-y-2">
+                    <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
                       <div className="flex items-center gap-2 font-bold text-xs text-cyan-400">
-                        <Terminal className="w-4 h-4 text-cyan-400" />
-                        AGENT 2: 🛠️ RESOLVER AGENT
+                        <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+                        AGENT 2: RESOLVER AGENT
                       </div>
-                      <span className="text-[10px] font-black text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/50">
+                      <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/50">
                         {appr.resolverOutput?.resolutionStatus || 'PENDING_APPROVAL'}
                       </span>
                     </div>
 
-                    <div className="space-y-2 text-xs">
+                    <div className="space-y-1 text-xs">
                       <div>
-                        <span className="text-slate-500 font-medium">Diagnosis: </span>
-                        <span className="text-slate-200 leading-relaxed block mt-0.5">{appr.resolverOutput?.diagnosis || appr.aiReasoning}</span>
+                        <span className="text-zinc-500">Diagnosis: </span>
+                        <span className="text-zinc-200 leading-relaxed block mt-0.5">{appr.resolverOutput?.diagnosis || appr.aiReasoning}</span>
                       </div>
                       <div>
-                        <span className="text-slate-500 font-medium">Runbook: </span>
+                        <span className="text-zinc-500">Runbook: </span>
                         <span className="text-cyan-400 font-semibold">{appr.resolverOutput?.matchedRunbook || `${appr.kbArticleReference}: ${appr.kbTitle}`}</span>
-                      </div>
-                      <div className="mt-2 pt-2 border-t border-slate-800/60 text-slate-300 text-[11px] bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                        "{appr.resolverOutput?.userNotice || 'Remediation formulated. Paused for human signature.'}"
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Proposed Commands & Pre-flight Checks */}
+                {/* Proposed Commands / Runbook Code Block */}
                 {(() => {
                   const getFallbackSteps = (title: string, targetCi: string): string[] => {
                     const ipMatch = targetCi ? targetCi.match(/\d+\.\d+\.\d+\.\d+/) : null;
@@ -403,15 +409,6 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                         `visudo -c`
                       ];
                     }
-                    if (t.includes('cpu') || t.includes('kernel') || t.includes('spike') || t.includes('degradation')) {
-                      return [
-                        `ps aux --sort=-%cpu | head -20`,
-                        `top -bn1 | head -20`,
-                        `systemctl --failed`,
-                        `journalctl -p err -b --no-pager | head -50`,
-                        `systemctl restart control-plane`
-                      ];
-                    }
                     return [
                       `systemctl status control-plane`,
                       `journalctl -u control-plane -n 50 --no-pager`,
@@ -433,7 +430,6 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                     .map((cmd) => cmd.replace(/^\d+\.\s*/, '').trim())
                     .filter((cmd) => {
                       const clean = cmd.toLowerCase().trim();
-                      // Strip standalone SSH connection line without payload
                       if (clean === `ssh root@${targetIp}` || clean === 'ssh root@192.168.100.101' || /^ssh\s+[^\s]+$/.test(clean)) {
                         return false;
                       }
@@ -452,18 +448,18 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                   return (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-extrabold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
-                          <Terminal className="w-4 h-4 text-cyan-400" />
+                        <span className="text-xs font-extrabold text-zinc-300 flex items-center gap-2 uppercase tracking-wider font-mono">
+                          <Terminal className="w-3.5 h-3.5 text-cyan-400" />
                           Proposed Executable CLI / SSH Payload
                         </span>
                         
                         <div className="flex items-center gap-3">
                           <button
                             onClick={() => toggleEdit(appr.id, displayCommands)}
-                            className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+                            className={`text-[11px] font-mono font-bold px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
                               isEditing
-                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
-                                : 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border-cyan-800/50'
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-cyan-400 border-zinc-800'
                             }`}
                           >
                             <FileCode2 className="w-3.5 h-3.5" />
@@ -472,7 +468,7 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
 
                           <button
                             onClick={() => copyCommands(isEditing ? currentText.split('\n') : displayCommands, appr.id)}
-                            className="text-[11px] font-semibold text-slate-400 hover:text-cyan-400 flex items-center gap-1 transition-colors"
+                            className="text-[11px] font-mono font-semibold text-zinc-400 hover:text-cyan-400 flex items-center gap-1 transition-colors cursor-pointer"
                           >
                             <Copy className="w-3.5 h-3.5" />
                             {copiedId === appr.id ? 'Copied!' : 'Copy Script'}
@@ -480,12 +476,19 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                         </div>
                       </div>
 
-                      {isEditing ? (
-                        <div className="space-y-2">
-                          <div className="text-[11px] text-amber-400 bg-amber-950/40 border border-amber-800/40 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                            <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            <span>✏️ <strong>EDIT MODE ACTIVE:</strong> Modified commands will be executed by the Auto-Resolver Agent and saved into the Knowledge Base SOP.</span>
+                      {/* 21st.dev Code Preview Block */}
+                      <div className="rounded-xl overflow-hidden border border-zinc-800 bg-[#09090b] shadow-xl">
+                        <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 text-[10px] text-zinc-400 font-mono">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-rose-500/80" />
+                            <span className="w-2 h-2 rounded-full bg-amber-500/80" />
+                            <span className="w-2 h-2 rounded-full bg-emerald-500/80" />
+                            <span className="ml-1 text-cyan-400 font-bold">BASH SSH PAYLOAD</span>
                           </div>
+                          <span className="text-zinc-500">Target CI: {targetIp}</span>
+                        </div>
+
+                        {isEditing ? (
                           <textarea
                             value={currentText}
                             onChange={(e) => {
@@ -493,20 +496,20 @@ export function PendingApprovalsView({ approvals, onApprove, onReject }: Pending
                               setEditedCommandsMap((prev) => ({ ...prev, [appr.id]: val }));
                             }}
                             rows={Math.max(4, currentText.split('\n').length + 1)}
-                            className="w-full bg-[#050811] border border-amber-500/50 rounded-xl p-4 font-mono text-xs text-emerald-300 focus:outline-none focus:border-amber-400 shadow-2xl leading-relaxed font-semibold"
+                            className="w-full bg-[#050811] p-4 font-mono text-xs text-emerald-300 focus:outline-none leading-relaxed font-semibold"
                             placeholder="Enter executable CLI commands (one per line)..."
                           />
-                        </div>
-                      ) : (
-                        <div className="bg-[#080c14] border border-slate-800 rounded-xl p-4 font-mono text-xs text-emerald-400 space-y-2 overflow-x-auto shadow-inner">
-                          {(currentText ? currentText.split('\n') : displayCommands).map((cmd, idx) => (
-                            <div key={idx} className="flex items-start gap-2.5">
-                              <span className="text-slate-600 select-none">$</span>
-                              <span className="text-slate-100">{cmd}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                        ) : (
+                          <div className="p-4 font-mono text-xs text-emerald-400 space-y-1.5 overflow-x-auto">
+                            {(currentText ? currentText.split('\n') : displayCommands).map((cmd, idx) => (
+                              <div key={idx} className="flex items-start gap-2.5">
+                                <span className="text-zinc-600 select-none">$</span>
+                                <span className="text-zinc-200">{cmd}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })()}

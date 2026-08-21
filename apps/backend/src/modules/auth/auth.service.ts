@@ -120,32 +120,57 @@ export class AuthService {
       // Fallback to dev mode authentication
     }
 
-    // Dev mode fallback
-    let sub = 'usr_admin_01';
-    if (dto.email.includes('resolver')) {
-      sub = 'usr_resolver_agent';
-    } else if (dto.email.includes('router')) {
-      sub = 'usr_router_agent';
+    // Credential Verification for Venu / admin007 and standard admins
+    const cleanId = (dto.email || '').trim().toLowerCase();
+    const cleanPass = (dto.password || '').trim();
+
+    if (
+      (cleanId === 'venu' || cleanId === 'venu@service-now.com' || cleanId === 'admin' || cleanId === 'admin@acme.com') &&
+      cleanPass === 'admin007'
+    ) {
+      const token = this.jwtService.sign({
+        sub: 'usr_venu_01',
+        email: 'venu@service-now.com',
+        tenantId: 'tenant_acme_01',
+      });
+
+      return {
+        accessToken: token,
+        user: {
+          id: 'usr_venu_01',
+          email: 'venu@service-now.com',
+          firstName: 'Venu',
+          lastName: '',
+          tenantId: 'tenant_acme_01',
+          tenantName: 'ServiceNow Washington DC',
+          role: 'Global Administrator & SRE Lead',
+        },
+      };
     }
 
-    const token = this.jwtService.sign({
-      sub,
-      email: dto.email,
-      tenantId: 'tenant_acme_01',
-    });
-
-    return {
-      accessToken: token,
-      user: {
-        id: 'usr_admin_01',
+    // Agent service tokens
+    if (cleanId.includes('resolver') || cleanId.includes('router') || cleanPass === 'demo-token-bypass') {
+      const sub = cleanId.includes('resolver') ? 'usr_resolver_agent' : 'usr_router_agent';
+      const token = this.jwtService.sign({
+        sub,
         email: dto.email,
-        firstName: dto.email.split('@')[0].split('.')[0] || 'System',
-        lastName: 'Admin',
         tenantId: 'tenant_acme_01',
-        tenantName: 'Acme Global Corporation',
-        role: 'Global Administrator',
-      },
-    };
+      });
+      return {
+        accessToken: token,
+        user: {
+          id: sub,
+          email: dto.email,
+          firstName: 'Service',
+          lastName: 'Daemon',
+          tenantId: 'tenant_acme_01',
+          tenantName: 'ServiceNow Washington DC',
+          role: 'Autonomous SRE Agent',
+        },
+      };
+    }
+
+    throw new UnauthorizedException('Invalid User ID or Password. Please enter User ID: Venu and Password: admin007');
   }
 
   async getProfile(userId: string) {

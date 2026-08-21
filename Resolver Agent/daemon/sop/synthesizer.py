@@ -205,7 +205,7 @@ CRITICAL RULES:
 
 Respond ONLY with valid JSON:
 {{
-  "title": "Master SOP: <action verb> <specific topic> on {ci_name}",
+  "title": "Reusable Investigative Standard Operating Procedure: <action verb> <specific topic> on {ci_name}",
   "summary": "<1-2 sentence technical explanation of what this SOP does>",
   "symptoms": [
     "{short_desc}"
@@ -231,17 +231,24 @@ Respond ONLY with valid JSON:
             if plan_content:
                 plan = safe_json_parse(plan_content)
                 if isinstance(plan, list) and len(plan) > 0: plan = plan[0]
-                logger.info(f"🧠 Knowledge base creator LLM synthesized new Master SOP using model: '{used_model}'")
+                logger.info(f"🧠 Knowledge base creator LLM synthesized new Reusable Investigative SOP using model: '{used_model}'")
 
         except Exception as e:
             logger.error(f"LLM SOP synthesis failed for {ticket_number}: {e}")
             plan = {}
 
-        kb_title = plan.get("title", f"Troubleshooting & SOP: {short_desc}")
-        summary = plan.get("summary", f"Standard Operating Procedure for {short_desc}.")
+        raw_title = plan.get("title", f"Reusable Investigative Standard Operating Procedure: {short_desc}")
+        if raw_title.startswith("Master SOP:"):
+            kb_title = raw_title.replace("Master SOP:", "Reusable Investigative Standard Operating Procedure:")
+        elif not raw_title.startswith("Reusable Investigative"):
+            kb_title = f"Reusable Investigative Standard Operating Procedure: {raw_title}"
+        else:
+            kb_title = raw_title
+
+        summary = plan.get("summary", f"Reusable Investigative Standard Operating Procedure for {short_desc}.")
         resolution_steps = plan.get("resolution_steps", [])
         safety_checks = plan.get("safety_checks", [])
-        reasoning = plan.get("reasoning", "Synthesized new SOP from scratch.")
+        reasoning = plan.get("reasoning", "Synthesized new reusable investigative SOP.")
         
         formatted_steps = []
         for step in resolution_steps:

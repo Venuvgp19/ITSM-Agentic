@@ -795,5 +795,81 @@ export class AgentGovernanceService implements OnModuleInit {
       };
     }
   }
+
+  private containedCis: Set<string> = new Set();
+  private masterKillSwitchActive: boolean = false;
+
+  async getContainmentStatus(): Promise<{ masterKillSwitch: boolean; containedCis: string[] }> {
+    return {
+      masterKillSwitch: this.masterKillSwitchActive,
+      containedCis: Array.from(this.containedCis),
+    };
+  }
+
+  async setContainmentStatus(ciId: string, status: 'CONTAINED' | 'ACTIVE', reason?: string, triggeredBy?: string) {
+    if (status === 'CONTAINED') {
+      this.containedCis.add(ciId);
+    } else {
+      this.containedCis.delete(ciId);
+    }
+
+    try {
+      await this.createHistoryEntry({
+        incidentId: 'GOVERNANCE-AUDIT',
+        incidentTitle: `Containment State Changed: ${ciId} ➔ ${status}`,
+        agentId: ciId,
+        agentName: ciId,
+        model: 'Governance Kill Switch',
+        targetCi: ciId,
+        department: 'CyberSec & Governance',
+        riskLevel: 'CRITICAL',
+        status: status === 'CONTAINED' ? 'REJECTED' : 'APPROVED',
+        actionType: status === 'CONTAINED' ? 'KILL_SWITCH_TRIGGERED' : 'RESTORED_TO_PRODUCTION',
+        humanApprover: triggeredBy || 'Venu (Global Administrator)',
+        commandExecuted: `containment_toggle --ci ${ciId} --status ${status}`,
+        executionOutput: `CI ${ciId} is now ${status}. ${reason || ''}`,
+        resolutionOutcome: `Governance lock ${status === 'CONTAINED' ? 'APPLIED' : 'REMOVED'}.`
+      });
+    } catch (err) {}
+
+    return {
+      success: true,
+      ciId,
+      status,
+      masterKillSwitch: this.masterKillSwitchActive,
+      containedCis: Array.from(this.containedCis),
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  async setMasterKillSwitch(active: boolean, reason?: string, triggeredBy?: string) {
+    this.masterKillSwitchActive = active;
+
+    try {
+      await this.createHistoryEntry({
+        incidentId: 'MASTER-KILL-SWITCH',
+        incidentTitle: `Master Fleet Kill Switch ${active ? 'TRIGGERED (FLEET HALTED)' : 'DISARMED (FLEET RESUMED)'}`,
+        agentId: 'GLOBAL_FLEET',
+        agentName: 'Master Fleet Containment',
+        model: 'Control Tower Master Kill Switch',
+        targetCi: 'All Enterprise Fleet Nodes',
+        department: 'CyberSec & Governance',
+        riskLevel: 'CRITICAL',
+        status: active ? 'REJECTED' : 'APPROVED',
+        actionType: active ? 'MASTER_KILL_SWITCH_ACTIVE' : 'MASTER_KILL_SWITCH_DISARMED',
+        humanApprover: triggeredBy || 'Venu (Global Administrator)',
+        commandExecuted: `fleet_emergency_halt --active=${active}`,
+        executionOutput: active ? 'All autonomous agent loops and SSH remediations globally halted.' : 'Autonomous agent fleet restored to active monitoring.',
+        resolutionOutcome: active ? 'EMERGENCY_CONTAINMENT_ACTIVE' : 'PRODUCTION_ACTIVE'
+      });
+    } catch (err) {}
+
+    return {
+      success: true,
+      masterKillSwitch: this.masterKillSwitchActive,
+      containedCis: Array.from(this.containedCis),
+      timestamp: new Date().toISOString()
+    };
+  }
 }
 

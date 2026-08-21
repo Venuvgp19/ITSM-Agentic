@@ -4,30 +4,30 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100 antialiased selection:bg-brand-500 selection:text-white font-sans;
+    @apply bg-[#f3f4f6] text-[#1e293b] antialiased selection:bg-[#30bb7b] selection:text-white font-sans;
   }
 }
 
 .glass-panel {
-  @apply bg-slate-900/80 backdrop-blur-md border border-slate-800 shadow-xl rounded-xl;
+  @apply bg-white border border-[#e2e8f0] shadow-sm rounded-xl;
 }
 
 .glass-panel-hover {
-  @apply transition-all duration-200 hover:border-slate-700 hover:bg-slate-900/90;
+  @apply transition-all duration-200 hover:border-[#cbd5e1] hover:bg-slate-50;
 }
 
-/* Custom Scrollbar */
+/* ServiceNow Light Theme Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #090d16;
+  background: #f1f5f9;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #cbd5e1;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #94a3b8;
 }

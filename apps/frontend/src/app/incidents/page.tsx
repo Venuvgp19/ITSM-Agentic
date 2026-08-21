@@ -12,6 +12,8 @@ import {
   Zap,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   ShieldCheck,
   Tag,
   User,
@@ -26,22 +28,67 @@ import {
   Layers,
   Sparkles,
   Brain,
-  DollarSign,
+  Filter,
+  SlidersHorizontal,
+  Info,
+  ChevronDown,
+  X,
+  Check,
+  Calendar,
+  Settings,
+  MessageSquare,
+  Menu
 } from 'lucide-react';
 
-const sampleTitles = [
-  'Core Router High Latency in NYC Datacenter',
-  'SAP ERP Financials SSO Auth Failure',
-  'Printer Spooler Offline - London HQ Floor 3',
-  'AWS East Region DB Connection Timeout',
-  'VPN Gateway Certificate Expiration Alert',
-  'Kubernetes Ingress Controller High CPU Spikes',
-  'PostgreSQL Primary Node Replication Lag',
-  'Email Gateway Outbound Mail Queue Backlog',
-  'Active Directory LDAP Sync Failure',
-  'Okta MFA Webhook Delivery Timeout',
-  'Unix Kernel Panic on Mainframe Host 01',
-];
+import { IncidentAnalysisReport } from '@/components/IncidentAnalysisReport';
+
+export const ASSIGNMENT_GROUP_MEMBERS: Record<string, string[]> = {
+  'Unix': [
+    'Richard Stallman',
+    'Linus Torvalds',
+    'Ken Thompson',
+    'Dennis Ritchie',
+  ],
+  'Network Ops': [
+    'Sarah Connor',
+    'Vint Cerf',
+    'Radia Perlman',
+    'Bob Kahn',
+  ],
+  'App Support': [
+    'Alex Mercer',
+    'Ada Lovelace',
+    'Grace Hopper',
+    'Margaret Hamilton',
+  ],
+  'Desktop Support': [
+    'David Miller',
+    'Alan Turing',
+    'Tim Berners-Lee',
+    'John von Neumann',
+  ],
+  'DBA Team': [
+    'Edgar Codd',
+    'Michael Stonebraker',
+    'Jim Gray',
+    'Larry Ellison',
+  ],
+  'SecOps': [
+    'Bruce Schneier',
+    'Gene Spafford',
+    'Whitfield Diffie',
+    'Dorothy Denning',
+  ],
+  'DevOps Ops': [
+    'Kelsey Hightower',
+    'Brendan Burns',
+    'Werner Vogels',
+    'Adrian Cockcroft',
+  ],
+  'UNASSIGNED (No Team)': [
+    'Unassigned',
+  ],
+};
 
 const departments = [
   'UNASSIGNED (No Team)',
@@ -54,71 +101,24 @@ const departments = [
   'DBA Team',
 ];
 
-const resolutionCodes = [
-  'Pending Triage',
-  'Server - Kernel & OS Patch',
-  'DB - Connection Pool & Vacuum',
-  'Application - Code & SSO Fix',
-  'Hardware - Component Replacement',
-  'Network - BGP & Interface Reset',
-  'Security - TLS & Firewall Rule',
-  'User Error - Training Provided',
-];
-
-const departmentLogTemplates: Record<string, { member: string; log: string; resCode: string }> = {
-  'UNASSIGNED (No Team)': { member: 'UNASSIGNED (Unassigned)', log: 'Unassigned incident logged.', resCode: 'Pending Triage' },
-  Unix: { member: 'Richard Stallman (Unix)', log: 'Analyzed kernel core dump, tuned sysctl kernel parameters, and restarted systemd daemon.', resCode: 'Server - Kernel & OS Patch' },
-  'Network Ops': { member: 'Sarah Connor (Network Ops)', log: 'Flushed BGP routing tables, reset interface eth0, link latency returned to <5ms.', resCode: 'Network - BGP & Interface Reset' },
-  'App Support': { member: 'Alex Mercer (App Support)', log: 'Cleared Redis session cache, updated OAuth callback endpoints, SSO login verified.', resCode: 'Application - Code & SSO Fix' },
-  'Desktop Support': { member: 'David Miller (Desktop Support)', log: 'Reinstalled printer driver, cleared print spooler queue, hardware connectivity online.', resCode: 'Hardware - Component Replacement' },
-  'DevOps Ops': { member: 'DevOps Team', log: 'Scaled Kubernetes Deployment replicas from 3 to 12, pod status Healthy.', resCode: 'Server - Kernel & OS Patch' },
-  SecOps: { member: 'Security Team', log: 'Rotated expired TLS certificates, updated firewall ingress rules, traffic unblocked.', resCode: 'Security - TLS & Firewall Rule' },
-  'DBA Team': { member: 'DBA Team', log: 'Ran autovacuum on primary table, optimized connection pool size, DB latency normal.', resCode: 'DB - Connection Pool & Vacuum' },
-};
-
+const cis = ['Unspecified CI', 'router-border-nyc-01', 'k8s-prod-cluster-east-1', 'db-postgres-primary', 'api-gateway-envoy-v2', 'vpn-gateway-01', 'control plane', 'WorkerNode1HL'];
 const callers = ['Monitoring Bot', 'Sarah Connor', 'David Miller', 'Alex Mercer', 'System Admin', 'Richard Stallman'];
-const cis = ['Unspecified CI', 'router-border-nyc-01', 'k8s-prod-cluster-east-1', 'db-postgres-primary', 'api-gateway-envoy-v2', 'vpn-gateway-01', 'control plane'];
-const technicians = ['UNASSIGNED (Unassigned)', 'Richard Stallman (Unix)', 'Sarah Connor (Network Ops)', 'Alex Mercer (App Support)', 'David Miller (Desktop Support)', 'DBA Team', 'Security Team', 'System Admin'];
-
-function generate1000InitialIncidents() {
-  const list = [];
-  for (let i = 1; i <= 1000; i++) {
-    const title = `${sampleTitles[i % sampleTitles.length]} (#${i})`;
-    const isUnassigned = i % 4 === 0 || i > 766;
-    const dept = isUnassigned ? 'UNASSIGNED (No Team)' : departments[i % (departments.length - 1) + 1];
-    const deptInfo = departmentLogTemplates[dept] || departmentLogTemplates['UNASSIGNED (No Team)'];
-    const caller = callers[i % callers.length];
-    const resolutionCode = isUnassigned ? 'Pending Triage' : resolutionCodes[i % resolutionCodes.length];
-
-    list.push({
-      id: `INC${String(i).padStart(7, '0')}`,
-      title,
-      priority: i % 5 === 0 ? 'P1' : i % 3 === 0 ? 'P2' : i % 2 === 0 ? 'P3' : 'P4',
-      state: isUnassigned ? 'NEW' : 'RESOLVED',
-      caller,
-      department: dept,
-      assignedTo: isUnassigned ? 'UNASSIGNED (Unassigned)' : deptInfo.member,
-      resolutionCode,
-      resolutionNotes: isUnassigned ? 'Pending manual triage.' : deptInfo.log,
-      createdAt: '2026-07-21',
-    });
-  }
-  return list;
-}
 
 export default function IncidentsPage() {
   const router = useRouter();
   const [incidents, setIncidents] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [searchField, setSearchField] = useState('All');
   const [deptFilter, setDeptFilter] = useState('ALL');
   const [priorityFilter, setPriorityFilter] = useState('ALL');
+  const [stateFilter, setStateFilter] = useState('ALL');
   const [page, setPage] = useState(1);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState(20);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'matrix' | 'analysis'>('matrix');
 
-  // Full 12-Field Form State (Allows setting Department to UNASSIGNED)
+  // ServiceNow Incident Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formState, setFormState] = useState({
     shortDescription: '',
@@ -128,11 +128,50 @@ export default function IncidentsPage() {
     department: 'UNASSIGNED (No Team)',
     assignedTo: 'UNASSIGNED (Unassigned)',
     caller: 'System Admin',
-    ci: 'Unspecified CI',
+    ci: 'control plane',
     resolutionCode: 'Pending Triage',
     resolutionNotes: '',
     state: 'NEW',
   });
+
+  const formatDateTimeStr = (dt?: string | Date | null) => {
+    if (!dt) return '2026-08-21 15:25:34';
+    if (typeof dt === 'string') {
+      const trimmed = dt.trim();
+      if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}/.test(trimmed)) {
+        return trimmed.slice(0, 19);
+      }
+      const time12Match = trimmed.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)/i);
+      if (time12Match) {
+        let hours = parseInt(time12Match[1], 10);
+        const minutes = time12Match[2];
+        const seconds = time12Match[3] || '00';
+        const ampm = time12Match[4].toLowerCase();
+        if (ampm === 'pm' && hours < 12) hours += 12;
+        if (ampm === 'am' && hours === 12) hours = 0;
+        const hh = hours.toString().padStart(2, '0');
+        const dateMatch = trimmed.match(/(\d{4}-\d{2}-\d{2})/);
+        const datePart = dateMatch ? dateMatch[1] : '2026-08-21';
+        return `${datePart} ${hh}:${minutes}:${seconds}`;
+      }
+    }
+    try {
+      const d = new Date(dt);
+      if (isNaN(d.getTime())) return String(dt);
+      return d.toISOString().replace('T', ' ').slice(0, 19);
+    } catch {
+      return String(dt);
+    }
+  };
+
+  const handleModalDeptChange = (newDept: string) => {
+    const eligible = ASSIGNMENT_GROUP_MEMBERS[newDept] || ['UNASSIGNED (Unassigned)'];
+    setFormState((prev) => ({
+      ...prev,
+      department: newDept,
+      assignedTo: eligible.includes(prev.assignedTo) ? prev.assignedTo : eligible[0],
+    }));
+  };
 
   const loadIncidentsFromDatabase = async () => {
     try {
@@ -140,81 +179,93 @@ export default function IncidentsPage() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          const apiMapped = data.map((inc: any) => ({
-            id: inc.id,
-            number: inc.number || inc.id,
-            title: inc.shortDescription || inc.title,
-            priority: (inc.priority || '').includes('P1') ? 'P1' : (inc.priority || '').includes('P2') ? 'P2' : (inc.priority || '').includes('P3') ? 'P3' : 'P4',
-            state: inc.state || 'NEW',
-            caller: inc.caller || 'Monitoring Bot',
-            department: inc.department || 'UNASSIGNED (No Team)',
-            assignedTo: inc.assignedTo || 'UNASSIGNED (Unassigned)',
-            resolutionCode: inc.resolutionCode || 'Pending Triage',
-            resolutionNotes: inc.resolutionNotes || '',
-            createdAt: inc.createdAt || '2026-07-21',
-          }));
+          const apiMapped = data.map((inc: any) => {
+            const incDept = inc.department || 'UNASSIGNED (No Team)';
+            const eligibleForDept = ASSIGNMENT_GROUP_MEMBERS[incDept] || ['UNASSIGNED (Unassigned)'];
+            let mappedAssigned = inc.assignedTo || inc.assignedToName || eligibleForDept[0];
+            
+            // If the assigned person in database is unassigned but department is Unix/etc., map to valid group member
+            if (!eligibleForDept.includes(mappedAssigned) && incDept !== 'UNASSIGNED (No Team)') {
+              mappedAssigned = eligibleForDept[0];
+            }
 
-          apiMapped.sort((a, b) => {
-            const numA = parseInt((a.number || '').replace(/\D/g, ''), 10) || 0;
-            const numB = parseInt((b.number || '').replace(/\D/g, ''), 10) || 0;
-            return numB - numA;
+            return {
+              id: inc.id,
+              number: inc.number || inc.id,
+              title: inc.shortDescription || inc.title,
+              priority: (inc.priority || '').includes('P1') ? '1 - Critical' : (inc.priority || '').includes('P2') ? '2 - High' : (inc.priority || '').includes('P3') ? '3 - Moderate' : '4 - Low',
+              state: inc.state || 'NEW',
+              caller: inc.caller || 'System Admin',
+              department: incDept,
+              assignedTo: mappedAssigned,
+              ci: inc.configurationItem || 'Unspecified CI',
+              resolutionCode: inc.resolutionCode || 'Pending Triage',
+              resolutionNotes: inc.resolutionNotes || '',
+              openedAt: inc.openedAt || inc.createdAt,
+              openedAtFormatted: formatDateTimeStr(inc.openedAt || inc.createdAt),
+            };
           });
           setIncidents(apiMapped);
         }
       }
-    } catch (err) {
-      console.error('Failed to load incidents from single source DB:', err);
+    } catch {
+      // Backend handles fallback
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('custom_user_incidents');
-    }
     loadIncidentsFromDatabase();
-    const interval = setInterval(loadIncidentsFromDatabase, 5000);
+    const interval = setInterval(loadIncidentsFromDatabase, 6000);
     return () => clearInterval(interval);
   }, []);
 
+  const isUnassignedIncident = (inc: any) => {
+    const d = (inc.department || '').trim().toUpperCase();
+    const a = (inc.assignedTo || '').trim().toUpperCase();
+    return d === 'UNASSIGNED (NO TEAM)' || d === 'UNASSIGNED' || a === 'UNASSIGNED (UNASSIGNED)' || a === 'UNASSIGNED' || a === '';
+  };
+
   const computedPriority = useMemo(() => {
     if (formState.impact === 'ENTERPRISE' && formState.urgency === 'CRITICAL') return 'P1';
-    if (formState.impact === 'ENTERPRISE' || formState.urgency === 'CRITICAL') return 'P1';
-    if (formState.impact === 'DEPARTMENT' || formState.urgency === 'HIGH') return 'P2';
-    if (formState.urgency === 'MEDIUM') return 'P3';
-    return 'P4';
+    if (formState.impact === 'DEPARTMENT' && formState.urgency === 'CRITICAL') return 'P2';
+    if (formState.impact === 'USER' && formState.urgency === 'LOW') return 'P4';
+    return 'P3';
   }, [formState.impact, formState.urgency]);
-
-  const isUnassignedIncident = (inc: any) => {
-    const dept = (inc.department || '').toUpperCase();
-    const assigned = (inc.assignedTo || '').toUpperCase();
-    return dept.includes('UNASSIGNED') || assigned.includes('UNASSIGNED') || !dept || !assigned;
-  };
 
   const filteredIncidents = useMemo(() => {
     return incidents.filter((inc) => {
+      const q = search.toLowerCase();
       const matchesSearch =
-        inc.id.toLowerCase().includes(search.toLowerCase()) ||
-        inc.title.toLowerCase().includes(search.toLowerCase()) ||
-        inc.department.toLowerCase().includes(search.toLowerCase()) ||
-        inc.assignedTo.toLowerCase().includes(search.toLowerCase());
+        !search ||
+        (inc.number && inc.number.toLowerCase().includes(q)) ||
+        (inc.title && inc.title.toLowerCase().includes(q)) ||
+        (inc.caller && inc.caller.toLowerCase().includes(q)) ||
+        (inc.ci && inc.ci.toLowerCase().includes(q)) ||
+        (inc.department && inc.department.toLowerCase().includes(q)) ||
+        (inc.assignedTo && inc.assignedTo.toLowerCase().includes(q)) ||
+        (inc.openedAtFormatted && inc.openedAtFormatted.toLowerCase().includes(q));
+
       const matchesDept =
         deptFilter === 'ALL'
           ? true
           : deptFilter.includes('UNASSIGNED')
           ? isUnassignedIncident(inc)
           : inc.department === deptFilter;
-      const matchesPriority = priorityFilter === 'ALL' || inc.priority === priorityFilter;
-      return matchesSearch && matchesDept && matchesPriority;
-    });
-  }, [incidents, search, deptFilter, priorityFilter]);
 
-  const totalPages = Math.ceil(filteredIncidents.length / pageSize);
+      const matchesPriority = priorityFilter === 'ALL' || inc.priority.includes(priorityFilter);
+      const matchesState = stateFilter === 'ALL' || inc.state === stateFilter;
+
+      return matchesSearch && matchesDept && matchesPriority && matchesState;
+    });
+  }, [incidents, search, deptFilter, priorityFilter, stateFilter]);
+
+  const totalPages = Math.ceil(filteredIncidents.length / pageSize) || 1;
   const paginatedIncidents = useMemo(() => {
     const start = (page - 1) * pageSize;
     return filteredIncidents.slice(start, start + pageSize);
-  }, [filteredIncidents, page]);
+  }, [filteredIncidents, page, pageSize]);
 
   const handleCreateIncident = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -263,7 +314,7 @@ export default function IncidentsPage() {
         department: 'UNASSIGNED (No Team)',
         assignedTo: 'UNASSIGNED (Unassigned)',
         caller: 'System Admin',
-        ci: 'Unspecified CI',
+        ci: 'control plane',
         resolutionCode: 'Pending Triage',
         resolutionNotes: '',
         state: 'NEW',
@@ -271,404 +322,410 @@ export default function IncidentsPage() {
     }
   };
 
-  return (
-    <div className="p-8 space-y-8 bg-slate-950 text-slate-100 min-h-screen">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-800">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-              Incident Management Console
-            </h1>
-            <span className="px-3 py-1 text-xs font-bold text-brand-400 bg-brand-500/10 border border-brand-500/30 rounded-full">
-              Enterprise ITSM Database (1,000 Records)
-            </span>
-          </div>
-          <p className="text-slate-400 text-sm mt-1">
-            Real-time incident management console connected directly to the database API (<code className="text-brand-400">/api/v1/incidents</code>).
-          </p>
-        </div>
+  const modalEligibleMembers = ASSIGNMENT_GROUP_MEMBERS[formState.department] || ['UNASSIGNED (Unassigned)'];
 
-        <div className="flex items-center gap-3">
+  return (
+    <div className="flex flex-col min-h-full bg-[#f8fafc] text-slate-800 font-sans text-xs">
+      {/* 1. ServiceNow Sub-Header with Dropdown Search & Pagination controls */}
+      <div className="bg-white border-b border-[#cbd5e1] px-4 py-2 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+        {/* Left: Hamburger & Title & Search by Column */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <button className="p-1 hover:bg-slate-100 rounded text-slate-700 cursor-pointer">
+            <Menu className="w-4 h-4" />
+          </button>
+
+          <span className="text-sm font-extrabold text-[#1a2c30] tracking-tight">
+            Incidents
+          </span>
+
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-slate-600 font-medium">Search</span>
+            <select
+              value={searchField}
+              onChange={(e) => setSearchField(e.target.value)}
+              className="bg-white border border-[#cbd5e1] rounded px-2 py-1 text-xs text-slate-800 font-medium focus:outline-none focus:border-[#288554]"
+            >
+              <option value="All">for text</option>
+              <option value="Number">Number</option>
+              <option value="Short Description">Short Description</option>
+              <option value="Caller">Caller</option>
+              <option value="CI">Configuration Item</option>
+            </select>
+
+            <div className="relative">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search..."
+                className="bg-white border border-[#cbd5e1] focus:border-[#288554] rounded px-2.5 py-1 text-xs text-slate-900 placeholder-slate-400 focus:outline-none w-44 transition"
+              />
+            </div>
+          </div>
+
           <button
             onClick={() => setIsModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-950 font-bold text-xs shadow-lg flex items-center gap-2 transition-all cursor-pointer"
+            className="px-3 py-1 bg-[#288554] hover:bg-[#30bb7b] text-white font-bold rounded flex items-center gap-1 transition cursor-pointer shadow-xs text-xs ml-2"
           >
-            <Plus className="w-4 h-4 text-slate-950" />
-            Log New Incident Record
+            <Plus className="w-3.5 h-3.5 stroke-[3]" />
+            <span>New</span>
+          </button>
+        </div>
+
+        {/* Right: Activity pulse & Fast Navigation Bar */}
+        <div className="flex items-center gap-2 text-xs text-slate-700 font-mono">
+          <Activity className="w-4 h-4 text-[#288554] mr-1" />
+
+          <button
+            onClick={() => setPage(1)}
+            disabled={page === 1}
+            className="p-1 hover:bg-slate-100 rounded disabled:opacity-30 cursor-pointer"
+            title="First Page"
+          >
+            <ChevronsLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="p-1 hover:bg-slate-100 rounded disabled:opacity-30 cursor-pointer"
+            title="Previous Page"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <span className="border border-[#cbd5e1] bg-white px-2 py-0.5 rounded text-slate-900 font-bold">
+            {page}
+          </span>
+
+          <span className="text-slate-600 text-[11px]">
+            to {Math.min(page * pageSize, filteredIncidents.length)} of {filteredIncidents.length}
+          </span>
+
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="p-1 hover:bg-slate-100 rounded disabled:opacity-30 cursor-pointer"
+            title="Next Page"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setPage(totalPages)}
+            disabled={page >= totalPages}
+            className="p-1 hover:bg-slate-100 rounded disabled:opacity-30 cursor-pointer"
+            title="Last Page"
+          >
+            <ChevronsRight className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-        <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md space-y-2">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>TOTAL DATABASE INCIDENTS</span>
-            <FileText className="w-4 h-4 text-brand-400" />
-          </div>
-          <div className="text-3xl font-black text-white">{incidents.length}</div>
-          <p className="text-[11px] text-slate-500">Main database store</p>
+      {/* 2. Filter Condition Breadcrumbs */}
+      <div className="bg-[#f8fafc] border-b border-[#e2e8f0] px-4 py-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-mono">
+          <MessageSquare className="w-3.5 h-3.5 text-[#288554]" />
+          <Filter className="w-3.5 h-3.5 text-[#288554]" />
+          <span className="text-[#1a2c30] font-bold">
+            All &gt; Assignment group is {deptFilter === 'ALL' ? 'All Operations' : deptFilter} &gt; Active = true
+          </span>
         </div>
 
-        <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md space-y-2">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>UNASSIGNED QUEUE</span>
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-3xl font-black text-amber-400">
-            {incidents.filter(isUnassignedIncident).length}
-          </div>
-          <p className="text-[11px] text-slate-500">Pending team triage</p>
-        </div>
-
-        <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md space-y-2">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>ASSIGNED & RESOLVED</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-3xl font-black text-emerald-400">
-            {incidents.filter(i => !isUnassignedIncident(i)).length}
-          </div>
-          <p className="text-[11px] text-slate-500">Assigned to engineering teams</p>
-        </div>
-
-        <div className="p-6 rounded-xl bg-slate-900/80 border border-slate-800 shadow-md space-y-2">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>P1 CRITICAL INCIDENTS</span>
-            <Zap className="w-4 h-4 text-red-400" />
-          </div>
-          <div className="text-3xl font-black text-red-400">
-            {incidents.filter(i => i.priority === 'P1').length}
-          </div>
-          <p className="text-[11px] text-slate-500">High priority SLA monitoring</p>
-        </div>
-      </div>
-
-      {/* Search & Filter Bar */}
-      <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:w-96">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
-          <input
-            type="text"
-            placeholder="Search by ID (e.g. INC0000005), title, group, or technician..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-xs text-slate-100 focus:outline-none focus:border-brand-500"
-          />
-        </div>
-
-        <div className="flex items-center gap-3 text-xs w-full md:w-auto overflow-x-auto">
+        <div className="flex items-center gap-2">
+          {/* Assignment Group Filter */}
           <select
             value={deptFilter}
-            onChange={e => setDeptFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-300 focus:outline-none focus:border-brand-500"
+            onChange={(e) => {
+              setDeptFilter(e.target.value);
+              setPage(1);
+            }}
+            className="bg-white border border-[#cbd5e1] text-slate-800 text-xs rounded px-2 py-1 focus:outline-none"
           >
-            <option value="ALL">All Departments</option>
-            {departments.map(d => (
+            <option value="ALL">All Groups</option>
+            <option value="UNASSIGNED (No Team)">⚡ UNASSIGNED (No Team)</option>
+            {departments.filter(d => !d.includes('UNASSIGNED')).map(d => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
 
+          {/* Priority Filter */}
           <select
             value={priorityFilter}
-            onChange={e => setPriorityFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-300 focus:outline-none focus:border-brand-500"
+            onChange={(e) => {
+              setPriorityFilter(e.target.value);
+              setPage(1);
+            }}
+            className="bg-white border border-[#cbd5e1] text-slate-800 text-xs rounded px-2 py-1 focus:outline-none"
           >
             <option value="ALL">All Priorities</option>
-            <option value="P1">P1 - Critical</option>
-            <option value="P2">P2 - High</option>
-            <option value="P3">P3 - Moderate</option>
-            <option value="P4">P4 - Low</option>
+            <option value="1 - Critical">1 - Critical</option>
+            <option value="2 - High">2 - High</option>
+            <option value="3 - Moderate">3 - Moderate</option>
+            <option value="4 - Low">4 - Low</option>
           </select>
         </div>
       </div>
 
-          {/* Incidents Table */}
-      {isLoading ? (
-        <div className="p-12 text-center text-slate-400 font-semibold bg-slate-900/40 rounded-xl border border-slate-800">
-          Loading 1,000+ Incidents from PostgreSQL Database...
-        </div>
-      ) : (
-        <>
-          <div className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden shadow-xl">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950 text-slate-400 uppercase font-semibold text-[10px] tracking-wider border-b border-slate-800">
+      {/* 3. High-Contrast ServiceNow Light Data Table */}
+      <div className="flex-1 bg-white">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-white border-b-2 border-[#cbd5e1] text-[#2d3748] font-bold text-[11px] sticky top-0 z-10 select-none">
+                <th className="p-2.5 w-8 text-center">
+                  <input type="checkbox" className="rounded border-slate-400 text-[#288554] focus:ring-0" />
+                </th>
+                <th className="p-2.5 w-10 text-center text-[#288554]">
+                  <span className="flex items-center justify-center gap-1">
+                    <Settings className="w-3.5 h-3.5 cursor-pointer text-slate-500 hover:text-[#288554]" />
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1 cursor-pointer hover:text-[#0284c7]">
+                    <span className="text-[10px] text-slate-400">☰</span> Number
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> Short Description
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> Configuration Item
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1 cursor-pointer text-[#288554]">
+                    <span className="text-[10px]">☰</span> Priority ▼
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> State
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> Assignment Group
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> Assigned To
+                  </span>
+                </th>
+                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
+                  <span className="flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400">☰</span> Opened Date & Time
+                  </span>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#e5e7eb]">
+              {isLoading ? (
                 <tr>
-                  <th className="px-6 py-4">Incident Number</th>
-                  <th className="px-6 py-4">Priority / State</th>
-                  <th className="px-6 py-4">Short Description & Details</th>
-                  <th className="px-6 py-4">Database Department / Group</th>
-                  <th className="px-6 py-4">Assigned Technician</th>
+                  <td colSpan={10} className="text-center py-16 text-slate-500 font-medium">
+                    Querying ServiceNow PostgreSQL database records...
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {paginatedIncidents.map(item => (
+              ) : paginatedIncidents.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="text-center py-16 text-slate-500 font-medium">
+                    No incident records match the active query.
+                  </td>
+                </tr>
+              ) : (
+                paginatedIncidents.map((inc, idx) => (
                   <tr
-                    key={item.id}
-                    onClick={() => router.push(`/incidents/${item.id}`)}
-                    className="hover:bg-slate-800/40 cursor-pointer transition-colors"
+                    key={inc.id}
+                    onClick={() => router.push(`/incidents/${inc.id}`)}
+                    className={`transition-colors cursor-pointer ${
+                      idx % 2 === 0 ? 'bg-white' : 'bg-[#f2f4f7]'
+                    } hover:bg-[#e6f0f2]`}
                   >
-                    <td className="px-6 py-4 font-mono font-bold text-brand-400">
-                      {item.number}
+                    <td className="p-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" className="rounded border-slate-400 text-[#288554] focus:ring-0" />
                     </td>
-                    <td className="px-6 py-4 space-y-1">
-                      <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded ${
-                        item.priority === 'P1' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                        item.priority === 'P2' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
-                        'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                      }`}>
-                        {item.priority}
+                    <td className="p-2.5 text-center">
+                      <div className="w-4 h-4 rounded-full border border-[#288554] text-[#288554] flex items-center justify-center font-bold text-[10px] mx-auto hover:bg-[#288554] hover:text-white transition">
+                        i
+                      </div>
+                    </td>
+                    <td className="p-2.5 font-mono font-bold text-[#1a2c30] underline hover:text-[#0284c7] whitespace-nowrap">
+                      {inc.number}
+                    </td>
+                    <td className="p-2.5 font-medium text-[#2d3748] max-w-md truncate" title={inc.title}>
+                      {inc.title}
+                    </td>
+                    <td className="p-2.5 font-mono text-[11px] text-[#2d3748] underline hover:text-[#0284c7] whitespace-nowrap">
+                      {inc.ci}
+                    </td>
+                    <td className="p-2.5 whitespace-nowrap font-bold">
+                      {inc.priority.includes('1') ? (
+                        <span className="text-rose-700">1 - Critical</span>
+                      ) : inc.priority.includes('2') ? (
+                        <span className="text-orange-700">2 - High</span>
+                      ) : (
+                        <span className="text-amber-800">3 - Moderate</span>
+                      )}
+                    </td>
+                    <td className="p-2.5 whitespace-nowrap">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#e6f7ef] text-[#1e6844] border border-[#30bb7b]/30">
+                        {inc.state}
                       </span>
-                      <div className="text-[10px] text-slate-400">{item.state}</div>
                     </td>
-                    <td className="px-6 py-4 max-w-md">
-                      <div className="font-semibold text-slate-100">{item.title}</div>
-                      <div className="text-slate-400 text-[11px] truncate">{item.resolutionNotes || 'Pending triage notes'}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded text-[10px] font-bold ${
-                        item.department.includes('UNASSIGNED') ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      }`}>
-                        {item.department}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-semibold text-slate-200">
-                      {item.assignedTo}
+                    <td className="p-2.5 text-[#2d3748] whitespace-nowrap">{inc.department}</td>
+                    <td className="p-2.5 text-[#2d3748] truncate max-w-[150px] whitespace-nowrap font-medium">{inc.assignedTo}</td>
+                    <td className="p-2.5 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                      {inc.openedAtFormatted}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-          {/* Pagination Controls */}
-          <div className="flex items-center justify-between border-t border-slate-800 pt-4 text-xs text-slate-400">
-            <span>
-              Showing {filteredIncidents.length > 0 ? (page - 1) * pageSize + 1 : 0} -{' '}
-              {Math.min(page * pageSize, filteredIncidents.length)} of {filteredIncidents.length} database incidents
-            </span>
-
-            <div className="flex items-center gap-2">
-              <button
-                disabled={page === 1}
-                onClick={() => setPage(page - 1)}
-                className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 disabled:opacity-50 transition"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="font-semibold text-slate-200 px-2">
-                Page {page} of {totalPages || 1}
-              </span>
-              <button
-                disabled={page === totalPages || totalPages === 0}
-                onClick={() => setPage(page + 1)}
-                className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 disabled:opacity-50 transition"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Comprehensive 12-Field Incident Creation Modal */}
+      {/* 4. ServiceNow Create Record Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 space-y-5 shadow-2xl my-8">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <div>
-                <h3 className="font-extrabold text-white text-lg flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-brand-400" /> Create Incident & Update All Fields
-                </h3>
-                <p className="text-xs text-slate-400">Fill in any or all 12 fields. Department can be set to UNASSIGNED (No Team).</p>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#cbd5e1] rounded-xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-[#1a2c30] text-white px-5 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-sm">Incident - New Record</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#288554] text-white font-bold">
+                  {computedPriority}
+                </span>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 rounded text-slate-300 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <form onSubmit={handleCreateIncident} className="space-y-4 text-xs">
-              {/* Row 1: Short Description & State */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-slate-300 font-bold mb-1">1. Short Description / Title *</label>
+            <form onSubmit={handleCreateIncident} className="p-6 space-y-6 overflow-y-auto flex-1 text-xs bg-[#f8fafc]">
+              <div className="space-y-3 bg-white p-4 rounded border border-[#e2e8f0] shadow-sm">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">
+                    Short Description <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="text"
                     required
                     value={formState.shortDescription}
-                    onChange={e => setFormState({ ...formState, shortDescription: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-brand-500"
-                    placeholder="e.g. Core Router Latency Spike on NYC Datacenter Switch"
+                    onChange={(e) => setFormState({ ...formState, shortDescription: e.target.value })}
+                    placeholder="Brief summary of the issue..."
+                    className="w-full bg-white border border-[#cbd5e1] focus:border-[#288554] rounded p-2.5 text-xs text-slate-900 focus:outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">2. State</label>
-                  <select
-                    value={formState.state}
-                    onChange={e => setFormState({ ...formState, state: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-brand-500"
-                  >
-                    <option value="NEW">NEW (Unassigned Triage)</option>
-                    <option value="IN_PROGRESS">IN_PROGRESS</option>
-                    <option value="ON_HOLD">ON_HOLD</option>
-                    <option value="RESOLVED">RESOLVED</option>
-                    <option value="CLOSED">CLOSED</option>
-                  </select>
+                  <label className="block text-slate-700 font-bold mb-1">Detailed Description</label>
+                  <textarea
+                    rows={2}
+                    value={formState.description}
+                    onChange={(e) => setFormState({ ...formState, description: e.target.value })}
+                    placeholder="Enter diagnostic logs..."
+                    className="w-full bg-white border border-[#cbd5e1] focus:border-[#288554] rounded p-2.5 text-xs text-slate-900 focus:outline-none font-mono"
+                  />
                 </div>
               </div>
 
-              {/* Row 2: Impact & Urgency & Computed Priority */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">3. Impact</label>
-                  <select
-                    value={formState.impact}
-                    onChange={e => setFormState({ ...formState, impact: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-100 focus:outline-none focus:border-brand-500"
-                  >
-                    <option value="ENTERPRISE">ENTERPRISE (Whole Org)</option>
-                    <option value="DEPARTMENT">DEPARTMENT (Multiple Teams)</option>
-                    <option value="TEAM">TEAM (Single Group)</option>
-                    <option value="INDIVIDUAL">INDIVIDUAL (Single User)</option>
-                  </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded border border-[#e2e8f0] shadow-sm">
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Caller</label>
+                    <select
+                      value={formState.caller}
+                      onChange={(e) => setFormState({ ...formState, caller: e.target.value })}
+                      className="w-full bg-white border border-[#cbd5e1] rounded p-2 text-xs text-slate-900 focus:outline-none"
+                    >
+                      {callers.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Configuration Item (CI)</label>
+                    <select
+                      value={formState.ci}
+                      onChange={(e) => setFormState({ ...formState, ci: e.target.value })}
+                      className="w-full bg-white border border-[#cbd5e1] rounded p-2 text-xs text-slate-900 focus:outline-none font-mono"
+                    >
+                      {cis.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Assignment Group</label>
+                    <select
+                      value={formState.department}
+                      onChange={(e) => handleModalDeptChange(e.target.value)}
+                      className="w-full bg-white border border-[#cbd5e1] rounded p-2 text-xs text-slate-900 focus:border-[#288554] focus:outline-none font-bold"
+                    >
+                      {departments.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">4. Urgency</label>
-                  <select
-                    value={formState.urgency}
-                    onChange={e => setFormState({ ...formState, urgency: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-100 focus:outline-none focus:border-brand-500"
-                  >
-                    <option value="CRITICAL">CRITICAL (Immediate Outage)</option>
-                    <option value="HIGH">HIGH (Degraded Performance)</option>
-                    <option value="MEDIUM">MEDIUM (Minor Impairment)</option>
-                    <option value="LOW">LOW (Informational)</option>
-                  </select>
-                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">State</label>
+                    <select
+                      value={formState.state}
+                      onChange={(e) => setFormState({ ...formState, state: e.target.value })}
+                      className="w-full bg-white border border-[#cbd5e1] rounded p-2 text-xs text-slate-900 focus:outline-none"
+                    >
+                      <option value="NEW">New</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="ON_HOLD">On Hold</option>
+                      <option value="RESOLVED">Resolved</option>
+                      <option value="CLOSED">Closed</option>
+                    </select>
+                  </div>
 
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">5. Priority (Auto Calculated)</label>
-                  <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 font-mono font-bold text-amber-400">
-                    {computedPriority} (Matrix Calculated)
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">
+                      Assigned To <span className="text-slate-400 font-normal">({formState.department} Only)</span>
+                    </label>
+                    <select
+                      value={formState.assignedTo}
+                      onChange={(e) => setFormState({ ...formState, assignedTo: e.target.value })}
+                      className="w-full bg-white border border-[#cbd5e1] rounded p-2 text-xs text-slate-900 focus:border-[#288554] focus:outline-none font-medium"
+                    >
+                      {modalEligibleMembers.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
 
-              {/* Row 3: Department / Team (Allows UNASSIGNED) & Assigned Technician */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">
-                    6. Department / Ticket Group <span className="text-amber-400">(Can be UNASSIGNED)</span>
-                  </label>
-                  <select
-                    value={formState.department}
-                    onChange={e => setFormState({ ...formState, department: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-semibold focus:outline-none focus:border-brand-500"
-                  >
-                    {departments.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">7. Assigned Technician</label>
-                  <select
-                    value={formState.assignedTo}
-                    onChange={e => setFormState({ ...formState, assignedTo: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-brand-500"
-                  >
-                    {technicians.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 4: Caller & Configuration Item */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">8. Caller / Reporter</label>
-                  <select
-                    value={formState.caller}
-                    onChange={e => setFormState({ ...formState, caller: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-brand-500"
-                  >
-                    {callers.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">9. Configuration Item (CI)</label>
-                  <select
-                    value={formState.ci}
-                    onChange={e => setFormState({ ...formState, ci: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-brand-500"
-                  >
-                    {cis.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 5: Detailed Symptoms Description */}
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">10. Detailed Description / Symptoms</label>
-                <textarea
-                  rows={2}
-                  value={formState.description}
-                  onChange={e => setFormState({ ...formState, description: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-brand-500"
-                  placeholder="Detailed diagnostic steps and log telemetry..."
-                />
-              </div>
-
-              {/* Row 6: Resolution Code & Resolution Notes */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-slate-300 font-bold mb-1">11. Resolution Code</label>
-                  <select
-                    value={formState.resolutionCode}
-                    onChange={e => setFormState({ ...formState, resolutionCode: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-brand-500"
-                  >
-                    {resolutionCodes.map(rc => (
-                      <option key={rc} value={rc}>{rc}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-slate-300 font-bold mb-1">12. Resolution Notes / Log</label>
-                  <input
-                    type="text"
-                    value={formState.resolutionNotes}
-                    onChange={e => setFormState({ ...formState, resolutionNotes: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-brand-500"
-                    placeholder="Root-cause diagnostic analysis..."
-                  />
-                </div>
-              </div>
-
-              {/* Form Buttons */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                  className="px-4 py-2 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold shadow-lg transition flex items-center gap-2"
+                  disabled={isSubmitting || !formState.shortDescription}
+                  className="px-5 py-2 rounded bg-[#288554] hover:bg-[#30bb7b] text-white font-bold transition shadow-sm cursor-pointer disabled:opacity-40"
                 >
-                  <Database className="w-4 h-4" />
-                  {isSubmitting ? 'Saving to Database...' : 'Save Incident in Database'}
+                  {isSubmitting ? 'Saving...' : 'Submit Incident'}
                 </button>
               </div>
             </form>

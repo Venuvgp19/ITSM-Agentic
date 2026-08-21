@@ -1,24 +1,17 @@
 import React from 'react';
 import './globals.css';
-import { Sidebar } from '@/components/layout/Sidebar';
-import { Topbar } from '@/components/layout/Topbar';
+import { AuthGuard } from '@/components/layout/AuthGuard';
 
 export const metadata = {
-  title: 'Enterprise ITSM Platform',
-  description: 'Next-Generation Enterprise IT Service Management Platform inspired by ServiceNow',
+  title: 'ServiceNow Enterprise ITSM Platform',
+  description: 'Enterprise IT Service Management Platform powered by ServiceNow Experience and Autonomous AI Agents',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-slate-950 text-slate-100 flex h-screen overflow-hidden antialiased">
-        <Sidebar />
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          <Topbar />
-          <main className="flex-1 overflow-y-auto p-6 bg-slate-950/40">
-            {children}
-          </main>
-        </div>
+    <html lang="en">
+      <body className="bg-[#162224] text-[#1e293b] antialiased font-sans">
+        <AuthGuard>{children}</AuthGuard>
       </body>
     </html>
   );

@@ -275,55 +275,16 @@ class LocalVectorDB:
 # Instantiate ChromaDB Vector Database Engine
 vector_db = ChromaVectorDB()
 
-def sync_vector_db_with_kb(token, client, vdb):
-    from ..itsm.client import fetch_kb_articles
+def sync_vector_db_with_kb(token=None, client=None, vdb=None):
+    """
+    Synchronizes vector database with Knowledge Base articles.
+    Uses MD5 content-hash and timestamp matching so only actually modified
+    or created articles are re-indexed.
+    """
     try:
-        kb_articles = fetch_kb_articles(token)
-        indexed_numbers = vdb.get_indexed_numbers()
-        
-        # 1. Purge stale articles no longer in database
-        kb_numbers = {art.get("number") for art in kb_articles if art.get("number")}
-        stale_numbers = [num for num in indexed_numbers if num not in kb_numbers]
-        for num in stale_numbers:
-            logger.info(f"Removing stale indexed article {num} from vector database...")
-            vdb.delete_kb(num)
-
-        # 2. Check for missing or updated articles
-        res = vdb.collection.get() if hasattr(vdb, "collection") and vdb.collection else None
-        meta_map = {}
-        if res and "metadatas" in res and res["metadatas"]:
-            for doc_id, meta in zip(res["ids"], res["metadatas"]):
-                if meta and "number" in meta:
-                    meta_map[meta["number"]] = meta
-        
-        for art in kb_articles:
-            art_id = art.get("id") or art.get("number")
-            art_number = art.get("number")
-            art_updated = art.get("updatedAt")
-            
-            title = art.get("title", "")
-            summary = art.get("summary", "")
-            content_to_embed = build_kb_embed_text(
-                title=title,
-                summary=summary,
-                symptoms=art.get("symptoms", []),
-                root_cause=art.get("rootCause", "")
-            )
-            
-            dept = infer_kb_department(art)
-            should_index = False
-            if art_number not in indexed_numbers:
-                should_index = True
-            elif art_number in meta_map:
-                stored_updated = meta_map[art_number].get("updatedAt")
-                stored_dept = meta_map[art_number].get("department")
-                if str(stored_updated) != str(art_updated) or not stored_dept or stored_dept != dept:
-                    logger.info(f"Detected updates/department assignment in {art_number} (Dept: {dept}). Re-indexing...")
-                    should_index = True
-                    
-            if should_index:
-                emb = get_embedding(content_to_embed, input_type="passage")
-                vdb.add_kb_embedding(art_id, art_number, title, emb, updated_at=art_updated, document=content_to_embed, department=dept)
-                logger.info(f"Indexed/Updated KB article {art_number} [Dept: {dept}] in vector database (100% SOP RAG Coverage).")
+        from .sop_auto_reindexer import sync_edited_or_created_sops
+        active_vdb = vdb or vector_db
+        return sync_edited_or_created_sops(vdb_instance=active_vdb)
     except Exception as e:
         logger.error(f"Failed to sync KB articles to Vector DB: {e}")
+        return 0

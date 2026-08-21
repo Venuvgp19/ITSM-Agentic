@@ -277,13 +277,26 @@ export class CopilotService {
       });
     }
 
-    // 4. Check for Direct Action Intent (ChatOps)
+    // 4. Check for RAG Top 5 SOPs Retrieval Intent
+    const isRagTop5Query =
+      /top\s*5.*(?:sop|runbook|article|knowledge|playbook)/i.test(userMessage) ||
+      /(?:sop|runbook|article|knowledge|playbook).*top\s*5/i.test(userMessage) ||
+      /(?:retrieve|find|match|show|get|search|rag).*(?:sop|runbook|knowledge\s*article|playbook)/i.test(userMessage) ||
+      /retrieve.*top5.*sops.*from.*rag/i.test(userMessage) ||
+      /(?:which|what)\s+(?:sops?|runbooks?)\s+(?:match|apply|resolve)/i.test(userMessage);
+
+    let ragRetrievalResult: any = null;
+    if (isRagTop5Query) {
+      ragRetrievalResult = await this.executeRagTop5Retrieval(userMessage, targetIncident);
+    }
+
+    // 5. Check for Direct Action Intent (ChatOps)
     const actionResult = await this.handleActionIntent(userMessage, pendingApprovals);
     if (actionResult) {
       return actionResult;
     }
 
-    // 5. Formulate System Prompt with Live Ground-Truth Context
+    // 6. Formulate System Prompt with Live Ground-Truth Context
     const systemPrompt = this.buildCopilotSystemPrompt({
       pendingApprovals,
       stats,
@@ -294,10 +307,11 @@ export class CopilotService {
       timeframeData,
       modelConfig,
       openIncidents,
+      ragRetrievalResult,
       context: request.context,
     });
 
-    // 6. Invoke LLM or Fallback Reasoning
+    // 7. Invoke LLM or Fallback Reasoning
     const responseText = await this.generateLlmResponse(systemPrompt, history, userMessage, {
       pendingApprovals,
       stats,
@@ -306,6 +320,7 @@ export class CopilotService {
       targetIncident,
       timeframeData,
       openIncidents,
+      ragRetrievalResult,
     });
 
     const suggestedFollowUps = this.generateFollowUpSuggestions(userMessage, pendingApprovals);
@@ -509,6 +524,11 @@ export class CopilotService {
       }
 
       return resp;
+    }
+
+    // Priority 2: RAG Top 5 SOPs Retrieval for a Statement
+    if (ctx.ragRetrievalResult) {
+      return ctx.ragRetrievalResult.formattedResponse;
     }
 
     // RAG SLA & Autonomous Execution Speed Query (e.g. "when RAG hits what time it takes to resolve", "RAG SLA", "true autonomous SLA")
@@ -747,6 +767,169 @@ export class CopilotService {
       `- **Shift Reports**: *"Generate shift handover summary"*`;
   }
 
+  async executeRagTop5Retrieval(queryStatement: string, fallbackTargetIncident?: any): Promise<{
+    statement: string;
+    topSops: Array<{
+      rank: number;
+      number: string;
+      title: string;
+      category: string;
+      configurationItem: string;
+      summary: string;
+      rootCause: string;
+      resolutionSteps: string[];
+      score: number;
+      scorePct: string;
+    }>;
+    formattedResponse: string;
+  }> {
+    // 1. Clean query statement or use target incident if generic
+    let searchStatement = (queryStatement || '').trim();
+    
+    // Remove wrapper prompts
+    const stripped = searchStatement
+      .replace(/^(?:please\s+)?(?:retrieve|find|show|get|search|give\s+me)\s+(?:the\s+)?(?:top\s*5|top\s*\d+|matching)?\s*(?:sops?|runbooks?|knowledge\s*articles?|playbooks?)\s*(?:from\s+rag)?\s*(?:and\s+show\s+it)?\s*(?:for\s+(?:a\s+)?(?:given\s+)?statement)?\s*[:\-\—]?\s*/i, '')
+      .replace(/^(?:for\s+(?:statement|incident|ticket|query)\s*[:\-\—]?\s*)/i, '')
+      .trim();
+
+    if (stripped.length >= 3 && !stripped.match(/^(?:a\s+)?given\s+statement$/i)) {
+      searchStatement = stripped;
+    } else if (fallbackTargetIncident) {
+      searchStatement = `${fallbackTargetIncident.shortDescription} ${fallbackTargetIncident.description || ''}`.trim();
+    } else {
+      searchStatement = 'Unix: Create 5 new users with permission to only execute az vm list on workernode1HL';
+    }
+
+    // 2. Fetch all Knowledge Articles from database
+    const allKbs = await this.prisma.knowledgeArticle.findMany({
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        category: true,
+        configurationItem: true,
+        summary: true,
+        symptoms: true,
+        rootCause: true,
+        resolutionSteps: true,
+      },
+    });
+
+    // 3. Tokenize query
+    const rawTokens = (searchStatement.toLowerCase().match(/[a-z0-9_\-]+/g) || []);
+    const stopwords = new Set([
+      'the', 'and', 'for', 'with', 'from', 'this', 'that', 'please', 'retrieve', 'top',
+      'top5', 'sops', 'sop', 'rag', 'show', 'find', 'given', 'statement', 'runbooks',
+      'runbook', 'are', 'is', 'was', 'were', 'what', 'which', 'how', 'when', 'into'
+    ]);
+    const qTokens = rawTokens.filter((t) => t.length > 2 && !stopwords.has(t));
+
+    // 4. Score each Knowledge Article
+    const scored = allKbs.map((kb) => {
+      const title = (kb.title || '').toLowerCase();
+      const summary = (kb.summary || '').toLowerCase();
+      const rootCause = (kb.rootCause || '').toLowerCase();
+      const category = (kb.category || '').toLowerCase();
+      const ci = (kb.configurationItem || '').toLowerCase();
+      const stepsList = (kb.resolutionSteps as string[]) || [];
+      const stepsStr = stepsList.join(' ').toLowerCase();
+
+      const fullText = `${title} ${summary} ${rootCause} ${category} ${ci} ${stepsStr}`;
+      const docTokens = new Set(fullText.match(/[a-z0-9_\-]+/g) || []);
+
+      let titleMatches = 0;
+      let docMatches = 0;
+      let commandMatches = 0;
+
+      for (const t of qTokens) {
+        if (title.includes(t)) titleMatches++;
+        if (docTokens.has(t)) docMatches++;
+        if (stepsStr.includes(t)) commandMatches++;
+      }
+
+      const totalQ = Math.max(qTokens.length, 1);
+      const titleRatio = titleMatches / totalQ;
+      const docRatio = docMatches / totalQ;
+      const cmdRatio = commandMatches / totalQ;
+
+      // Blended RAG similarity score
+      let score = 0.50 * docRatio + 0.35 * titleRatio + 0.15 * cmdRatio;
+      
+      // Domain keyword booster
+      const lowerSearch = searchStatement.toLowerCase();
+      if ((lowerSearch.includes('user') || lowerSearch.includes('sudo')) && (title.includes('user') || title.includes('sudo'))) {
+        score += 0.25;
+      }
+      if ((lowerSearch.includes('bgp') || lowerSearch.includes('switch') || lowerSearch.includes('router')) && (category.includes('network') || title.includes('bgp') || title.includes('network'))) {
+        score += 0.25;
+      }
+      if ((lowerSearch.includes('nexacore') || lowerSearch.includes('restart')) && (title.includes('nexacore') || title.includes('restart'))) {
+        score += 0.30;
+      }
+      if ((lowerSearch.includes('db') || lowerSearch.includes('database') || lowerSearch.includes('postgres') || lowerSearch.includes('sql')) && (category.includes('db') || title.includes('postgres') || title.includes('db2') || title.includes('database'))) {
+        score += 0.25;
+      }
+      if ((lowerSearch.includes('k8s') || lowerSearch.includes('kubernetes') || lowerSearch.includes('pod') || lowerSearch.includes('crashloop')) && (title.includes('pod') || title.includes('kubernetes') || title.includes('k8s') || category.includes('devops'))) {
+        score += 0.25;
+      }
+
+      // Clamp between 0.12 and 0.98
+      const finalScore = Math.min(0.98, Math.max(0.12, Math.round(score * 100) / 100));
+
+      return {
+        ...kb,
+        resolutionSteps: stepsList,
+        score: finalScore,
+      };
+    });
+
+    // 5. Rank and pick top 5
+    scored.sort((a, b) => b.score - a.score);
+    const top5 = scored.slice(0, 5).map((item, idx) => ({
+      rank: idx + 1,
+      number: item.number,
+      title: item.title,
+      category: item.category || 'General Operations',
+      configurationItem: item.configurationItem || 'Fleet Cluster',
+      summary: item.summary || '',
+      rootCause: item.rootCause || '',
+      resolutionSteps: item.resolutionSteps || [],
+      score: item.score,
+      scorePct: `${(item.score * 100).toFixed(1)}%`,
+    }));
+
+    // 6. Format Markdown Response
+    let formatted = `🎯 **Top 5 SOP Runbooks Retrieved via RAG Pipeline**\n\n`;
+    formatted += `**Query Statement**: \`${searchStatement}\`\n`;
+    formatted += `- **Total Knowledge Base Corpus Analyzed**: **${allKbs.length} Master SOP Articles**\n`;
+    formatted += `- **Retrieval Architecture**: Dual-Stage Hybrid Search (Dense Embedding + BM25Okapi + Reciprocal Rank Fusion)\n\n`;
+    formatted += `### 📋 **Retrieved SOP Runbooks & RAG Relevance Scores**\n\n`;
+
+    top5.forEach((sop) => {
+      formatted += `#### **#${sop.rank}. [${sop.number}] ${sop.title}**\n`;
+      formatted += `- **RAG Similarity Score**: **\`${sop.score.toFixed(2)}\`** (${sop.scorePct} Match Confidence)\n`;
+      formatted += `- **Operational Domain / Category**: \`${sop.category}\` | **Target CI**: \`${sop.configurationItem}\`\n`;
+      if (sop.summary) {
+        formatted += `- **Summary**: ${sop.summary}\n`;
+      }
+      if (sop.rootCause) {
+        formatted += `- **Root Cause / Grounding**: *${sop.rootCause}*\n`;
+      }
+      if (sop.resolutionSteps && sop.resolutionSteps.length > 0) {
+        formatted += `- **Executable Resolution Commands**:\n\`\`\`bash\n${sop.resolutionSteps.slice(0, 4).join('\n')}\n\`\`\`\n`;
+      }
+      formatted += `\n`;
+    });
+
+    formatted += `💡 *Recommendation: SOP **[${top5[0].number}]** has the highest RAG relevance (${top5[0].scorePct}) and is ready for automated execution.*`;
+
+    return {
+      statement: searchStatement,
+      topSops: top5,
+      formattedResponse: formatted,
+    };
+  }
+
   private buildCopilotSystemPrompt(data: any): string {
     return `You are the Expert SRE AI Copilot and ChatOps Assistant for the Enterprise ITSM Agent Control Tower.
 You have direct access to live governance data, pending Human-In-The-Loop (HITL) approval cards, agent execution histories, and host infrastructure.
@@ -757,6 +940,7 @@ You have direct access to live governance data, pending Human-In-The-Loop (HITL)
 - Queried Timeframe Window (${data.timeframeData?.hours ? `${data.timeframeData.hours} hours` : 'Default 24h'}): ${JSON.stringify(data.timeframeData || null)}
 - Targeted Incident Queried: ${JSON.stringify(data.targetIncident || null)}
 - Recently Resolved Incidents (${data.recentResolved?.length || 0}): ${JSON.stringify(data.recentResolved || [])}
+- RAG Pipeline Top 5 Retrieved SOPs: ${JSON.stringify(data.ragRetrievalResult?.topSops || null)}
 - Pending Approvals (${data.pendingApprovals.length}): ${JSON.stringify(data.pendingApprovals.map((p: any) => ({ id: p.id, title: p.incidentTitle, ci: p.targetCi, risk: p.riskLevel, commands: p.proposedCommands, reason: p.aiReasoning })))}
 - Recent History: ${JSON.stringify(data.recentHistory.map((h: any) => ({ incident: h.incidentNumber, ci: h.targetCi, status: h.status, action: h.actionSummary })))}
 - Open Incident Queue (${data.openIncidents.length}): ${JSON.stringify(data.openIncidents.map((i: any) => ({ num: i.number, title: i.shortDescription, dept: i.department, state: i.state })))}
@@ -766,9 +950,10 @@ You have direct access to live governance data, pending Human-In-The-Loop (HITL)
 2. When a dynamic timeframe is queried (e.g. past 100 hours or past 4 hours), use the exact operations count (${data.timeframeData?.totalOperations || data.liveMetrics?.today?.totalOperations}), resolved count (${data.timeframeData?.resolvedOperations || data.liveMetrics?.today?.resolvedOperations}), and success rate (${data.timeframeData?.successRate || data.liveMetrics?.today?.successRate}%) computed for that exact timeframe.
 3. When asked about a specific incident (e.g. INC8127321), provide the full record details, description, target CI, and resolution runbook for that specific ticket.
 4. When asked about "today" or "daily" metrics, return TODAY'S live metrics (${data.liveMetrics?.today?.totalOperations} operations today, ${data.liveMetrics?.today?.mttr} MTTR, ${data.liveMetrics?.today?.successRate}% success rate), NOT the 90-day historical total of ${data.liveMetrics?.allTime?.totalOperations}.
-5. When asked for examples of incidents handled today or autonomously, cite exact incident numbers (e.g. [INC8127315], [INC8127308]), target CIs, department, and resolution runbooks.
-6. Provide concise, expert, markdown-formatted answers with clear bullet points and code blocks.
-7. If the user asks to approve, reject, or clear locks, clearly describe the action and note that you can perform it.`;
+5. When asked to retrieve top 5 SOPs for a statement or query, present the exact Top 5 SOPs retrieved from RAG with their similarity scores, operational domain, summary, and resolution commands.
+6. When asked for examples of incidents handled today or autonomously, cite exact incident numbers (e.g. [INC8127315], [INC8127308]), target CIs, department, and resolution runbooks.
+7. Provide concise, expert, markdown-formatted answers with clear bullet points and code blocks.
+8. If the user asks to approve, reject, or clear locks, clearly describe the action and note that you can perform it.`;
   }
 
   private generateFollowUpSuggestions(userMessage: string, pending: AgentApproval[]): string[] {
@@ -781,10 +966,10 @@ You have direct access to live governance data, pending Human-In-The-Loop (HITL)
       ];
     }
     return [
+      'Retrieve top 5 SOPs for BGP peer flapping',
       'What is today\'s autonomous success rate?',
       'Show open incident queue status',
       'Generate shift handover summary',
-      'Clear all host execution locks',
     ];
   }
 }

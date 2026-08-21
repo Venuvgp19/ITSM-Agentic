@@ -49,18 +49,27 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
 
         candidates = set()
 
+        def is_valid_username_candidate(name_str):
+            if not name_str or len(name_str) < 2:
+                return False
+            if name_str.startswith('-') or name_str.isdigit():
+                return False
+            if name_str.lower() in ignore_terms:
+                return False
+            return bool(re.match(r'^[a-zA-Z0-9_][a-zA-Z0-9_\-]*$', name_str))
+
         # 1. From bash for loops: for u in user1 user2 ...;
         loop_matches = re.findall(r'for\s+\w+\s+in\s+([^;]+);', exec_log)
         for l_body in loop_matches:
             for token in l_body.split():
                 clean_t = token.strip('"\';$(){}[]')
-                if clean_t and not clean_t.isdigit() and len(clean_t) >= 2 and clean_t.lower() not in ignore_terms:
+                if is_valid_username_candidate(clean_t):
                     candidates.add(clean_t)
 
         # 2. From /etc/passwd style lines in desc
         passwd_users = re.findall(r'^([a-zA-Z0-9_\-]+):x?:\d+:\d+:', desc, re.MULTILINE)
         for pu in passwd_users:
-            if pu and not pu.isdigit() and len(pu) >= 2 and pu.lower() not in ignore_terms:
+            if is_valid_username_candidate(pu):
                 candidates.add(pu)
 
         # 3. From explicit useradd/userdel commands
@@ -70,7 +79,7 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
 
         for raw in raw_created + raw_deleted + raw_sudoers:
             clean_r = raw.strip('"\';$(){}[]')
-            if clean_r and not clean_r.isdigit() and len(clean_r) >= 2 and clean_r.lower() not in ignore_terms:
+            if is_valid_username_candidate(clean_r):
                 candidates.add(clean_r)
 
         is_deletion = any(k in full_text for k in ["delete", "remove", "offboard", "userdel", "deprovision"])

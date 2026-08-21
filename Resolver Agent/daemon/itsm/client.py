@@ -12,17 +12,17 @@ from ..rag.vector_db import ChromaVectorDB, vector_db as default_vector_db
 from ..rag.hybrid_search import sanitize_kb_title
 
 DEPARTMENT_TEAM_MEMBERS = {
-    "Unix": "Richard Stallman (Unix)",
-    "Network Ops": "Sarah Connor (Network Ops)",
-    "App Support": "Alex Mercer (App Support)",
-    "Desktop Support": "David Miller (Desktop Support)",
-    "DBA Team": "DBA Team",
-    "SecOps": "Security Team",
-    "DevOps Ops": "DevOps Team"
+    "Unix": "Sarah Chen (Unix Team Lead)",
+    "Network Ops": "Alex Rivera (Network Lead)",
+    "App Support": "Alex Mercer (App Support Lead)",
+    "Desktop Support": "David Miller (Desktop Support Lead)",
+    "DBA Team": "Michael Scott (DBA Team Lead)",
+    "SecOps": "SecOps Lead",
+    "DevOps Ops": "DevOps Team Lead"
 }
 
 def get_team_member_for_department(department):
-    return DEPARTMENT_TEAM_MEMBERS.get(department, "Richard Stallman (Unix)")
+    return DEPARTMENT_TEAM_MEMBERS.get(department, "Sarah Chen (Unix Team Lead)")
 
 def get_auth_token():
     try:

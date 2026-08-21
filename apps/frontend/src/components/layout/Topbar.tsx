@@ -1,87 +1,162 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
-import { Search, Bell, Command, Shield, LogOut } from 'lucide-react';
+import {
+  Search,
+  ExternalLink,
+  Radio,
+  HelpCircle,
+  MessageSquare,
+  ChevronDown,
+  User,
+  Settings,
+  LogOut,
+  ShieldCheck,
+  CheckCircle2
+} from 'lucide-react';
 
 export function Topbar() {
   const router = useRouter();
-  const { user, isAuthenticated, logout, init } = useAuthStore();
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const { user, isAuthenticated, logout } = useAuthStore();
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    init();
-    setMounted(true);
-  }, [init]);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleLogout = () => {
     logout();
     router.push('/login');
   };
 
-  const displayName = mounted && user ? `${user.firstName} ${user.lastName}` : 'System Admin';
-  const displayEmail = mounted && user?.email ? user.email : 'admin@acme.com';
-  const initials = mounted && user ? `${user.firstName[0]}${user.lastName[0] || ''}`.toUpperCase() : 'AD';
-  const tenantName = mounted && user?.tenantName ? user.tenantName : 'Acme Global Tech';
-  const isAuth = mounted ? isAuthenticated : false;
+  const displayName = user?.firstName || 'Venu';
+  const initial = displayName.charAt(0).toUpperCase();
 
   return (
-    <header className="h-16 bg-slate-900/60 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-6 sticky top-0 z-30">
-      {/* Global Search Bar Command Palette Trigger */}
-      <div className="flex items-center gap-4 flex-1 max-w-xl">
-        <div
-          onClick={() => setSearchOpen(true)}
-          className="flex items-center gap-3 bg-slate-950/80 border border-slate-800 hover:border-slate-700 text-slate-400 text-xs px-3.5 py-2 rounded-lg w-full cursor-pointer transition-all shadow-inner"
-        >
-          <Search className="w-4 h-4 text-slate-500" />
-          <span className="flex-1">Search CIs, Incidents, Knowledge Articles, Workflows...</span>
-          <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 text-slate-300 text-[10px] px-1.5 py-0.5 rounded font-mono">
-            <Command className="w-3 h-3" /> K
+    <header className="h-12 bg-[#162224] border-b border-[#24373a] px-4 flex items-center justify-between z-30 shrink-0 select-none text-white">
+      {/* Left: ServiceNow Classic Logo & Instance Release */}
+      <div className="flex items-center gap-3">
+        <Link href="/incidents" className="flex items-center gap-2 group cursor-pointer">
+          <div className="flex items-baseline gap-1">
+            <span className="font-extrabold text-base tracking-tight text-white font-sans">
+              servicenow<span className="text-[#30bb7b] font-black text-lg">.</span>
+            </span>
+            <span className="text-xs font-semibold text-slate-200 ml-1.5 hidden sm:inline">
+              Service Management
+            </span>
           </div>
+        </Link>
+      </div>
+
+      {/* Center: Global Search Bar */}
+      <div className="flex-1 max-w-lg mx-6 hidden md:block">
+        <div className="relative flex items-center">
+          <Search className="w-3.5 h-3.5 absolute left-3 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search ServiceNow global records (⌘ /)..."
+            className="w-full bg-[#0e1719] border border-[#2e4348] focus:border-[#30bb7b] rounded-full pl-9 pr-8 py-1 text-xs text-white placeholder-slate-400 focus:outline-none transition"
+          />
+          <span className="absolute right-2.5 text-[10px] text-slate-400 font-mono border border-slate-700 px-1.5 py-0.2 rounded bg-[#162224]">
+            /
+          </span>
         </div>
       </div>
 
-      {/* Right Controls */}
-      <div className="flex items-center gap-4">
-        {/* Tenant Indicator */}
-        <div className="hidden sm:flex items-center gap-2 bg-slate-800/80 border border-slate-700/60 px-3 py-1 rounded-full text-xs text-slate-300 font-medium">
-          <Shield className="w-3.5 h-3.5 text-brand-400" />
-          <span suppressHydrationWarning>{tenantName}</span>
-        </div>
+      {/* Right: User Profile & Quick Actions */}
+      <div className="flex items-center gap-3">
+        {/* Agent Control Tower Link Button */}
+        <a
+          href="http://localhost:5173"
+          target="_blank"
+          rel="noreferrer"
+          className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#288554] hover:bg-[#30bb7b] text-white text-[11px] font-bold transition shadow-sm cursor-pointer"
+          title="Launch Agent Control Tower"
+        >
+          <Radio className="w-3 h-3 animate-pulse" />
+          <span>Control Tower</span>
+          <ExternalLink className="w-2.5 h-2.5 opacity-80" />
+        </a>
 
-        {/* Notifications */}
-        <button className="relative p-2 rounded-lg bg-slate-800/60 text-slate-300 hover:text-white hover:bg-slate-800 transition">
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-500 ring-2 ring-slate-900"></span>
-        </button>
+        {/* Header Utilities */}
+        <div className="flex items-center gap-2 border-l border-[#2e4348] pl-3 relative" ref={dropdownRef}>
+          <button className="p-1.5 text-slate-300 hover:text-white rounded hover:bg-[#22363a] transition cursor-pointer" title="Conversations">
+            <MessageSquare className="w-4 h-4" />
+          </button>
+          <button className="p-1.5 text-slate-300 hover:text-white rounded hover:bg-[#22363a] transition cursor-pointer" title="Help & Documentation">
+            <HelpCircle className="w-4 h-4" />
+          </button>
+          <button className="p-1.5 text-slate-300 hover:text-white rounded hover:bg-[#22363a] transition cursor-pointer" title="Settings">
+            <Settings className="w-4 h-4" />
+          </button>
 
-        {/* User Profile & Logout */}
-        <div className="flex items-center gap-3 pl-3 border-l border-slate-800">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-brand-600 flex items-center justify-center font-bold text-xs text-white shadow-md" suppressHydrationWarning>
-            {initials}
+          {/* User Profile Pill & Dropdown */}
+          <div
+            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+            className="flex items-center gap-2 ml-1 cursor-pointer hover:bg-[#22363a] py-1 px-2 rounded transition"
+          >
+            <div className="w-6 h-6 rounded-full bg-[#288554] text-white font-bold text-xs flex items-center justify-center border border-[#30bb7b]">
+              {initial}
+            </div>
+            <span className="text-xs font-semibold text-slate-200 hidden sm:inline">{displayName}</span>
+            <ChevronDown className="w-3 h-3 text-slate-400" />
           </div>
-          <div className="hidden md:block text-left">
-            <div className="text-xs font-semibold text-slate-200" suppressHydrationWarning>{displayName}</div>
-            <div className="text-[10px] text-slate-400" suppressHydrationWarning>{displayEmail}</div>
-          </div>
 
-          {isAuth ? (
-            <button
-              onClick={handleLogout}
-              className="p-1.5 text-slate-400 hover:text-rose-400 transition ml-1"
-              title="Sign Out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          ) : (
-            <button
-              onClick={() => router.push('/login')}
-              className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs transition"
-            >
-              Login
-            </button>
+          {/* User Profile Dropdown Menu */}
+          {isDropdownOpen && (
+            <div className="absolute right-0 top-11 w-64 bg-white border border-[#cbd5e1] rounded-lg shadow-2xl z-50 text-slate-800 text-xs overflow-hidden animate-in fade-in slide-in-from-top-1">
+              <div className="bg-[#1a2c30] text-white p-3 border-b border-[#2e4348]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-[#288554] text-white font-bold text-sm flex items-center justify-center border border-[#30bb7b]">
+                    {initial}
+                  </div>
+                  <div className="truncate">
+                    <div className="font-extrabold text-sm text-white">{displayName}</div>
+                    <div className="text-[10px] text-slate-300 font-mono">Operator ID: Venu</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-2 space-y-1">
+                <div className="px-3 py-1.5 text-[11px] text-slate-600 bg-slate-50 rounded border border-slate-100 font-medium">
+                  <div className="flex items-center justify-between">
+                    <span>Role:</span>
+                    <strong className="text-[#1a2c30]">Global Admin & SRE</strong>
+                  </div>
+                  <div className="flex items-center justify-between mt-0.5">
+                    <span>Instance:</span>
+                    <strong className="text-[#288554]">Washington DC</strong>
+                  </div>
+                </div>
+
+                <Link
+                  href="/admin"
+                  onClick={() => setIsDropdownOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 rounded hover:bg-slate-100 text-slate-700 transition cursor-pointer"
+                >
+                  <User className="w-3.5 h-3.5 text-slate-500" />
+                  <span>User Administration (sys_user)</span>
+                </Link>
+
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-rose-50 text-rose-700 font-bold transition cursor-pointer text-left border-t border-slate-100 mt-1"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out of ServiceNow</span>
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>

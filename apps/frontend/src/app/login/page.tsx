@@ -3,14 +3,14 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
-import { Shield, Key, Mail, Lock, ArrowRight, ShieldCheck, Github, Globe } from 'lucide-react';
+import { ShieldCheck, User, Lock, ArrowRight, CheckCircle2, Radio, KeyRound } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const login = useAuthStore((state) => state.login);
 
-  const [email, setEmail] = useState('admin@acme.com');
-  const [password, setPassword] = useState('Admin123!');
+  const [userId, setUserId] = useState('Venu');
+  const [password, setPassword] = useState('admin007');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -19,155 +19,149 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
+    const cleanUser = userId.trim();
+    const cleanPass = password.trim();
+
     try {
       // Attempt API call to NestJS Auth backend
-      const res = await fetch('http://localhost:4000/api/v1/auth/login', {
+      const res = await fetch('/api/v1/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: cleanUser, password: cleanPass }),
       });
 
       if (res.ok) {
         const data = await res.json();
         login(data.accessToken, data.user);
-        router.push('/dashboard');
+        router.push('/incidents');
+        return;
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        setError(errJson.message || 'Invalid User ID or Password. (Expected User ID: Venu / Password: admin007)');
+        setLoading(false);
         return;
       }
-    } catch (err) {
-      // Ignore network fallback error
-    }
-
-    // Fallback for demonstration / local dev mode
-    if (email && password) {
-      const demoUser = {
-        id: 'usr_admin_01',
-        email,
-        firstName: email.split('@')[0].split('.')[0] || 'System',
-        lastName: 'Admin',
-        tenantId: 'tenant_acme_01',
-        tenantName: 'Acme Global Corporation',
-        role: 'Global Administrator',
-      };
-      login('demo-jwt-access-token-itsm', demoUser);
-      router.push('/dashboard');
-    } else {
-      setError('Please provide valid credentials.');
+    } catch {
+      // Client-side direct auth check fallback
+      if (
+        (cleanUser.toLowerCase() === 'venu' || cleanUser.toLowerCase() === 'admin') &&
+        cleanPass === 'admin007'
+      ) {
+        const verifiedUser = {
+          id: 'usr_venu_01',
+          email: 'venu@service-now.com',
+          firstName: 'Venu',
+          lastName: '',
+          tenantId: 'tenant_acme_01',
+          tenantName: 'ServiceNow Washington DC',
+          role: 'Global Administrator & SRE Lead',
+        };
+        login('demo-jwt-access-token-itsm', verifiedUser);
+        router.push('/incidents');
+        return;
+      } else {
+        setError('Invalid credentials. Please enter User ID: Venu and Password: admin007');
+      }
     }
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 select-none">
+    <div className="min-h-screen bg-[#162224] flex flex-col items-center justify-center p-4 select-none font-sans text-slate-800">
       <div className="w-full max-w-md space-y-6">
-        {/* Brand Logo */}
+        {/* ServiceNow Brand Logo */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-600 to-cyan-500 flex items-center justify-center text-white font-black text-2xl mx-auto shadow-xl shadow-brand-500/20">
-            S
+          <div className="flex items-center justify-center gap-1.5">
+            <span className="font-extrabold text-3xl tracking-tight text-white font-sans">
+              servicenow<span className="text-[#30bb7b] font-black text-4xl">.</span>
+            </span>
           </div>
-          <h1 className="text-2xl font-black text-slate-100 tracking-tight">ENTERPRISE ITSM</h1>
-          <p className="text-xs text-slate-400">Cloud IT Service Management & Automation Platform</p>
+          <p className="text-xs text-slate-300 font-medium">Washington DC Enterprise SRE Instance</p>
         </div>
 
         {/* Login Card */}
-        <div className="glass-panel p-8 space-y-6 shadow-2xl">
-          <div className="border-b border-slate-800 pb-4">
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-brand-400" /> Sign In to Workspace
+        <div className="bg-white border border-[#cbd5e1] rounded-xl p-8 space-y-6 shadow-2xl">
+          <div className="border-b border-[#e2e8f0] pb-4">
+            <h2 className="text-base font-extrabold text-[#1a2c30] flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-[#288554]" /> ServiceNow Authentication
             </h2>
-            <p className="text-xs text-slate-400 mt-1">Enter your corporate credentials or authenticate via SAML SSO.</p>
+            <p className="text-xs text-slate-600 mt-1">Sign in with your authorized operator credentials.</p>
           </div>
 
           {error && (
-            <div className="p-3 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs font-semibold">
+            <div className="p-3 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase mb-1">Corporate Email</label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <label className="block text-xs font-bold text-slate-700 mb-1">User ID</label>
+              <div className="relative flex items-center">
+                <User className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@acme.com"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-brand-500 shadow-inner"
+                  value={userId}
+                  onChange={(e) => setUserId(e.target.value)}
+                  placeholder="e.g. Venu"
+                  className="w-full bg-white border border-[#cbd5e1] focus:border-[#288554] rounded pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none transition shadow-inner font-medium"
                 />
               </div>
             </div>
 
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="block text-xs font-bold text-slate-300 uppercase">Password</label>
-                <a href="#" className="text-[11px] font-semibold text-brand-400 hover:underline">Forgot password?</a>
-              </div>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <label className="block text-xs font-bold text-slate-700 mb-1">Password</label>
+              <div className="relative flex items-center">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-brand-500 shadow-inner"
+                  placeholder="••••••••"
+                  className="w-full bg-white border border-[#cbd5e1] focus:border-[#288554] rounded pl-9 pr-3 py-2 text-xs text-slate-900 focus:outline-none transition shadow-inner font-mono"
                 />
+              </div>
+            </div>
+
+            {/* Quick credentials hint */}
+            <div className="bg-[#f8fafc] border border-[#e2e8f0] p-3 rounded text-[11px] text-slate-600 flex items-center justify-between">
+              <div>
+                <span className="font-bold text-slate-800">Authorized Operator:</span> User ID: <code className="font-bold text-[#288554]">Venu</code>
+              </div>
+              <div>
+                Password: <code className="font-bold text-[#0284c7]">admin007</code>
               </div>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs shadow-lg shadow-brand-500/20 transition"
+              className="w-full py-2.5 rounded bg-[#288554] hover:bg-[#30bb7b] text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-sm disabled:opacity-50"
             >
-              {loading ? 'Authenticating...' : 'Sign In to Platform'} <ArrowRight className="w-4 h-4" />
+              {loading ? (
+                <span>Authenticating...</span>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
             </button>
           </form>
 
-          {/* SSO Options */}
-          <div className="space-y-3 pt-2 border-t border-slate-800">
-            <div className="text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-              Or Authenticate with Enterprise SSO
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  login('demo-sso-saml-token', {
-                    id: 'sso_usr_01',
-                    email: 'sso.admin@acme.com',
-                    firstName: 'Okta',
-                    lastName: 'User',
-                    tenantId: 'tenant_acme_01',
-                    tenantName: 'Acme Global',
-                  });
-                  router.push('/dashboard');
-                }}
-                className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs font-semibold transition"
-              >
-                <Globe className="w-4 h-4 text-cyan-400" /> Okta / SAML
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  login('demo-sso-github-token', {
-                    id: 'sso_usr_02',
-                    email: 'dev.admin@acme.com',
-                    firstName: 'GitHub',
-                    lastName: 'Developer',
-                    tenantId: 'tenant_acme_01',
-                    tenantName: 'Acme Global',
-                  });
-                  router.push('/dashboard');
-                }}
-                className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs font-semibold transition"
-              >
-                <Github className="w-4 h-4 text-purple-400" /> OAuth2 / OIDC
-              </button>
-            </div>
+          {/* Quick link to Agent Control Tower */}
+          <div className="pt-2 border-t border-[#e2e8f0] text-center">
+            <a
+              href="http://localhost:5173"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-[#0284c7] hover:underline font-bold"
+            >
+              <Radio className="w-3 h-3 text-[#288554] animate-pulse" />
+              <span>Launch Agent Control Tower (Port 5173)</span>
+            </a>
           </div>
         </div>
       </div>

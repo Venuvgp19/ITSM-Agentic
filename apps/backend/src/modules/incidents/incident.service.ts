@@ -233,7 +233,7 @@ export class IncidentService {
 
     let activities = (existing.activitiesJson as any[]) || [];
     const now = new Date();
-    const timeStr = now.toLocaleTimeString();
+    const fullDateStr = now.toISOString().replace('T', ' ').slice(0, 19);
 
     if (state === 'RESOLVED' && existing.state !== 'RESOLVED') {
       activities.push({
@@ -241,19 +241,19 @@ export class IncidentService {
         author: '🤖 Unix Auto-Resolver Agent',
         isWorkNote: true,
         comment: `🎉 Incident ${existing.number} state transitioned to RESOLVED. Remote SSH SOP execution verified. Saved to PostgreSQL database.`,
-        timestamp: timeStr,
+        timestamp: fullDateStr,
       });
     }
 
     const updated = await this.prisma.incident.update({
       where: { id: existing.id },
       data: {
-        state: state,
-        resolutionCode: resolutionCode || (state === 'RESOLVED' ? 'Server - Kernel & OS Patch' : existing.resolutionCode),
-        resolutionNotes: resolutionNotes || existing.resolutionNotes,
-        assignedToName: assignedTo || existing.assignedToName,
-        resolvedAt: state === 'RESOLVED' ? (existing.resolvedAt || now) : existing.resolvedAt,
-        closedAt: state === 'CLOSED' ? (existing.closedAt || now) : existing.closedAt,
+        state: state !== undefined ? state : undefined,
+        resolutionNotes: resolutionNotes !== undefined ? resolutionNotes : undefined,
+        resolutionCode: resolutionCode !== undefined ? resolutionCode : undefined,
+        assignedToName: assignedTo !== undefined ? assignedTo : undefined,
+        resolvedAt: state === 'RESOLVED' ? (existing.resolvedAt || now) : undefined,
+        closedAt: state === 'CLOSED' ? (existing.closedAt || now) : undefined,
         activitiesJson: activities,
       },
     });
@@ -261,7 +261,7 @@ export class IncidentService {
     return this.mapIncidentToDTO(updated);
   }
 
-  async addActivity(tenantId: string, incidentId: string, authorId: string, dto: AddActivityDto) {
+  async addActivity(tenantId: string, incidentId: string, authorId: string, dto: { comment: string; isWorkNote: boolean; author?: string; timestamp?: string }) {
     const cleanId = (incidentId || '');
     const existing = await this.prisma.incident.findFirst({
       where: { tenantId, OR: [{ id: cleanId.toLowerCase() }, { number: cleanId.toUpperCase() }] },
@@ -278,12 +278,15 @@ export class IncidentService {
       author = '🤖 Agentic AI Router';
     }
 
+    const now = new Date();
+    const fullDateStr = dto.timestamp || now.toISOString().replace('T', ' ').slice(0, 19);
+
     const newAct = {
       id: `act_${Date.now()}`,
       author,
       comment: dto.comment,
       isWorkNote: dto.isWorkNote,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: fullDateStr,
     };
 
     let activities = Array.isArray(existing.activitiesJson) ? existing.activitiesJson as any[] : [];

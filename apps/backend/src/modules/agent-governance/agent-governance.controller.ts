@@ -148,5 +148,26 @@ export class AgentGovernanceController {
   copilotChat(@Body() dto: any) {
     return this.copilotService.processChat(dto);
   }
+
+  @Public()
+  @Get('containment')
+  @ApiOperation({ summary: 'Get current containment list and master kill switch state' })
+  getContainmentStatus() {
+    return this.governanceService.getContainmentStatus();
+  }
+
+  @Public()
+  @Post('containment')
+  @ApiOperation({ summary: 'Toggle containment status for a specific AI Configuration Item (CI)' })
+  setContainmentStatus(@Body() body: { ciId: string; status: 'CONTAINED' | 'ACTIVE'; reason?: string; triggeredBy?: string }) {
+    return this.governanceService.setContainmentStatus(body.ciId, body.status, body.reason, body.triggeredBy);
+  }
+
+  @Public()
+  @Post('kill-switch')
+  @ApiOperation({ summary: 'Trigger or disarm the Master Fleet Kill Switch' })
+  setMasterKillSwitch(@Body() body: { active: boolean; reason?: string; triggeredBy?: string }) {
+    return this.governanceService.setMasterKillSwitch(body.active, body.reason, body.triggeredBy);
+  }
 }
 

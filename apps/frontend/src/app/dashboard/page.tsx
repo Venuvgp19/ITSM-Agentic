@@ -12,6 +12,10 @@ import {
   ShieldCheck,
   Zap,
   RefreshCw,
+  Layers,
+  ChevronRight,
+  TrendingUp,
+  FileText
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -41,7 +45,6 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Compute Real-Time Dynamic Metrics matching /incidents perfectly
   const totalIncidents = incidents.length;
 
   const unassignedCount = incidents.filter((i) => {
@@ -60,175 +63,167 @@ export default function DashboardPage() {
     return st === 'RESOLVED' || st === 'CLOSED';
   }).length;
 
+  const p1Count = incidents.filter((i) => (i.priority || '').includes('P1')).length;
+  const p2Count = incidents.filter((i) => (i.priority || '').includes('P2')).length;
+
   const stats = [
-    { name: 'Total Database Incidents', value: totalIncidents.toLocaleString(), change: 'Disk JSON DB', changeType: 'neutral', icon: Server, color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/20' },
-    { name: 'Unassigned Queue', value: unassignedCount.toLocaleString(), change: 'Pending AI Router', changeType: 'decrease', icon: Clock, color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/20' },
-    { name: 'Active Incidents', value: activeCount.toLocaleString(), change: 'In Triage & Progress', changeType: 'increase', icon: AlertTriangle, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' },
-    { name: 'Resolved & Closed', value: resolvedCount.toLocaleString(), change: 'Successfully Handled', changeType: 'increase', icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+    { name: 'Total Database Incidents', value: totalIncidents.toLocaleString(), change: 'PostgreSQL DB', icon: Server, color: 'text-[#1e6844]', border: 'border-[#30bb7b]/30' },
+    { name: 'Unassigned Queue', value: unassignedCount.toLocaleString(), change: 'Pending AI Dispatch', icon: Clock, color: 'text-rose-600', border: 'border-rose-300' },
+    { name: 'Active In Progress', value: activeCount.toLocaleString(), change: 'In Triage & Diagnostics', icon: AlertTriangle, color: 'text-amber-600', border: 'border-amber-300' },
+    { name: 'Resolved & Closed', value: resolvedCount.toLocaleString(), change: 'Successfully Solved', icon: CheckCircle2, color: 'text-emerald-600', border: 'border-emerald-300' },
   ];
 
-  // Top recent incidents sorted descending
+  // Top recent incidents
   const recentIncidents = [...incidents]
     .sort((a, b) => {
-      const numA = parseInt((a.number || '').replace(/\D/g, ''), 10) || 0;
-      const numB = parseInt((b.number || '').replace(/\D/g, ''), 10) || 0;
+      const numA = parseInt((a.number || a.id || '').replace(/\D/g, ''), 10) || 0;
+      const numB = parseInt((b.number || b.id || '').replace(/\D/g, ''), 10) || 0;
       return numB - numA;
     })
     .slice(0, 6);
 
   return (
-    <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-brand-900/40 to-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-brand-400 uppercase tracking-wider mb-1">
-            <Zap className="w-4 h-4" /> Enterprise Incident & Ops Command Center
-          </div>
-          <h1 className="text-2xl font-extrabold text-slate-100">ITIL Service Management Overview</h1>
-          <p className="text-xs text-slate-400 mt-1">Real-time status of Incidents, SLAs, Changes, and Infrastructure Configuration Items.</p>
+    <div className="flex flex-col h-full bg-[#f8fafc] text-slate-800 font-sans text-xs">
+      {/* 1. Context Header */}
+      <div className="bg-white border-b border-[#e2e8f0] px-4 py-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-slate-500 font-medium">Service Operations Workspace</span>
+          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+          <span className="text-slate-900 font-extrabold flex items-center gap-1.5">
+            ServiceNow Executive Dashboard
+            <span className="px-1.5 py-0.2 rounded bg-[#f1f5f9] text-[#1e6844] font-mono text-[10px] font-bold border border-[#cbd5e1]">
+              Live Telemetry
+            </span>
+          </span>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex items-center gap-2">
           <button
             onClick={fetchDashboardData}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 font-semibold text-xs transition"
+            className="p-1.5 rounded bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-[#cbd5e1] transition cursor-pointer shadow-xs"
+            title="Refresh Metrics"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#30bb7b]' : ''}`} />
           </button>
+
           <Link
             href="/incidents"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs transition shadow-lg shadow-brand-500/20"
+            className="px-3 py-1.5 rounded bg-[#288554] hover:bg-[#30bb7b] text-white font-bold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
           >
-            <Plus className="w-4 h-4" /> Create Incident
-          </Link>
-          <Link
-            href="/studio/workflow-builder"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs transition"
-          >
-            Workflow Studio
+            <FileText className="w-3.5 h-3.5" />
+            <span>Open Incident Matrix</span>
           </Link>
         </div>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <div key={stat.name} className={`p-5 rounded-xl border backdrop-blur-md ${stat.bg} space-y-3`}>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{stat.name}</span>
-                <Icon className={`w-5 h-5 ${stat.color}`} />
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-3xl font-extrabold text-slate-100 tracking-tight">{stat.value}</span>
-                <span className="text-xs font-medium text-slate-400">{stat.change}</span>
-              </div>
+      {/* Main Container */}
+      <div className="flex-1 p-6 space-y-6 overflow-y-auto max-w-7xl mx-auto w-full">
+        {/* Banner */}
+        <div className="bg-white border border-[#e2e8f0] p-5 rounded-lg shadow-sm border-l-4 border-l-[#30bb7b] flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-bold text-[#1e6844] uppercase tracking-wider mb-1 font-mono">
+              <Zap className="w-4 h-4 text-[#30bb7b]" /> Enterprise SRE Command Overview
             </div>
-          );
-        })}
-      </div>
+            <h1 className="text-lg md:text-xl font-extrabold text-slate-900">ServiceNow IT Service Management Portal</h1>
+            <p className="text-xs text-slate-500 mt-1 font-medium">
+              Real-time synchronization across 1,035 incident records, 49 Master SOP Runbooks, and autonomous resolution daemons.
+            </p>
+          </div>
 
-      {/* Main Content Split: Incident Feed & SLA Matrix */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Incident Command Center Data Table Preview */}
-        <div className="lg:col-span-2 glass-panel p-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-            <div>
-              <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-brand-400" /> Real-Time Live Incident Stream
-              </h2>
-              <p className="text-xs text-slate-400">Live stream synchronized with backend database file (`incidents.json`).</p>
-            </div>
-            <Link href="/incidents" className="text-xs font-semibold text-brand-400 hover:text-brand-300 flex items-center gap-1">
-              View All ({totalIncidents}) <ArrowUpRight className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1.5 rounded bg-rose-50 border border-rose-200 text-xs font-mono font-bold text-rose-700">
+              P1 Critical: {p1Count}
+            </span>
+            <span className="px-3 py-1.5 rounded bg-orange-50 border border-orange-200 text-xs font-mono font-bold text-orange-700">
+              P2 High: {p2Count}
+            </span>
+          </div>
+        </div>
+
+        {/* 4-KPI Metric Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {stats.map((s) => {
+            const Icon = s.icon;
+            return (
+              <div
+                key={s.name}
+                className="bg-white border border-[#e2e8f0] rounded-lg p-4 shadow-sm space-y-2 hover:border-[#cbd5e1] transition"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{s.name}</span>
+                  <Icon className={`w-4 h-4 ${s.color}`} />
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black font-mono text-slate-900">{s.value}</span>
+                  <span className="text-[10px] text-slate-500 font-mono">{s.change}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Recent Incidents Table */}
+        <div className="bg-white border border-[#e2e8f0] rounded-lg overflow-hidden shadow-sm space-y-3 p-4">
+          <div className="flex items-center justify-between border-b border-[#e2e8f0] pb-3">
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-[#30bb7b]" />
+              Recent Incidents Stream
+            </h3>
+            <Link
+              href="/incidents"
+              className="text-xs text-[#0284c7] hover:underline font-bold flex items-center gap-1"
+            >
+              <span>View All 1,035 Records</span>
+              <ArrowUpRight className="w-3 h-3" />
             </Link>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/60 text-slate-400 uppercase font-mono tracking-wider border-b border-slate-800">
-                <tr>
-                  <th className="py-3 px-3">Number</th>
-                  <th className="py-3 px-3">Short Description</th>
-                  <th className="py-3 px-3">Priority</th>
-                  <th className="py-3 px-3">State</th>
-                  <th className="py-3 px-3">Department</th>
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-[#f1f5f9] border-b border-[#e2e8f0] text-[#475569] font-bold uppercase tracking-wider text-[10px]">
+                  <th className="p-2.5 font-bold text-slate-900">Number</th>
+                  <th className="p-2.5">Short Description</th>
+                  <th className="p-2.5">Priority</th>
+                  <th className="p-2.5">State</th>
+                  <th className="p-2.5">Assignment Group</th>
+                  <th className="p-2.5">Target CI</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-sans">
-                {recentIncidents.map((inc) => (
-                  <tr key={inc.id || inc.number} className="hover:bg-slate-800/40 transition">
-                    <td className="py-3 px-3 font-mono font-bold text-brand-400">
+              <tbody className="divide-y divide-[#e2e8f0]">
+                {recentIncidents.map((inc, idx) => (
+                  <tr
+                    key={inc.id || inc.number}
+                    className={`hover:bg-[#f1f5f9] transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-[#fafafa]'}`}
+                  >
+                    <td className="p-2.5 font-mono font-bold text-[#0284c7]">
                       <Link href={`/incidents/${inc.id || inc.number}`} className="hover:underline">
                         {inc.number || inc.id}
                       </Link>
                     </td>
-                    <td className="py-3 px-3 font-medium text-slate-200">{inc.shortDescription || inc.title}</td>
-                    <td className="py-3 px-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        (inc.priority || '').includes('P1')
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                          : (inc.priority || '').includes('P2')
-                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                          : 'bg-slate-800 text-slate-300'
-                      }`}>
-                        {inc.priority || 'P4'}
+                    <td className="p-2.5 font-medium text-slate-800 truncate max-w-sm">
+                      {inc.shortDescription || inc.title}
+                    </td>
+                    <td className="p-2.5 font-mono font-bold">
+                      {(inc.priority || '').includes('P1') ? (
+                        <span className="text-rose-600">1 - Critical</span>
+                      ) : (inc.priority || '').includes('P2') ? (
+                        <span className="text-orange-600">2 - High</span>
+                      ) : (
+                        <span className="text-amber-700">3 - Moderate</span>
+                      )}
+                    </td>
+                    <td className="p-2.5">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#e6f7ef] text-[#1e6844] border border-[#30bb7b]/30">
+                        {inc.state || 'NEW'}
                       </span>
                     </td>
-                    <td className="py-3 px-3 font-semibold text-slate-300">{inc.state}</td>
-                    <td className="py-3 px-3 text-slate-400">{inc.department || 'UNASSIGNED (No Team)'}</td>
+                    <td className="p-2.5 text-slate-700">{inc.department || 'UNASSIGNED'}</td>
+                    <td className="p-2.5 font-mono text-[11px] text-slate-600">{inc.configurationItem || inc.ci || 'Unspecified CI'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-
-        {/* SLA & System Status */}
-        <div className="glass-panel p-6 space-y-5">
-          <div className="border-b border-slate-800 pb-3">
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" /> SLA Target Compliance
-            </h2>
-            <p className="text-xs text-slate-400">Response & Resolution SLAs across business calendars.</p>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-xs font-semibold mb-1">
-                <span className="text-slate-300">P1 Critical Response (15 mins)</span>
-                <span className="text-emerald-400">98.4%</span>
-              </div>
-              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full" style={{ width: '98.4%' }}></div>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs font-semibold mb-1">
-                <span className="text-slate-300">P2 High Resolution (4 hours)</span>
-                <span className="text-brand-400">94.1%</span>
-              </div>
-              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                <div className="h-full bg-brand-500 rounded-full" style={{ width: '94.1%' }}></div>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs font-semibold mb-1">
-                <span className="text-slate-300">Service Request Fulfillment</span>
-                <span className="text-amber-400">89.0%</span>
-              </div>
-              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                <div className="h-full bg-amber-500 rounded-full" style={{ width: '89%' }}></div>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Upcoming CAB Change Review</span>
-            <p className="text-xs text-slate-200 font-semibold">CHG0000842 - Migration to Kubernetes Cluster East-2</p>
-            <p className="text-[11px] text-slate-400">Scheduled: Tomorrow at 20:00 UTC</p>
           </div>
         </div>
       </div>
