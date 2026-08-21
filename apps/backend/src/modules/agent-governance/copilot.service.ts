@@ -498,6 +498,50 @@ export class CopilotService {
       return summary;
     }
 
+    // Queue Status & On-Hold / Open Incidents Query (e.g. "list the on hold incidents in the queue?", "show open incident queue status", "list open incidents")
+    if (
+      (lower.includes('on hold') || lower.includes('on-hold') || lower.includes('queue') || lower.includes('open incident') || lower.includes('in progress') || lower.includes('in-progress') || lower.includes('triage queue')) &&
+      !lower.includes('resolved') && !lower.includes('closed')
+    ) {
+      const openList = ctx.openIncidents || [];
+      const onHoldOnly = lower.includes('on hold') || lower.includes('on-hold');
+      const inProgressOnly = lower.includes('in progress') || lower.includes('in-progress');
+
+      let filtered = openList;
+      if (onHoldOnly) {
+        filtered = openList.filter((i: any) => i.state === 'ON_HOLD');
+      } else if (inProgressOnly) {
+        filtered = openList.filter((i: any) => i.state === 'IN_PROGRESS');
+      }
+
+      const queueTitle = onHoldOnly
+        ? `⏸️ **On-Hold Incidents in Queue (${filtered.length})**`
+        : inProgressOnly
+        ? `⚡ **In-Progress Incidents in Queue (${filtered.length})**`
+        : `📋 **Open Incident Queue Status (${filtered.length})**`;
+
+      if (filtered.length === 0) {
+        return `${queueTitle}\n\nThere are currently **0** matching incidents in this state. The queue is completely clear!`;
+      }
+
+      let resp = `${queueTitle}\n\n`;
+      filtered.forEach((inc: any) => {
+        const ci = inc.configurationItemName || 'Unspecified CI';
+        const dept = inc.department || 'Triage';
+        const prio = inc.priority || 'P2';
+        resp += `### [${inc.number}] ${inc.shortDescription}\n`;
+        resp += `- **State**: \`${inc.state}\` | **Priority**: \`${prio}\`\n`;
+        resp += `- **Department**: **${dept}** | **Target Host / CI**: \`${ci}\`\n`;
+        if (inc.openedAt) {
+          resp += `- **Opened**: \`${new Date(inc.openedAt).toLocaleString()}\`\n`;
+        }
+        resp += `\n`;
+      });
+
+      resp += `*Tip: You can ask Copilot for details on any ticket by saying \`Information about ${filtered[0].number}\`.*`;
+      return resp;
+    }
+
     // MTTR & Stats Query
     if (lower.includes('stat') || lower.includes('metric') || lower.includes('mttr') || lower.includes('success rate') || lower.includes('kpi') || lower.includes('performance')) {
       const isTodayQuery = lower.includes('today') || lower.includes('daily') || lower.includes('shift') || lower.includes('24h') || lower.includes('now');
