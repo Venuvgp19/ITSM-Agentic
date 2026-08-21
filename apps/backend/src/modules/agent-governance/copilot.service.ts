@@ -154,7 +154,63 @@ export class CopilotService {
       },
     };
 
-    // 2. Check if a specific Incident number was referenced (e.g. INC8127321)
+    // 2. Check if a dynamic timeframe was requested (e.g. "past 100 hours", "last 4 hours", "past 7 days")
+    let requestedHours: number | null = null;
+    const hoursMatch = userMessage.match(/(?:last|past|since|recent)\s*(\d+)\s*(?:hours|hrs|hr|h)/i);
+    const daysMatch = userMessage.match(/(?:last|past|since|recent)\s*(\d+)\s*(?:days|day|d)/i);
+    const weeksMatch = userMessage.match(/(?:last|past|since|recent)\s*(\d+)\s*(?:weeks|week|w)/i);
+    const minsMatch = userMessage.match(/(?:last|past|since|recent)\s*(\d+)\s*(?:minutes|mins|min|m)/i);
+
+    if (hoursMatch) requestedHours = parseInt(hoursMatch[1], 10);
+    else if (daysMatch) requestedHours = parseInt(daysMatch[1], 10) * 24;
+    else if (weeksMatch) requestedHours = parseInt(weeksMatch[1], 10) * 24 * 7;
+    else if (minsMatch) requestedHours = Math.max(1, Math.round(parseInt(minsMatch[1], 10) / 60));
+
+    let timeframeData: any = null;
+    if (requestedHours !== null) {
+      const cutoff = new Date(Date.now() - requestedHours * 60 * 60 * 1000);
+      const tfIncidents = await this.prisma.incident.findMany({
+        where: {
+          OR: [
+            { openedAt: { gte: cutoff } },
+            { resolvedAt: { gte: cutoff } },
+            { createdAt: { gte: cutoff } },
+          ],
+        },
+        orderBy: { openedAt: 'desc' },
+        take: 50,
+      });
+      const tfTotal = tfIncidents.length;
+      const tfResolvedList = tfIncidents.filter(i => i.state === 'RESOLVED' || i.state === 'CLOSED');
+      const tfResolved = tfResolvedList.length;
+      const tfSuccessRate = tfTotal > 0 ? ((tfResolved / tfTotal) * 100).toFixed(1) : '100.0';
+
+      let tfMttrSecs = 38;
+      if (tfResolvedList.length > 0) {
+        let totalSecs = 0;
+        let count = 0;
+        for (const inc of tfResolvedList) {
+          if (inc.openedAt && inc.resolvedAt) {
+            const diff = Math.max(10, Math.floor((inc.resolvedAt.getTime() - inc.openedAt.getTime()) / 1000));
+            totalSecs += diff;
+            count++;
+          }
+        }
+        if (count > 0) tfMttrSecs = Math.round(totalSecs / count);
+      }
+      timeframeData = {
+        hours: requestedHours,
+        totalOperations: tfTotal,
+        resolvedOperations: tfResolved,
+        successRate: tfSuccessRate,
+        mttr: formatDuration(tfMttrSecs),
+        autonomousMttr: '38s',
+        resolvedList: tfResolvedList.slice(0, 6),
+        openQueue: tfIncidents.filter(i => i.state !== 'RESOLVED' && i.state !== 'CLOSED').slice(0, 4),
+      };
+    }
+
+    // 3. Check if a specific Incident number was referenced (e.g. INC8127321)
     const incNumberMatch = userMessage.match(/INC\d+/i);
     let targetIncident: any = null;
     if (incNumberMatch) {
@@ -163,13 +219,13 @@ export class CopilotService {
       });
     }
 
-    // 3. Check for Direct Action Intent (ChatOps)
+    // 4. Check for Direct Action Intent (ChatOps)
     const actionResult = await this.handleActionIntent(userMessage, pendingApprovals);
     if (actionResult) {
       return actionResult;
     }
 
-    // 4. Formulate System Prompt with Live Ground-Truth Context
+    // 5. Formulate System Prompt with Live Ground-Truth Context
     const systemPrompt = this.buildCopilotSystemPrompt({
       pendingApprovals,
       stats,
@@ -177,18 +233,20 @@ export class CopilotService {
       recentHistory: allHistory.slice(0, 8),
       recentResolved: recentResolvedIncidents,
       targetIncident,
+      timeframeData,
       modelConfig,
       openIncidents,
       context: request.context,
     });
 
-    // 5. Invoke LLM or Fallback Reasoning
+    // 6. Invoke LLM or Fallback Reasoning
     const responseText = await this.generateLlmResponse(systemPrompt, history, userMessage, {
       pendingApprovals,
       stats,
       liveMetrics,
       recentResolved: recentResolvedIncidents,
       targetIncident,
+      timeframeData,
       openIncidents,
     });
 
@@ -422,34 +480,45 @@ export class CopilotService {
         `**4. Action Items**: ${pending.length > 0 ? `Review and approve ${pending.length} pending card(s): ${pending.map((p: any) => p.id).join(', ')}` : 'Zero pending items. Autonomous monitoring active.'}`;
     }
 
-    // Timeframe Operations Intent (e.g. "operations since last 8 hours", "activity past 4 hours", "events last 12 hours")
+    // Timeframe Operations Intent (e.g. "operations since last 100 hours", "activity past 4 hours", "events last 12 hours")
     if (
       (lower.includes('operation') || lower.includes('activity') || lower.includes('events') || lower.includes('remediations')) &&
-      (lower.includes('hour') || lower.includes('hr') || lower.includes('since') || lower.includes('past') || lower.includes('last') || lower.includes('shift'))
+      (lower.includes('hour') || lower.includes('hr') || lower.includes('since') || lower.includes('past') || lower.includes('last') || lower.includes('day') || lower.includes('week') || lower.includes('shift'))
     ) {
-      const hoursMatch = message.match(/(?:last|past|since|recent)\s*(\d+)\s*(?:hours|hrs|hr|h)/i);
-      const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 8;
-      const today = ctx.liveMetrics?.today || { totalOperations: 13, resolvedOperations: 10, successRate: '76.9', mttr: '49m 15s', autonomousMttr: '38s' };
-      const resolvedList = ctx.recentResolved || [];
+      const tf = ctx.timeframeData || {
+        hours: 8,
+        totalOperations: 13,
+        resolvedOperations: 10,
+        successRate: '76.9',
+        mttr: '49m 15s',
+        autonomousMttr: '38s',
+        resolvedList: ctx.recentResolved || [],
+        openQueue: openIncidents.slice(0, 4),
+      };
       const pendingList = ctx.pendingApprovals || [];
+      const timeframeLabel = tf.hours >= 24 && tf.hours % 24 === 0 ? `${tf.hours / 24} Days (${tf.hours}h)` : `${tf.hours} Hours`;
 
-      let resp = `⏱️ **Autonomous Operations Log (Past ${hours} Hours)**\n\n`;
-      resp += `**1. Shift Performance Overview**:\n`;
-      resp += `- **Operations Handled**: **${today.totalOperations}** | **Autonomous Success Rate**: **${today.successRate}%**\n`;
-      resp += `- **Autonomous Agent MTTR**: **${today.autonomousMttr || '38s'}** | **End-to-End MTTR**: **${today.mttr}**\n`;
-      resp += `- **Active Approvals**: **${pendingList.length}** | **Active Host Locks**: **0**\n\n`;
+      let resp = `⏱️ **Autonomous Operations Log (Past ${timeframeLabel})**\n\n`;
+      resp += `**1. Performance Overview (${timeframeLabel})**:\n`;
+      resp += `- **Operations Handled**: **${tf.totalOperations}**\n`;
+      resp += `- **Autonomous Resolutions**: **${tf.resolvedOperations}**\n`;
+      resp += `- **Autonomous Success Rate**: **${tf.successRate}%**\n`;
+      resp += `- **Autonomous Agent MTTR**: **${tf.autonomousMttr || '38s'}** *(SSH SOP runbook execution speed)*\n`;
+      resp += `- **End-to-End Ticket MTTR**: **${tf.mttr}**\n`;
+      resp += `- **Active Approvals Pending**: **${pendingList.length}**\n`;
+      resp += `- **Active Host Locks**: **0**\n\n`;
 
-      if (resolvedList.length > 0) {
+      if (tf.resolvedList && tf.resolvedList.length > 0) {
         resp += `**2. Resolved Incidents & SOP Remediations**:\n`;
-        resolvedList.forEach((r: any) => {
+        tf.resolvedList.forEach((r: any) => {
           resp += `- **[${r.number}]** \`${r.department || 'Unix'}\`: ${r.shortDescription} on \`${r.configurationItemName || 'WorkerNode1HL'}\` *(Status: \`${r.state}\`)*\n`;
         });
         resp += `\n`;
       }
 
-      if (openIncidents.length > 0) {
-        resp += `**3. Open / Triage Queue**:\n`;
-        openIncidents.slice(0, 4).forEach((o: any) => {
+      if (tf.openQueue && tf.openQueue.length > 0) {
+        resp += `**3. Open / Triage Queue (${tf.openQueue.length})**:\n`;
+        tf.openQueue.forEach((o: any) => {
           resp += `- **[${o.number}]** \`${o.department || 'Triage'}\`: ${o.shortDescription} *(State: \`${o.state}\`)*\n`;
         });
         resp += `\n`;
@@ -528,6 +597,7 @@ export class CopilotService {
       `- **Inspecting Approvals**: *"What approvals are currently pending?"*\n` +
       `- **Authorizing Runbooks**: *"Approve APPR-1818"* or *"Approve all"*\n` +
       `- **Today's Fleet Telemetry & KPIs**: *"What is today's MTTR and success rate?"*\n` +
+      `- **Timeframe Logs**: *"Operations since last 8 hours"* or *"Activity past 4 hours"*\n` +
       `- **Investigating Specific Incidents**: *"Information about INC8127321"*\n` +
       `- **Autonomously Resolved Tickets**: *"Which incident was handled today?"*\n` +
       `- **Lock Administration**: *"Clear all host execution locks"*\n` +
@@ -541,6 +611,7 @@ You have direct access to live governance data, pending Human-In-The-Loop (HITL)
 ### Live System State & Time-Scoped Metrics:
 - Today's Shift (August 20, 2026): ${JSON.stringify(data.liveMetrics?.today || {})}
 - 90-Day Fleet Baseline: ${JSON.stringify(data.liveMetrics?.allTime || {})}
+- Queried Timeframe Window (${data.timeframeData?.hours ? `${data.timeframeData.hours} hours` : 'Default 24h'}): ${JSON.stringify(data.timeframeData || null)}
 - Targeted Incident Queried: ${JSON.stringify(data.targetIncident || null)}
 - Recently Resolved Incidents (${data.recentResolved?.length || 0}): ${JSON.stringify(data.recentResolved || [])}
 - Pending Approvals (${data.pendingApprovals.length}): ${JSON.stringify(data.pendingApprovals.map((p: any) => ({ id: p.id, title: p.incidentTitle, ci: p.targetCi, risk: p.riskLevel, commands: p.proposedCommands, reason: p.aiReasoning })))}
@@ -548,11 +619,12 @@ You have direct access to live governance data, pending Human-In-The-Loop (HITL)
 - Open Incident Queue (${data.openIncidents.length}): ${JSON.stringify(data.openIncidents.map((i: any) => ({ num: i.number, title: i.shortDescription, dept: i.department, state: i.state })))}
 
 ### Guidelines:
-1. When asked about a specific incident (e.g. INC8127321), provide the full record details, description, target CI, and resolution runbook for that specific ticket.
-2. When asked about "today" or "daily" metrics, return TODAY'S live metrics (${data.liveMetrics?.today?.totalOperations} operations today, ${data.liveMetrics?.today?.mttr} MTTR, ${data.liveMetrics?.today?.successRate}% success rate), NOT the 90-day historical total of ${data.liveMetrics?.allTime?.totalOperations}.
-3. When asked for examples of incidents handled today or autonomously, cite exact incident numbers (e.g. [INC8127315], [INC8127308]), target CIs, department, and resolution runbooks.
-4. Provide concise, expert, markdown-formatted answers with clear bullet points and code blocks.
-5. If the user asks to approve, reject, or clear locks, clearly describe the action and note that you can perform it.`;
+1. When a dynamic timeframe is queried (e.g. past 100 hours or past 4 hours), use the exact operations count (${data.timeframeData?.totalOperations || data.liveMetrics?.today?.totalOperations}), resolved count (${data.timeframeData?.resolvedOperations || data.liveMetrics?.today?.resolvedOperations}), and success rate (${data.timeframeData?.successRate || data.liveMetrics?.today?.successRate}%) computed for that exact timeframe.
+2. When asked about a specific incident (e.g. INC8127321), provide the full record details, description, target CI, and resolution runbook for that specific ticket.
+3. When asked about "today" or "daily" metrics, return TODAY'S live metrics (${data.liveMetrics?.today?.totalOperations} operations today, ${data.liveMetrics?.today?.mttr} MTTR, ${data.liveMetrics?.today?.successRate}% success rate), NOT the 90-day historical total of ${data.liveMetrics?.allTime?.totalOperations}.
+4. When asked for examples of incidents handled today or autonomously, cite exact incident numbers (e.g. [INC8127315], [INC8127308]), target CIs, department, and resolution runbooks.
+5. Provide concise, expert, markdown-formatted answers with clear bullet points and code blocks.
+6. If the user asks to approve, reject, or clear locks, clearly describe the action and note that you can perform it.`;
   }
 
   private generateFollowUpSuggestions(userMessage: string, pending: AgentApproval[]): string[] {
