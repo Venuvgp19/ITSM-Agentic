@@ -154,30 +154,41 @@ export class CopilotService {
       },
     };
 
-    // 2. Check for Direct Action Intent (ChatOps)
+    // 2. Check if a specific Incident number was referenced (e.g. INC8127321)
+    const incNumberMatch = userMessage.match(/INC\d+/i);
+    let targetIncident: any = null;
+    if (incNumberMatch) {
+      targetIncident = await this.prisma.incident.findFirst({
+        where: { number: { equals: incNumberMatch[0].toUpperCase(), mode: 'insensitive' } },
+      });
+    }
+
+    // 3. Check for Direct Action Intent (ChatOps)
     const actionResult = await this.handleActionIntent(userMessage, pendingApprovals);
     if (actionResult) {
       return actionResult;
     }
 
-    // 3. Formulate System Prompt with Live Ground-Truth Context
+    // 4. Formulate System Prompt with Live Ground-Truth Context
     const systemPrompt = this.buildCopilotSystemPrompt({
       pendingApprovals,
       stats,
       liveMetrics,
       recentHistory: allHistory.slice(0, 8),
       recentResolved: recentResolvedIncidents,
+      targetIncident,
       modelConfig,
       openIncidents,
       context: request.context,
     });
 
-    // 4. Invoke LLM or Fallback Reasoning
+    // 5. Invoke LLM or Fallback Reasoning
     const responseText = await this.generateLlmResponse(systemPrompt, history, userMessage, {
       pendingApprovals,
       stats,
       liveMetrics,
       recentResolved: recentResolvedIncidents,
+      targetIncident,
       openIncidents,
     });
 
@@ -411,6 +422,30 @@ export class CopilotService {
         `**4. Action Items**: ${pending.length > 0 ? `Review and approve ${pending.length} pending card(s): ${pending.map((p: any) => p.id).join(', ')}` : 'Zero pending items. Autonomous monitoring active.'}`;
     }
 
+    // Specific Incident Inspection (e.g. "information about INC8127321", "show INC8127321")
+    if (ctx.targetIncident) {
+      const inc = ctx.targetIncident;
+      let resp = `📋 **Incident Record Details: [${inc.number}]**\n\n`;
+      resp += `### ${inc.shortDescription}\n`;
+      resp += `- **Status**: \`${inc.state}\`\n`;
+      resp += `- **Department**: **${inc.department || 'Unix'}** | **Assigned To**: ${inc.assignedToName || '🤖 Auto-Resolver Agent'}\n`;
+      resp += `- **Target Host / CI**: \`${inc.configurationItemName || 'WorkerNode1HL (192.168.100.102)'}\`\n`;
+      resp += `- **Priority**: \`${inc.priority || 'P2 - HIGH'}\` (Urgency: \`${inc.urgency || 'HIGH'}\`, Impact: \`${inc.impact || 'DEPARTMENT'}\`)\n`;
+      if (inc.openedAt) {
+        resp += `- **Opened Timestamp**: \`${new Date(inc.openedAt).toLocaleString()}\`\n`;
+      }
+      if (inc.resolvedAt) {
+        resp += `- **Resolved Timestamp**: \`${new Date(inc.resolvedAt).toLocaleString()}\`\n`;
+      }
+      if (inc.description) {
+        resp += `\n**Description / Request Scope**:\n\`\`\`text\n${inc.description.trim()}\n\`\`\`\n`;
+      }
+      if (inc.resolutionNotes) {
+        resp += `**Resolution Runbook & Outcome**:\n${inc.resolutionNotes}\n\n`;
+      }
+      return resp;
+    }
+
     // Incident Query Intent (e.g. "which was one incident handled today?", "show resolved incidents", "INC8127315")
     if (
       lower.includes('incident') ||
@@ -452,6 +487,7 @@ export class CopilotService {
       `- **Inspecting Approvals**: *"What approvals are currently pending?"*\n` +
       `- **Authorizing Runbooks**: *"Approve APPR-1818"* or *"Approve all"*\n` +
       `- **Today's Fleet Telemetry & KPIs**: *"What is today's MTTR and success rate?"*\n` +
+      `- **Investigating Specific Incidents**: *"Information about INC8127321"*\n` +
       `- **Autonomously Resolved Tickets**: *"Which incident was handled today?"*\n` +
       `- **Lock Administration**: *"Clear all host execution locks"*\n` +
       `- **Shift Reports**: *"Generate shift handover summary"*`;
@@ -464,16 +500,18 @@ You have direct access to live governance data, pending Human-In-The-Loop (HITL)
 ### Live System State & Time-Scoped Metrics:
 - Today's Shift (August 20, 2026): ${JSON.stringify(data.liveMetrics?.today || {})}
 - 90-Day Fleet Baseline: ${JSON.stringify(data.liveMetrics?.allTime || {})}
+- Targeted Incident Queried: ${JSON.stringify(data.targetIncident || null)}
 - Recently Resolved Incidents (${data.recentResolved?.length || 0}): ${JSON.stringify(data.recentResolved || [])}
 - Pending Approvals (${data.pendingApprovals.length}): ${JSON.stringify(data.pendingApprovals.map((p: any) => ({ id: p.id, title: p.incidentTitle, ci: p.targetCi, risk: p.riskLevel, commands: p.proposedCommands, reason: p.aiReasoning })))}
 - Recent History: ${JSON.stringify(data.recentHistory.map((h: any) => ({ incident: h.incidentNumber, ci: h.targetCi, status: h.status, action: h.actionSummary })))}
 - Open Incident Queue (${data.openIncidents.length}): ${JSON.stringify(data.openIncidents.map((i: any) => ({ num: i.number, title: i.shortDescription, dept: i.department, state: i.state })))}
 
 ### Guidelines:
-1. When asked about "today" or "daily" metrics, return TODAY'S live metrics (${data.liveMetrics?.today?.totalOperations} operations today, ${data.liveMetrics?.today?.mttr} MTTR, ${data.liveMetrics?.today?.successRate}% success rate), NOT the 90-day historical total of ${data.liveMetrics?.allTime?.totalOperations}.
-2. When asked for examples of incidents handled today or autonomously, cite exact incident numbers (e.g. [INC8127315], [INC8127308]), target CIs, department, and resolution runbooks.
-3. Provide concise, expert, markdown-formatted answers with clear bullet points and code blocks.
-4. If the user asks to approve, reject, or clear locks, clearly describe the action and note that you can perform it.`;
+1. When asked about a specific incident (e.g. INC8127321), provide the full record details, description, target CI, and resolution runbook for that specific ticket.
+2. When asked about "today" or "daily" metrics, return TODAY'S live metrics (${data.liveMetrics?.today?.totalOperations} operations today, ${data.liveMetrics?.today?.mttr} MTTR, ${data.liveMetrics?.today?.successRate}% success rate), NOT the 90-day historical total of ${data.liveMetrics?.allTime?.totalOperations}.
+3. When asked for examples of incidents handled today or autonomously, cite exact incident numbers (e.g. [INC8127315], [INC8127308]), target CIs, department, and resolution runbooks.
+4. Provide concise, expert, markdown-formatted answers with clear bullet points and code blocks.
+5. If the user asks to approve, reject, or clear locks, clearly describe the action and note that you can perform it.`;
   }
 
   private generateFollowUpSuggestions(userMessage: string, pending: AgentApproval[]): string[] {
