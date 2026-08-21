@@ -57,8 +57,9 @@ def poll_and_dispatch_incidents(
                 escalated_incident_ids.remove(inc_id)
             state.reset_incident_locks(inc_id)
 
-        if inc_id in approved_inc_ids and inc_id in escalated_incident_ids:
-            escalated_incident_ids.remove(inc_id)
+        if inc_id in approved_inc_ids:
+            if inc_id in escalated_incident_ids:
+                escalated_incident_ids.remove(inc_id)
             state.unlock_session(inc_id)
             logger.info(f"🔓 Un-locking Incident [{inc.get('number', inc_id)}] — Human approval granted! Proceeding with execution.")
 

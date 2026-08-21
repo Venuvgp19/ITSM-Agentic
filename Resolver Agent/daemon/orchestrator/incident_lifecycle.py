@@ -313,12 +313,22 @@ def _solve_in_progress_incident_internal(
         except Exception as e:
             logger.error(f"Autonomous threshold check failed: {e}")
     
+    is_human_authorized = False
+    is_destructive_sop = False
     if approved_appr:
+        logger.info(f"🟢 Execution approved! Found existing APPROVED approval ({approved_appr.get('id')}) for [{number}]. Executing approved commands...")
         is_new_use_case = True
         kb_num = approved_appr.get("kbArticleReference", "KB_NEW")
         kb_title = approved_appr.get("kbTitle", short_desc)
         new_sop_data = {"title": kb_title, "summary": approved_appr.get("summary")}
+        sop_commands = approved_appr.get("proposedCommands", [])
         is_human_authorized = True
+        try:
+            update_incident_status(token, inc_id, "IN_PROGRESS", session_state=state)
+            requests.post(f"{ITSM_BASE_URL}/agent/approvals/{approved_appr.get('id')}/consume", timeout=3)
+        except Exception:
+            pass
+        post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔐 Human-in-the-Loop Gate", "SUCCESS", f"SOP approved by operator ({approved_appr.get('approvedBy', 'Human Admin')}). Proceeding to execute.")
     elif is_resource_alert_exceeded:
         is_new_use_case = False
         kb_num = "KB0468210"
@@ -356,7 +366,7 @@ def _solve_in_progress_incident_internal(
                         rejected_appr = a
                     elif st in ["APPROVED", "EXECUTED"] and not approved_rec:
                         approved_rec = a
-            my_approval = pending_appr or rejected_appr or approved_rec
+            my_approval = approved_rec or pending_appr or rejected_appr
 
             if not my_approval and not state.has_submitted_approval(inc_id):
                 state.mark_submitted_approval(inc_id)
