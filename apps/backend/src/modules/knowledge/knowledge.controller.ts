@@ -27,12 +27,14 @@ export class KnowledgeController {
     return this.knowledgeService.findAll(category, query);
   }
 
+  @Public()
   @Get('articles/:id')
   @ApiOperation({ summary: 'Get Knowledge Base Article by ID' })
   async findOne(@Param('id') id: string) {
     return this.knowledgeService.findOne(id);
   }
 
+  @Public()
   @Patch('articles/:id')
   @ApiOperation({ summary: 'Update & Save Knowledge Base Article' })
   async updateArticle(@Param('id') id: string, @Body() dto: any) {

@@ -130,9 +130,14 @@ export default function KnowledgePage() {
         setArticles((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
         setIsEditing(false);
         setGenSuccessMessage(`Knowledge Article ${updated.number || updated.id} successfully updated and saved to Database.`);
+      } else {
+        const errText = await res.text();
+        console.error('Failed to save article:', errText);
+        setGenSuccessMessage(`Error saving article: ${errText}`);
       }
     } catch (err: any) {
       console.error('Failed to save article edits:', err);
+      setGenSuccessMessage(`Error saving article: ${err?.message || 'Network error'}`);
     } finally {
       setIsSaving(false);
     }

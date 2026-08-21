@@ -159,9 +159,18 @@ export class KnowledgeService {
   }
 
   async findOne(id: string): Promise<KnowledgeArticle> {
-    const cleanId = id.toUpperCase();
+    const rawId = String(id || '').trim();
+    const upperId = rawId.toUpperCase();
+    const lowerId = rawId.toLowerCase();
     let record = await this.prisma.knowledgeArticle.findFirst({
-      where: { OR: [{ id: cleanId }, { number: cleanId }] },
+      where: {
+        OR: [
+          { id: rawId },
+          { id: lowerId },
+          { number: upperId },
+          { number: rawId },
+        ],
+      },
     });
     
     if (!record) {
@@ -177,9 +186,18 @@ export class KnowledgeService {
   }
 
   async updateArticle(id: string, dto: any): Promise<KnowledgeArticle> {
-    const cleanId = id.toUpperCase();
+    const rawId = String(id || '').trim();
+    const upperId = rawId.toUpperCase();
+    const lowerId = rawId.toLowerCase();
     const existing = await this.prisma.knowledgeArticle.findFirst({
-      where: { OR: [{ id: cleanId }, { number: cleanId }] },
+      where: {
+        OR: [
+          { id: rawId },
+          { id: lowerId },
+          { number: upperId },
+          { number: rawId },
+        ],
+      },
     });
     
     if (!existing) {
