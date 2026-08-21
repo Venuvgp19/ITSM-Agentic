@@ -11,9 +11,10 @@ def run_dynamic_react_loop(
     desc="",
     session_state=None,
     ssh_session_factory=None,
-    llm_invoker=None
+    llm_invoker=None,
+    is_human_authorized: bool = False
 ):
-    logger.info(f"🚀 Starting Dynamic ReAct Loop for {number}")
+    logger.info(f"🚀 Starting Dynamic ReAct Loop for {number} (is_human_authorized={is_human_authorized})")
     state = session_state or default_session_state
     invoker = llm_invoker or default_invoke_llm
     session_factory = ssh_session_factory or (lambda _ip, _u, _p: PersistentSSHSession(_ip, _u, _p))
@@ -92,7 +93,7 @@ def run_dynamic_react_loop(
                             cmd = args.get("command")
                             logger.info(f"🛠️ LLM decided to execute tool: {cmd}")
                             
-                            is_allowed, unauth_bins = is_allowed_command_adaptation(cmd, guide_commands)
+                            is_allowed, unauth_bins = is_allowed_command_adaptation(cmd, guide_commands, is_human_authorized=is_human_authorized)
                             if not is_allowed:
                                 logger.critical(f"🛡️ SOP / ENTERPRISE SAFETY BLOCK: Blocked command '{cmd}' as forbidden/unauthorized: {unauth_bins}")
                                 error_msg = (

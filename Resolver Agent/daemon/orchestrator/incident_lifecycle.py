@@ -314,18 +314,11 @@ def _solve_in_progress_incident_internal(
             logger.error(f"Autonomous threshold check failed: {e}")
     
     if approved_appr:
-        logger.info(f"🟢 Execution approved! Found existing APPROVED approval ({approved_appr.get('id')}) for [{number}]. Executing approved commands...")
-        my_approval = approved_appr
-        try:
-            requests.post(f"{ITSM_BASE_URL}/agent/approvals/{approved_appr.get('id')}/consume", timeout=3)
-        except Exception:
-            pass
-        post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔐 Human-in-the-Loop Gate", "SUCCESS", f"SOP approved by operator ({approved_appr.get('approvedBy', 'Human Admin')}). Proceeding to execute.")
-        sop_commands = approved_appr.get("proposedCommands", [])
         is_new_use_case = True
         kb_num = approved_appr.get("kbArticleReference", "KB_NEW")
         kb_title = approved_appr.get("kbTitle", short_desc)
         new_sop_data = {"title": kb_title, "summary": approved_appr.get("summary")}
+        is_human_authorized = True
     elif is_resource_alert_exceeded:
         is_new_use_case = False
         kb_num = "KB0468210"
@@ -340,10 +333,20 @@ def _solve_in_progress_incident_internal(
             department=dept
         )
 
-        if is_new_use_case:
+        # Check if matched/synthesized SOP contains any high-risk destructive commands
+        destructive_findings = []
+        for sc in sop_commands:
+            is_cat, cat_reason = check_catastrophic_destructive_command(sc)
+            if is_cat:
+                destructive_findings.append((sc, cat_reason))
+        is_destructive_sop = len(destructive_findings) > 0
+
+        # If it's a new use case OR contains destructive commands -> Mandatory Human-in-the-Loop Gate
+        if is_new_use_case or is_destructive_sop:
             my_approval = None
             pending_appr = None
             rejected_appr = None
+            approved_rec = None
             for a in approvals:
                 if a.get("incidentId") == inc_id:
                     st = a.get("status", "")
@@ -351,11 +354,13 @@ def _solve_in_progress_incident_internal(
                         pending_appr = a
                     elif st == "REJECTED" and not rejected_appr:
                         rejected_appr = a
-            my_approval = pending_appr or rejected_appr
+                    elif st in ["APPROVED", "EXECUTED"] and not approved_rec:
+                        approved_rec = a
+            my_approval = pending_appr or rejected_appr or approved_rec
 
             if not my_approval and not state.has_submitted_approval(inc_id):
                 state.mark_submitted_approval(inc_id)
-                res_steps = (new_sop_data or {}).get("resolution_steps", [])
+                res_steps = sop_commands if is_destructive_sop else (new_sop_data or {}).get("resolution_steps", [])
                 formatted_res_steps = []
                 for step in res_steps:
                     s = str(step).strip()
@@ -367,40 +372,57 @@ def _solve_in_progress_incident_internal(
                     formatted_res_steps.append(s_clean)
                 res_steps = formatted_res_steps
                 if not res_steps:
-                    logger.warning(f"⚠️ Synthesized SOP resolved to 0 steps for [{number}] — refusing to submit a hollow approval card.")
+                    logger.warning(f"⚠️ SOP resolved to 0 steps for [{number}] — refusing to submit a hollow approval card.")
                 else:
-                    logger.info(f"✅ SOP synthesis produced {len(res_steps)} native steps for [{number}]: {res_steps[:3]}...")
+                    logger.info(f"✅ SOP produced {len(res_steps)} steps for [{number}]: {res_steps[:3]}...")
+
+                risk_level = "CRITICAL_DESTRUCTIVE" if is_destructive_sop else "HIGH"
+                card_title = f"[DESTRUCTIVE COMMAND APPROVAL REQUIRED] {short_desc}" if is_destructive_sop else short_desc
+                ai_reason = (
+                    f"Security & Safety Policy Gate: SOP matched [{kb_num}] '{kb_title}', but contains high-risk destructive operations ({'; '.join([f'{c}: {r}' for c, r in destructive_findings])}). Autonomous execution is forbidden without explicit human operator sign-off in the Control Tower."
+                    if is_destructive_sop else
+                    (new_sop_data or {}).get("reasoning", "New use case requiring human review.")
+                )
 
                 approval_payload = {
                     "incidentId": inc_id,
-                    "incidentTitle": short_desc,
+                    "incidentTitle": card_title,
                     "agentId": "agent-unix-resolver-01",
                     "agentName": "🤖 Unix Auto-Resolver Agent",
                     "model": "nvidia/nemotron-3-ultra-550b-a55b",
                     "targetCi": f"{ci_name} ({ip})",
-                    "department": "DevOps Team",
-                    "riskLevel": "HIGH",
+                    "department": incident.get("department", "DevOps Team"),
+                    "riskLevel": risk_level,
                     "confidenceScore": (lambda _mv: (85.0 if _mv.get("confidence") is None else float(_mv["confidence"]) * 100.0))((new_sop_data or {}).get("relevance", {})),
-                    "summary": (new_sop_data or {}).get("summary", f"Synthesized new SOP for {short_desc}"),
+                    "summary": f"Matched SOP [{kb_num}] '{kb_title}' contains destructive command(s). Mandatory human approval required." if is_destructive_sop else (new_sop_data or {}).get("summary", f"Synthesized new SOP for {short_desc}"),
                     "proposedCommands": res_steps,
-                    "aiReasoning": (new_sop_data or {}).get("reasoning", "New use case requiring human review."),
-                    "relevanceAudit": (new_sop_data or {}).get("relevance", {}),
-                    "safetyChecks": [{"check": check, "passed": True} for check in (new_sop_data or {}).get("safety_checks", [])],
-                    "kbArticleReference": "KB_NEW",
-                    "kbTitle": (new_sop_data or {}).get("title", f"SOP: {short_desc}"),
+                    "aiReasoning": ai_reason,
+                    "relevanceAudit": (new_sop_data or {}).get("relevance", {"audit": "passed", "note": "High-risk destructive SOP requiring operator authorization"}),
+                    "safetyChecks": [{"check": f"High Risk: {r}", "passed": False} for _, r in destructive_findings] if is_destructive_sop else [{"check": check, "passed": True} for check in (new_sop_data or {}).get("safety_checks", [])],
+                    "kbArticleReference": kb_num or "KB_NEW",
+                    "kbTitle": kb_title or (new_sop_data or {}).get("title", f"SOP: {short_desc}"),
                     "synthesizerOutput": {
-                        "draftKbId": "KB-SOP-NEW",
-                        "kbTitle": (new_sop_data or {}).get("title", f"SOP: {short_desc}"),
+                        "draftKbId": kb_num or "KB-SOP-NEW",
+                        "kbTitle": kb_title or (new_sop_data or {}).get("title", f"SOP: {short_desc}"),
                         "synthesizedSolution": "\n".join(res_steps),
                         "resolutionSteps": res_steps,
-                        "trendInsight": f"Synthesized SOP containing {len(res_steps)} resolution steps. Relevance audit={((new_sop_data or {}).get('relevance', {}) or {}).get('audit', 'n/a')}: {((new_sop_data or {}).get('relevance', {}) or {}).get('note', '')}"
+                        "trendInsight": f"High-risk destructive SOP execution requested for [{number}]. Contains commands: {', '.join([c for c, _ in destructive_findings])}." if is_destructive_sop else f"Synthesized SOP containing {len(res_steps)} resolution steps."
                     }
                 }
-                logger.info(f"📝 Submitting pending approval request for synthesized SOP on ticket [{number}]...")
+                logger.info(f"📝 Submitting pending approval request for SOP on ticket [{number}] (is_destructive={is_destructive_sop})...")
                 if res_steps:
                     submit_agent_approval(token, approval_payload)
-                    post_timeline_update(inc_id, number, short_desc, ci_name, "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", f"Synthesized SOP {(new_sop_data or {}).get('title')}. Awaiting human approval in Control Tower.")
+                    post_timeline_update(inc_id, number, short_desc, ci_name, "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", f"SOP {kb_title} requires human operator approval in Control Tower.")
                     notice_note = (
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"⚠️ HIGH-RISK DESTRUCTIVE SOP DETECTED — MANDATORY HUMAN APPROVAL REQUIRED\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🔍 SOP Match: [{kb_num}] '{kb_title}'\n"
+                        f"🚨 Destructive Commands: {', '.join([f'`{c}` ({r})' for c, r in destructive_findings])}\n"
+                        f"📝 Action: Routed to Agent Control Tower (http://localhost:5173) for mandatory human operator review.\n"
+                        f"State: Incident placed ON_HOLD. Autonomous execution blocked until an operator reviews & approves.\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        if is_destructive_sop else
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                         f"🧠 AI KNOWLEDGE SYNTHESIZER: NEW SOP SUBMITTED FOR APPROVAL\n"
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -409,26 +431,15 @@ def _solve_in_progress_incident_internal(
                         f"🎫 Ticket: [{number}] {short_desc}\n"
                         f"Proposed SOP Title: {(new_sop_data or {}).get('title')}\n"
                         f"Proposed Commands: {', '.join(res_steps) if res_steps else '(none qualified for approval)'}\n"
-                        f"Relevance Audit: {((new_sop_data or {}).get('relevance', {}) or {}).get('audit', 'n/a')} — {((new_sop_data or {}).get('relevance', {}) or {}).get('note', '')}\n"
                         f"State: Incident placed ON_HOLD awaiting human operator approval in Control Tower.\n"
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     )
-                    add_work_note(token, inc_id, notice_note, author="🧠 AI Knowledge Synthesizer")
+                    add_work_note(token, inc_id, notice_note, author="🛡️ ITSM High-Risk Safety Guard" if is_destructive_sop else "🧠 AI Knowledge Synthesizer")
                     update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
                     state.lock_session(inc_id)
                 else:
                     logger.warning(f"⛔ Refusing to submit approval for [{number}] — the synthesized SOP resolved to 0 usable commands.")
                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "🔐 Human-in-the-Loop Gate", "FAILED", "SOP synthesis produced 0 usable commands; escalation required.")
-                    notice_note = (
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🧠 AI KNOWLEDGE SYNTHESIZER: SOP SYNTHESIS FAILED\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🎫 Ticket: [{number}] {short_desc}\n"
-                        f"The agent could not derive any concrete remediation steps for this incident.\n"
-                        f"Escalated to human operator for manual intervention.\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    )
-                    add_work_note(token, inc_id, notice_note, author="🧠 AI Knowledge Synthesizer")
                     update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
                     state.lock_session(inc_id)
                 return
@@ -456,18 +467,19 @@ def _solve_in_progress_incident_internal(
                     update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
                     state.lock_session(inc_id)
                     return
-            elif status in ["APPROVED", "EXECUTED"]:
-                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔐 Human-in-the-Loop Gate", "SUCCESS", f"SOP approved by operator ({my_approval.get('approver', 'Human Admin')}). Proceeding to execute.")
-                logger.info(f"🟢 Execution approved! Human operator approved synthesized SOP for [{number}]. Proceeding...")
-                sop_commands = my_approval.get("proposedCommands", sop_commands)
+                elif status in ["APPROVED", "EXECUTED"]:
+                    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🔐 Human-in-the-Loop Gate", "SUCCESS", f"SOP approved by operator ({my_approval.get('approver', 'Human Admin')}). Proceeding to execute.")
+                    logger.info(f"🟢 Execution approved! Human operator approved SOP for [{number}]. Proceeding...")
+                    sop_commands = my_approval.get("proposedCommands", sop_commands)
+                    is_human_authorized = True
 
-    if is_new_use_case and not (my_approval and my_approval.get("status") in ["APPROVED", "EXECUTED"]):
+    if (is_new_use_case or is_destructive_sop) and not is_human_authorized:
         logger.warning(
-            f"⛔ Executing synthesized SOP for [{number}] without HITL approval is BLOCKED by design. "
-            f"Escalating to DevOps Team — a real SOP must be human-approved before execution."
+            f"⛔ Executing SOP for [{number}] without HITL approval is BLOCKED by design. "
+            f"Escalating to DevOps Team — high-risk/new SOP must be human-approved before execution."
         )
         post_timeline_update(inc_id, number, short_desc, ci_name, "ON_HOLD", "🔐 Human-in-the-Loop Gate", "FAILED",
-                             "Execution blocked: synthesized SOP requires human approval before execution.")
+                             "Execution blocked: SOP requires human approval before execution.")
         guard_note = (
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"⛔ EXECUTION BLOCKED BY DESIGN POLICY\n"
@@ -484,34 +496,36 @@ def _solve_in_progress_incident_internal(
         return
 
     # 4. Security Policy Gate: Pre-Execution Scan for Catastrophic / Destructive Commands
-    for sc in sop_commands:
-        is_cat, cat_reason = check_catastrophic_destructive_command(sc)
-        if is_cat:
-            logger.critical(f"🚨 TAMPERED / DANGEROUS SOP BLOCKED: Command '{sc}' matches catastrophic blacklist ({cat_reason}). Aborting remediation!")
-            sec_alert_note = (
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🚨 CRITICAL SECURITY ALERT — TAMPERED / DESTRUCTIVE SOP BLOCKED\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🎫 Ticket: [{number}] {short_desc}\n"
-                f"🖥️ Target Host: {ci_name} (IP: {ip})\n"
-                f"⛔ Blocked Dangerous Command: `{sc}`\n"
-                f"🛡️ Policy Violation: {cat_reason}\n"
-                f"Remediation was HALTED immediately. The live host was NOT touched.\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            )
-            add_work_note(token, inc_id, sec_alert_note, author="🛡️ ITSM Security Guard")
-            post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "🛡️ Catastrophic Security Block", "FAILED", f"Blocked command: {sc} ({cat_reason})")
-            update_incident_status(token, inc_id, "ON_HOLD", assigned_to="SecOps Team", session_state=state)
-            state.lock_session(inc_id)
-            return
+    if not is_human_authorized:
+        for sc in sop_commands:
+            is_cat, cat_reason = check_catastrophic_destructive_command(sc)
+            if is_cat:
+                logger.critical(f"🚨 TAMPERED / DANGEROUS SOP BLOCKED: Command '{sc}' matches catastrophic blacklist ({cat_reason}). Aborting remediation!")
+                sec_alert_note = (
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🚨 CRITICAL SECURITY ALERT — TAMPERED / DESTRUCTIVE SOP BLOCKED\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🎫 Ticket: [{number}] {short_desc}\n"
+                    f"🖥️ Target Host: {ci_name} (IP: {ip})\n"
+                    f"⛔ Blocked Dangerous Command: `{sc}`\n"
+                    f"🛡️ Policy Violation: {cat_reason}\n"
+                    f"Remediation was HALTED immediately. The live host was NOT touched.\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                )
+                add_work_note(token, inc_id, sec_alert_note, author="🛡️ ITSM Security Guard")
+                post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "🛡️ Catastrophic Security Block", "FAILED", f"Blocked command: {sc} ({cat_reason})")
+                update_incident_status(token, inc_id, "ON_HOLD", assigned_to="SecOps Team", session_state=state)
+                state.lock_session(inc_id)
+                return
 
     # 5. Execute SSH Commands dynamically via LLM ReAct Tool Calling
     state.mark_processed_in_progress(inc_id)
 
-    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"LLM is dynamically orchestrating execution...")
+    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"LLM is dynamically orchestrating execution (human_authorized={is_human_authorized})...")
     success, exec_log = run_dynamic_react_loop(
         ip, user, password, sop_commands, short_desc, number, inc_id, ci_name,
-        desc=desc, session_state=state, ssh_session_factory=session_factory, llm_invoker=invoker
+        desc=desc, session_state=state, ssh_session_factory=session_factory, llm_invoker=invoker,
+        is_human_authorized=is_human_authorized
     )
 
     if not success:

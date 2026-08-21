@@ -101,19 +101,32 @@ def check_catastrophic_destructive_command(cmd_str: str) -> tuple[bool, str]:
             return True, reason
     return False, ""
 
-def is_allowed_command_adaptation(c_str: str, approved: list[str]) -> tuple[bool, set[str]]:
+def is_allowed_command_adaptation(c_str: str, approved: list[str], is_human_authorized: bool = False) -> tuple[bool, set[str]]:
     """
     Validates that every command/binary invoked inside `c_str` is safe and either present
     in the approved SOP commands or belongs to the standard safe diagnostic/built-in toolset.
+    If `is_human_authorized` is True, destructive commands explicitly authorized by a human
+    operator in an approval card are permitted to execute.
     Returns (is_allowed: bool, unauthorized_binaries: set).
     """
     if not c_str:
         return True, set()
     
-    # Hard global catastrophic block
+    # Check catastrophic/destructive blacklist
     is_catastrophic, cat_reason = check_catastrophic_destructive_command(c_str)
     if is_catastrophic:
-        return False, {f"FORBIDDEN_CATASTROPHIC_COMMAND ({cat_reason})"}
+        if not is_human_authorized:
+            return False, {f"FORBIDDEN_DESTRUCTIVE_COMMAND_REQUIRES_HUMAN_APPROVAL ({cat_reason})"}
+        
+        # If human authorized, verify that the invoked binary/command was explicitly present in approved commands
+        c_clean = " ".join(c_str.strip().strip("'\"").split())
+        matched_in_approved = any(
+            c_clean == " ".join(ac.strip().strip("'\"").split()) or 
+            extract_invoked_binaries(c_clean).issubset(extract_invoked_binaries(ac))
+            for ac in approved
+        )
+        if not matched_in_approved:
+            return False, {f"UNAUTHORIZED_DESTRUCTIVE_COMMAND_NOT_IN_APPROVAL ({cat_reason})"}
 
     if not approved:
         return True, set()
