@@ -188,3 +188,4 @@ class SessionStateManager:
 
 # Default global instance for seamless backward compatibility
 default_session_state = SessionStateManager()
+session_state = default_session_state

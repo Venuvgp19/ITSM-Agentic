@@ -3,16 +3,19 @@ import re
 from ..config import logger
 from ..llm import invoke_llm_with_fallback as default_invoke_llm
 from ..ssh.session import PersistentSSHSession
+from ..session_state import session_state as default_session_state
 
 def run_read_only_diagnostic_react_loop(
     ip, user, password, short_desc, desc, number, ci_name,
     target_os="Linux/Unix",
     ssh_session_factory=None,
-    llm_invoker=None
+    llm_invoker=None,
+    session_state=None
 ):
     logger.info(f"🔎 Starting Read-Only Diagnostic ReAct Loop for {number} on host {ip} ({ci_name})")
     invoker = llm_invoker or default_invoke_llm
     session_factory = ssh_session_factory or (lambda _ip, _u, _p: PersistentSSHSession(_ip, _u, _p))
+    state = session_state or default_session_state
 
     tools = [
         {

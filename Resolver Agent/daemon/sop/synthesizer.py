@@ -175,7 +175,8 @@ def evaluate_and_get_sop(
                 ip, "root", "root123", short_desc, desc, ticket_number, ci_name,
                 target_os=target_os,
                 ssh_session_factory=ssh_session_factory,
-                llm_invoker=invoker
+                llm_invoker=invoker,
+                session_state=state
             )
             logger.info(f"🔍 Dynamic Server Diagnostic Context Captured ({len(diag_logs)} bytes)")
             post_timeline_update(incident_id, ticket_number, short_desc, ci_name, "RUNNING", "🔍 Read-Only Diagnostic Probe", "SUCCESS", f"Captured {len(diag_logs)} bytes of live diagnostic logs.")
