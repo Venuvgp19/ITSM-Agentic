@@ -29,6 +29,7 @@ import { VectorSpace3D } from './components/VectorSpace3D';
 import { IncidentAnalysisView } from './components/IncidentAnalysisView';
 import { ProblemAnalysisView } from './components/ProblemAnalysisView';
 import { AgentExecutionTimelineView } from './components/AgentExecutionTimelineView';
+import { ControlTowerCopilot } from './components/ControlTowerCopilot';
 
 type TabId = 'approvals' | 'history' | 'analytics' | 'config' | 'vector' | 'analysis' | 'problems' | 'timeline';
 
@@ -377,6 +378,15 @@ export function App() {
         {/* View 8: Model Configuration */}
         {activeTab === 'config' && <ModelConfigView />}
       </main>
+
+      {/* Floating AI Copilot & ChatOps Drawer */}
+      <ControlTowerCopilot
+        pendingApprovals={approvals}
+        onRefreshNeeded={fetchData}
+        onApproveApproval={handleApprove}
+        onRejectApproval={handleReject}
+        activeTab={activeTab}
+      />
 
       {/* Footer Bar */}
       <footer className="bg-[#0e1322] border-t border-slate-800 px-6 py-4 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between max-w-[1700px] w-full mx-auto">
