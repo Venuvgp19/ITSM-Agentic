@@ -154,36 +154,82 @@ export class CopilotService {
       },
     };
 
-    // 2. Check if a dynamic timeframe was requested (e.g. "past 100 hours", "last 4 hours", "past 7 days")
-    let requestedHours: number | null = null;
-    const hoursMatch = userMessage.match(/(?:last|past|since|recent)\s*(\d+)\s*(?:hours|hrs|hr|h)/i);
-    const daysMatch = userMessage.match(/(?:last|past|since|recent)\s*(\d+)\s*(?:days|day|d)/i);
-    const weeksMatch = userMessage.match(/(?:last|past|since|recent)\s*(\d+)\s*(?:weeks|week|w)/i);
-    const minsMatch = userMessage.match(/(?:last|past|since|recent)\s*(\d+)\s*(?:minutes|mins|min|m)/i);
+    // 2. Check if a dynamic timeframe was requested (e.g. "past 2 months", "last 100 hours", "past 7 days", "past 4 hours")
+    const wordToNum: Record<string, number> = {
+      one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+      eleven: 11, twelve: 12, a: 1, an: 1,
+    };
 
-    if (hoursMatch) requestedHours = parseInt(hoursMatch[1], 10);
-    else if (daysMatch) requestedHours = parseInt(daysMatch[1], 10) * 24;
-    else if (weeksMatch) requestedHours = parseInt(weeksMatch[1], 10) * 24 * 7;
-    else if (minsMatch) requestedHours = Math.max(1, Math.round(parseInt(minsMatch[1], 10) / 60));
+    let requestedHours: number | null = null;
+    let timeframeLabel = '';
+
+    const lowerMsg = userMessage.toLowerCase();
+    const monthMatch = lowerMsg.match(/(?:last|past|since|recent|in the past|in the last)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|a|an)?\s*(?:months?|mos?)\b/i);
+    const weekMatch = lowerMsg.match(/(?:last|past|since|recent|in the past|in the last)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)?\s*(?:weeks?|wks?)\b/i);
+    const dayMatch = lowerMsg.match(/(?:last|past|since|recent|in the past|in the last)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)?\s*(?:days?)\b/i);
+    const hourMatch = lowerMsg.match(/(?:last|past|since|recent|in the past|in the last)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)?\s*(?:hours?|hrs?|h)\b/i);
+    const minMatch = lowerMsg.match(/(?:last|past|since|recent|in the past|in the last)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)?\s*(?:minutes?|mins?)\b/i);
+
+    if (monthMatch) {
+      const num = monthMatch[1] ? (wordToNum[monthMatch[1]] || parseInt(monthMatch[1], 10) || 1) : 1;
+      requestedHours = num * 24 * 30;
+      timeframeLabel = num === 1 ? '1 Month' : `${num} Months`;
+    } else if (weekMatch) {
+      const num = weekMatch[1] ? (wordToNum[weekMatch[1]] || parseInt(weekMatch[1], 10) || 1) : 1;
+      requestedHours = num * 24 * 7;
+      timeframeLabel = num === 1 ? '1 Week' : `${num} Weeks`;
+    } else if (dayMatch) {
+      const num = dayMatch[1] ? (wordToNum[dayMatch[1]] || parseInt(dayMatch[1], 10) || 1) : 1;
+      requestedHours = num * 24;
+      timeframeLabel = num === 1 ? '1 Day' : `${num} Days`;
+    } else if (hourMatch) {
+      const num = hourMatch[1] ? (wordToNum[hourMatch[1]] || parseInt(hourMatch[1], 10) || 1) : 1;
+      requestedHours = num;
+      timeframeLabel = `${num} Hours`;
+    } else if (minMatch) {
+      const num = minMatch[1] ? (wordToNum[minMatch[1]] || parseInt(minMatch[1], 10) || 30) : 30;
+      requestedHours = Math.max(1, Math.round(num / 60));
+      timeframeLabel = `${num} Minutes`;
+    }
 
     let timeframeData: any = null;
     if (requestedHours !== null) {
       const cutoff = new Date(Date.now() - requestedHours * 60 * 60 * 1000);
-      const tfIncidents = await this.prisma.incident.findMany({
-        where: {
-          OR: [
-            { openedAt: { gte: cutoff } },
-            { resolvedAt: { gte: cutoff } },
-            { createdAt: { gte: cutoff } },
-          ],
-        },
-        orderBy: { openedAt: 'desc' },
-        take: 50,
-      });
-      const tfTotal = tfIncidents.length;
-      const tfResolvedList = tfIncidents.filter(i => i.state === 'RESOLVED' || i.state === 'CLOSED');
-      const tfResolved = tfResolvedList.length;
-      const tfSuccessRate = tfTotal > 0 ? ((tfResolved / tfTotal) * 100).toFixed(1) : '100.0';
+      const [tfTotal, tfResolvedCount, tfSampleIncidents] = await Promise.all([
+        this.prisma.incident.count({
+          where: {
+            OR: [
+              { openedAt: { gte: cutoff } },
+              { resolvedAt: { gte: cutoff } },
+              { createdAt: { gte: cutoff } },
+            ],
+          },
+        }),
+        this.prisma.incident.count({
+          where: {
+            OR: [
+              { openedAt: { gte: cutoff } },
+              { resolvedAt: { gte: cutoff } },
+              { createdAt: { gte: cutoff } },
+            ],
+            state: { in: ['RESOLVED', 'CLOSED'] },
+          },
+        }),
+        this.prisma.incident.findMany({
+          where: {
+            OR: [
+              { openedAt: { gte: cutoff } },
+              { resolvedAt: { gte: cutoff } },
+              { createdAt: { gte: cutoff } },
+            ],
+          },
+          orderBy: { openedAt: 'desc' },
+          take: 10,
+        }),
+      ]);
+
+      const tfSuccessRate = tfTotal > 0 ? ((tfResolvedCount / tfTotal) * 100).toFixed(1) : '100.0';
+      const tfResolvedList = tfSampleIncidents.filter(i => i.state === 'RESOLVED' || i.state === 'CLOSED');
 
       let tfMttrSecs = 38;
       if (tfResolvedList.length > 0) {
@@ -198,15 +244,17 @@ export class CopilotService {
         }
         if (count > 0) tfMttrSecs = Math.round(totalSecs / count);
       }
+
       timeframeData = {
         hours: requestedHours,
+        label: timeframeLabel,
         totalOperations: tfTotal,
-        resolvedOperations: tfResolved,
+        resolvedOperations: tfResolvedCount,
         successRate: tfSuccessRate,
         mttr: formatDuration(tfMttrSecs),
         autonomousMttr: '38s',
         resolvedList: tfResolvedList.slice(0, 6),
-        openQueue: tfIncidents.filter(i => i.state !== 'RESOLVED' && i.state !== 'CLOSED').slice(0, 4),
+        openQueue: tfSampleIncidents.filter(i => i.state !== 'RESOLVED' && i.state !== 'CLOSED').slice(0, 4),
       };
     }
 
@@ -500,13 +548,15 @@ export class CopilotService {
         `**4. Action Items**: ${pending.length > 0 ? `Review and approve ${pending.length} pending card(s): ${pending.map((p: any) => p.id).join(', ')}` : 'Zero pending items. Autonomous monitoring active.'}`;
     }
 
-    // Timeframe Operations Intent (e.g. "operations since last 100 hours", "activity past 4 hours", "events last 12 hours")
+    // Timeframe Operations Intent (e.g. "activity in the past 2 months", "operations since last 100 hours", "activity past 4 hours")
     if (
-      (lower.includes('operation') || lower.includes('activity') || lower.includes('events') || lower.includes('remediations')) &&
-      (lower.includes('hour') || lower.includes('hr') || lower.includes('since') || lower.includes('past') || lower.includes('last') || lower.includes('day') || lower.includes('week') || lower.includes('shift'))
+      ctx.timeframeData ||
+      ((lower.includes('operation') || lower.includes('activity') || lower.includes('events') || lower.includes('remediations')) &&
+       (lower.includes('hour') || lower.includes('hr') || lower.includes('since') || lower.includes('past') || lower.includes('last') || lower.includes('day') || lower.includes('week') || lower.includes('month') || lower.includes('mos') || lower.includes('mo') || lower.includes('shift')))
     ) {
       const tf = ctx.timeframeData || {
         hours: 8,
+        label: '8 Hours',
         totalOperations: 13,
         resolvedOperations: 10,
         successRate: '76.9',
@@ -516,7 +566,7 @@ export class CopilotService {
         openQueue: openIncidents.slice(0, 4),
       };
       const pendingList = ctx.pendingApprovals || [];
-      const timeframeLabel = tf.hours >= 24 && tf.hours % 24 === 0 ? `${tf.hours / 24} Days (${tf.hours}h)` : `${tf.hours} Hours`;
+      const timeframeLabel = tf.label || (tf.hours >= 720 ? `${Math.round(tf.hours / 720)} Months` : tf.hours >= 24 ? `${Math.round(tf.hours / 24)} Days` : `${tf.hours} Hours`);
 
       let resp = `⏱️ **Autonomous Operations Log (Past ${timeframeLabel})**\n\n`;
       resp += `**1. Performance Overview (${timeframeLabel})**:\n`;
@@ -529,7 +579,7 @@ export class CopilotService {
       resp += `- **Active Host Locks**: **0**\n\n`;
 
       if (tf.resolvedList && tf.resolvedList.length > 0) {
-        resp += `**2. Resolved Incidents & SOP Remediations**:\n`;
+        resp += `**2. Sample Resolved Incidents & SOP Remediations**:\n`;
         tf.resolvedList.forEach((r: any) => {
           resp += `- **[${r.number}]** \`${r.department || 'Unix'}\`: ${r.shortDescription} on \`${r.configurationItemName || 'WorkerNode1HL'}\` *(Status: \`${r.state}\`)*\n`;
         });
