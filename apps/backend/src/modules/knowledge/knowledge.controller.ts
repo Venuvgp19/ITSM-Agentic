@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Param, Query, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Body, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { KnowledgeService } from './knowledge.service';
@@ -39,6 +39,13 @@ export class KnowledgeController {
   @ApiOperation({ summary: 'Update & Save Knowledge Base Article' })
   async updateArticle(@Param('id') id: string, @Body() dto: any) {
     return this.knowledgeService.updateArticle(id, dto);
+  }
+
+  @Public()
+  @Delete('articles/:id')
+  @ApiOperation({ summary: 'Delete Knowledge Base Article by ID or Number' })
+  async deleteArticle(@Param('id') id: string) {
+    return this.knowledgeService.deleteArticle(id);
   }
 
   @Post('generate-from-incidents')

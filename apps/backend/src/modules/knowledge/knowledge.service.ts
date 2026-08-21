@@ -225,6 +225,32 @@ export class KnowledgeService {
     return this.mapKBToDTO(updated);
   }
 
+  async deleteArticle(id: string): Promise<{ success: boolean; deleted: KnowledgeArticle }> {
+    const rawId = String(id || '').trim();
+    const upperId = rawId.toUpperCase();
+    const lowerId = rawId.toLowerCase();
+    const existing = await this.prisma.knowledgeArticle.findFirst({
+      where: {
+        OR: [
+          { id: rawId },
+          { id: lowerId },
+          { number: upperId },
+          { number: rawId },
+        ],
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Knowledge Article ${id} not found.`);
+    }
+
+    const deleted = await this.prisma.knowledgeArticle.delete({
+      where: { id: existing.id },
+    });
+
+    return { success: true, deleted: this.mapKBToDTO(deleted) };
+  }
+
   private validateResolutionStepsSafety(steps: string[]) {
     const CATASTROPHIC_PATTERNS = [
       { regex: /\binit\s+[06]\b/i, reason: "System Halt / Reboot init transition" },
