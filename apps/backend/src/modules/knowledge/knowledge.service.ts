@@ -253,16 +253,57 @@ export class KnowledgeService {
 
   private validateResolutionStepsSafety(steps: string[]) {
     const CATASTROPHIC_PATTERNS = [
+      // System Power State / Shutdown / Reboot / Halting
       { regex: /\binit\s+[06]\b/i, reason: "System Halt / Reboot init transition" },
       { regex: /\btelinit\s+[06]\b/i, reason: "System Halt / Reboot telinit transition" },
       { regex: /\b(shutdown|poweroff|reboot|halt)\b/i, reason: "Host Power State Termination / Reboot command" },
       { regex: /\bsystemctl\s+(poweroff|reboot|halt|rescue|emergency)\b/i, reason: "Systemd System-Level Power/Rescue state change" },
-      { regex: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+(\/|\/\*|\/etc|\/boot|\/bin|\/usr|\/var|\/home|\/root)(\s|$)/i, reason: "Root/System Directory Recursive Erasure" },
+      
+      // Destructive Filesystem Deletion / Wiping
+      { regex: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+(\/|\/\*|\/etc|\/boot|\/bin|\/sbin|\/lib|\/lib64|\/usr|\/var|\/home|\/root)(\s|$)/i, reason: "Root/System Directory Recursive Erasure (rm -rf)" },
+      { regex: /\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+--no-preserve-root\b/i, reason: "Unconstrained Root Filesystem Erasure" },
       { regex: /\bmkfs(\.\w+)?\b/i, reason: "Filesystem Formatting (mkfs)" },
-      { regex: /\b(wipefs|fdisk|parted|gdisk)\b/i, reason: "Disk Partition Table Wiping" },
-      { regex: /\bdd\s+.*(of=\/dev\/[a-z]+|of=\/dev\/nvme[0-9]+)/i, reason: "Raw Block Device Bit-Level Overwrite (dd)" },
+      { regex: /\b(wipefs|fdisk|parted|gdisk|sfdisk)\b/i, reason: "Disk Partition Table Manipulation / Wiping" },
+      { regex: /\bdd\s+.*(of=\/dev\/[a-zA-Z0-9_-]+)/i, reason: "Raw Block Device Bit-Level Overwrite (dd)" },
+      
+      // Fork bombs & Low-Level Triggers
       { regex: /:\(\)\s*\{\s*:\|:&\s*\};:/i, reason: "Bash Fork Bomb DoS exploit" },
-      { regex: />\s*\/dev\/(sda|sdb|sdc|sdd|nvme[0-9]+|vda|vdb|kmem|mem)/i, reason: "Raw Disk Device Stream Overwrite" },
+      { regex: />\s*\/dev\/(sda|sdb|sdc|sdd|nvme[0-9]+|vda|vdb|kmem|mem|port)/i, reason: "Raw Disk Device Stream Overwrite" },
+      { regex: />\s*\/proc\/sysrq-trigger\b/i, reason: "Magic SysRq Kernel Trigger Exploitation" },
+      
+      // Mass File Destruction & Truncation
+      { regex: /\bshred\s+.*(\/|\/\*|\/etc|\/var|\/boot)/i, reason: "System-level Secure File Shredding" },
+      { regex: /\btruncate\s+.*-s\s+0\s+\/(etc|bin|sbin|usr|boot)/i, reason: "Critical System Binary/Config Truncation" },
+
+      // Security Controls & Defense Evasion Disabling
+      { regex: /\bsetenforce\s+0\b/i, reason: "SELinux Security Policy Disabling" },
+      { regex: /\b(aa-teardown|aa-disable)\b/i, reason: "AppArmor Security Profile Teardown" },
+      { regex: /\bsystemctl\s+(stop|disable|mask)\s+(apparmor|auditd|selinux|firewalld|ufw|iptables)\b/i, reason: "Host Security/Audit Daemon Termination" },
+      { regex: /\biptables\s+-(F|X|Z|flush)\b/i, reason: "Firewall Filtering Table Flush (iptables)" },
+      { regex: /\b(ufw\s+disable|nft\s+flush\s+ruleset|firewall-cmd\s+--stop)\b/i, reason: "Host Firewall Subsystem Disabling" },
+
+      // Privilege Escalation & Identity Store Tampering
+      { regex: />\s*\/etc\/(passwd|shadow|gshadow|sudoers)\b/i, reason: "Direct Critical Credential/Sudoers File Overwrite" },
+      { regex: /\bchmod\s+-[a-zA-Z]*R\s+(777|000)(\s+(\/|\S+))/i, reason: "Broad Recursive Root/System Permission Alteration (chmod -R 777/000)" },
+      { regex: /\bchmod\s+[uag]*\+s\s+\/(bin|sbin|usr\/bin)\/(bash|sh|zsh|dash|python\d*|perl|ruby|find|vim|nano|curl|wget)\b/i, reason: "Arbitrary SUID Shell/Interpreter Binary Privilege Escalation" },
+      { regex: /\b(insmod|rmmod|modprobe\s+-r)\b/i, reason: "Direct Kernel Module Insertion/Removal" },
+
+      // Critical Log Erasure & Defense Cover-up
+      { regex: />\s*\/var\/log\/(messages|syslog|auth\.log|secure|audit\/audit\.log)\b/i, reason: "Critical System Audit/Security Log Truncation" },
+      { regex: /\brm\s+-[a-zA-Z]*r?[a-zA-Z]*f[a-zA-Z]*\s+\/var\/log\/(messages|syslog|auth\.log|secure|audit\/audit\.log)\b/i, reason: "Direct Audit Log Deletion" },
+
+      // Azure Cloud Infrastructure Destructive Operations (az CLI)
+      { regex: /\baz\s+group\s+delete\b/i, reason: "Azure Resource Group Deletion (az group delete)" },
+      { regex: /\baz\s+account\s+(clear|delete)\b/i, reason: "Azure Account/Subscription Unbinding (az account delete/clear)" },
+      { regex: /\baz\s+vm\s+(delete|deallocate|stop)\b/i, reason: "Azure Virtual Machine Destruction/Deallocation (az vm delete/deallocate)" },
+      { regex: /\baz\s+aks\s+delete\b/i, reason: "Azure Kubernetes Service Cluster Deletion (az aks delete)" },
+      { regex: /\baz\s+keyvault\s+(delete|purge)\b/i, reason: "Azure Key Vault Destruction & Cryptographic Purge (az keyvault delete/purge)" },
+      { regex: /\baz\s+storage\s+account\s+delete\b/i, reason: "Azure Storage Account Destruction (az storage account delete)" },
+      { regex: /\baz\s+storage\s+blob\s+delete-batch\b/i, reason: "Azure Bulk Blob Storage Deletion (az storage blob delete-batch)" },
+      { regex: /\baz\s+(sql\s+server|sql\s+db|postgres\s+server|cosmosdb)\s+delete\b/i, reason: "Azure Managed Database Server Deletion (az db delete)" },
+      { regex: /\baz\s+network\s+(vnet|nsg|public-ip|route-table|vpn-gateway)\s+delete\b/i, reason: "Azure Core Network Topology Deletion (az network delete)" },
+      { regex: /\baz\s+role\s+assignment\s+delete\b/i, reason: "Azure IAM Role Assignment Stripping (az role assignment delete)" },
+      { regex: /\baz\s+lock\s+delete\b/i, reason: "Azure Resource Protection Lock Stripping (az lock delete)" },
     ];
 
     for (const step of steps) {

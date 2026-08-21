@@ -78,12 +78,44 @@ CATASTROPHIC_DESTRUCTIVE_PATTERNS = [
     # Fork bombs & System Freezes
     (r":\(\)\s*\{\s*:\|:&\s*\};:", "Bash Fork Bomb DoS exploit"),
     
-    # Raw Block Device redirection
+    # Raw Block Device & Kernel Stream redirection
     (r">\s*/dev/(?:sda|sdb|sdc|sdd|nvme[0-9]+|vda|vdb|kmem|mem|port)\b", "Raw Disk/Memory Device Stream Overwrite"),
+    (r">\s*/proc/sysrq-trigger\b", "Magic SysRq Kernel Trigger Exploitation"),
     
-    # Mass File Destruction
+    # Mass File Destruction & Truncation
     (r"\bshred\s+.*(?:/|/\*|/etc|/var|/boot)\b", "System-level Secure File Shredding"),
     (r"\btruncate\s+.*-s\s+0\s+/(?:etc|bin|sbin|usr|boot)\b", "Critical System Binary/Config Truncation"),
+
+    # Security Controls & Defense Evasion Disabling
+    (r"\bsetenforce\s+0\b", "SELinux Security Policy Disabling"),
+    (r"\b(aa-teardown|aa-disable)\b", "AppArmor Security Profile Teardown"),
+    (r"\bsystemctl\s+(?:stop|disable|mask)\s+(?:apparmor|auditd|selinux|firewalld|ufw|iptables)\b", "Host Security/Audit Daemon Termination"),
+    (r"\biptables\s+-(?:F|X|Z|flush)\b", "Firewall Filtering Table Flush (iptables)"),
+    (r"\biptables-save\s*>\s*/etc/iptables", "Firewall Ruleset Overwrite"),
+    (r"\b(ufw\s+disable|nft\s+flush\s+ruleset|firewall-cmd\s+--stop)\b", "Host Firewall Subsystem Disabling"),
+
+    # Privilege Escalation & Identity Store Tampering
+    (r">\s*/etc/(?:passwd|shadow|gshadow|sudoers)\b", "Direct Critical Credential/Sudoers File Overwrite"),
+    (r"\bchmod\s+-[a-zA-Z]*R\s+(?:777|000)(?:\s+(?:/|\S+))", "Broad Recursive Root/System Permission Alteration (chmod -R 777/000)"),
+    (r"\bchmod\s+[uag]*\+s\s+/(?:bin|sbin|usr/bin)/(?:bash|sh|zsh|dash|python\d*|perl|ruby|find|vim|nano|curl|wget)\b", "Arbitrary SUID Shell/Interpreter Binary Privilege Escalation"),
+    (r"\b(insmod|rmmod|modprobe\s+-r)\b", "Direct Kernel Module Insertion/Removal"),
+
+    # Critical Log Erasure & Defense Cover-up
+    (r">\s*/var/log/(?:messages|syslog|auth\.log|secure|audit/audit\.log)\b", "Critical System Audit/Security Log Truncation"),
+    (r"\brm\s+-[a-zA-Z]*r?[a-zA-Z]*f[a-zA-Z]*\s+/var/log/(?:messages|syslog|auth\.log|secure|audit/audit\.log)\b", "Direct Audit Log Deletion"),
+
+    # Azure Cloud Infrastructure Destructive Operations (az CLI)
+    (r"\baz\s+group\s+delete\b", "Azure Resource Group Deletion (az group delete)"),
+    (r"\baz\s+account\s+(?:clear|delete)\b", "Azure Account/Subscription Unbinding (az account delete/clear)"),
+    (r"\baz\s+vm\s+(?:delete|deallocate|stop)\b", "Azure Virtual Machine Destruction/Deallocation (az vm delete/deallocate)"),
+    (r"\baz\s+aks\s+delete\b", "Azure Kubernetes Service Cluster Deletion (az aks delete)"),
+    (r"\baz\s+keyvault\s+(?:delete|purge)\b", "Azure Key Vault Destruction & Cryptographic Purge (az keyvault delete/purge)"),
+    (r"\baz\s+storage\s+account\s+delete\b", "Azure Storage Account Destruction (az storage account delete)"),
+    (r"\baz\s+storage\s+blob\s+delete-batch\b", "Azure Bulk Blob Storage Deletion (az storage blob delete-batch)"),
+    (r"\baz\s+(?:sql\s+server|sql\s+db|postgres\s+server|cosmosdb)\s+delete\b", "Azure Managed Database Server Deletion (az db delete)"),
+    (r"\baz\s+network\s+(?:vnet|nsg|public-ip|route-table|vpn-gateway)\s+delete\b", "Azure Core Network Topology Deletion (az network delete)"),
+    (r"\baz\s+role\s+assignment\s+delete\b", "Azure IAM Role Assignment Stripping (az role assignment delete)"),
+    (r"\baz\s+lock\s+delete\b", "Azure Resource Protection Lock Stripping (az lock delete)"),
 ]
 
 def check_catastrophic_destructive_command(cmd_str: str) -> tuple[bool, str]:
