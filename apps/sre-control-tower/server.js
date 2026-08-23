@@ -1060,14 +1060,12 @@ Safety:
 
     const toolTraces = [];
     let iterations = 0;
-    const maxIterations = 5;
+    const maxIterations = 10;
     let finalAnswer = '';
 
     const fallbackList = [
       modelName,
-      'meta/llama-3.3-70b-instruct',
-      'nvidia/llama-3.1-nemotron-70b-instruct',
-      'mistralai/mistral-7b-instruct-v0.3'
+      'meta/llama-3.3-70b-instruct'
     ].filter((v, i, a) => a.indexOf(v) === i);
 
     while (iterations < maxIterations) {
