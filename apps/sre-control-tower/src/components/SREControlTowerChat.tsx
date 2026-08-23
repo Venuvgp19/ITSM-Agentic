@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Bot,
   User,
@@ -13,8 +13,9 @@ import {
   Maximize2,
   Copy,
   Check,
-  Move,
-  GripHorizontal
+  GripHorizontal,
+  Activity,
+  AlertCircle
 } from 'lucide-react';
 
 interface ToolTrace {
@@ -30,6 +31,7 @@ interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   toolTraces?: ToolTrace[];
+  reachedMax?: boolean;
   timestamp: string;
 }
 
@@ -49,6 +51,7 @@ export const SREControlTowerChat: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [openTraces, setOpenTraces] = useState<{ [msgId: string]: boolean }>({});
+  const [currentAction, setCurrentAction] = useState<string>('');
 
   // Window position & size state for Draggable & Resizable window
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
@@ -83,7 +86,6 @@ export const SREControlTowerChat: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Initialize position to bottom right
   useEffect(() => {
     if (typeof window !== 'undefined' && !position) {
       const defaultW = 480;
@@ -103,11 +105,10 @@ export const SREControlTowerChat: React.FC = () => {
     if (isOpen) {
       scrollToBottom();
     }
-  }, [messages, isOpen]);
+  }, [messages, isOpen, currentAction]);
 
   // DRAG HANDLERS
   const handleMouseDownHeader = (e: React.MouseEvent) => {
-    // Only drag if clicking the header itself or drag handle, not buttons
     if ((e.target as HTMLElement).closest('button')) return;
     e.preventDefault();
     setIsDragging(true);
@@ -134,7 +135,6 @@ export const SREControlTowerChat: React.FC = () => {
     };
   };
 
-  // Global mouse move & up listeners
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging) {
@@ -169,8 +169,8 @@ export const SREControlTowerChat: React.FC = () => {
 
   const toggleExpand = () => {
     if (!isExpanded) {
-      const expW = Math.min(900, window.innerWidth - 60);
-      const expH = Math.min(820, window.innerHeight - 60);
+      const expW = Math.min(920, window.innerWidth - 60);
+      const expH = Math.min(840, window.innerHeight - 60);
       setSize({ width: expW, height: expH });
       setPosition({
         x: Math.max(20, (window.innerWidth - expW) / 2),
@@ -189,6 +189,7 @@ export const SREControlTowerChat: React.FC = () => {
     }
   };
 
+  // REAL-TIME SSE STREAMING SEND HANDLER
   const handleSend = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
     if (!query || loading) return;
@@ -200,17 +201,27 @@ export const SREControlTowerChat: React.FC = () => {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+    const assistantMsgId = `assistant-${Date.now()}`;
+    const initialAssistantMessage: Message = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      toolTraces: [],
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    const updatedMessages = [...messages, userMessage, initialAssistantMessage];
+    setMessages(updatedMessages);
     setInput('');
     setLoading(true);
+    setCurrentAction('Analyzing query & introspecting databases...');
 
     try {
-      const apiMessages = newMessages
-        .filter(m => m.id !== 'welcome')
+      const apiMessages = updatedMessages
+        .filter(m => m.id !== 'welcome' && m.id !== assistantMsgId)
         .map(m => ({ role: m.role, content: m.content }));
 
-      const res = await fetch('http://localhost:5173/api/v1/agent/chat', {
+      const response = await fetch('http://localhost:5173/api/v1/agent/chat/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -218,31 +229,97 @@ export const SREControlTowerChat: React.FC = () => {
         body: JSON.stringify({ messages: apiMessages })
       });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `Server returned status ${res.status}`);
+      if (!response.ok || !response.body) {
+        throw new Error(`Server returned status ${response.status}`);
       }
 
-      const data = await res.json();
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: data.content || 'No response generated.',
-        toolTraces: data.toolTraces || [],
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let collectedTraces: ToolTrace[] = [];
 
-      setMessages(prev => [...prev, assistantMessage]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+
+        for (const block of parts) {
+          const lines = block.split('\n');
+          let eventType = 'message';
+          let dataStr = '';
+
+          for (const l of lines) {
+            if (l.startsWith('event: ')) {
+              eventType = l.slice(7).trim();
+            } else if (l.startsWith('data: ')) {
+              dataStr = l.slice(6).trim();
+            }
+          }
+
+          if (!dataStr) continue;
+
+          try {
+            const data = JSON.parse(dataStr);
+
+            if (eventType === 'tool_start') {
+              setCurrentAction(`Running SQL on ${data.tool === 'query_sre_database' ? 'agentic_sre_db' : 'itsm_db'} (step ${data.iteration}/12)...`);
+            } else if (eventType === 'tool_done') {
+              collectedTraces.push(data);
+              setCurrentAction(`Retrieved ${data.rowCount !== undefined ? `${data.rowCount} rows` : 'schema'} from ${data.db}`);
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === assistantMsgId
+                    ? { ...m, toolTraces: [...collectedTraces] }
+                    : m
+                )
+              );
+            } else if (eventType === 'checkpoint') {
+              setCurrentAction('12-step reasoning checkpoint reached. Summarizing findings...');
+            } else if (eventType === 'token') {
+              setCurrentAction('');
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === assistantMsgId
+                    ? { ...m, content: m.content + data.delta }
+                    : m
+                )
+              );
+            } else if (eventType === 'done') {
+              setMessages(prev =>
+                prev.map(m =>
+                  m.id === assistantMsgId
+                    ? {
+                        ...m,
+                        content: m.content || data.content,
+                        toolTraces: data.toolTraces || collectedTraces,
+                        reachedMax: data.reachedMax
+                      }
+                    : m
+                )
+              );
+            } else if (eventType === 'error') {
+              throw new Error(data.error || 'Streaming error');
+            }
+          } catch (e) {}
+        }
+      }
     } catch (err: any) {
-      const errorMessage: Message = {
-        id: `err-${Date.now()}`,
-        role: 'assistant',
-        content: `⚠️ **Query Error**: ${err.message || 'Failed to reach SRE Assistant backend service.'}\n\nPlease verify that the backend server is running and connected to PostgreSQL.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === assistantMsgId
+            ? {
+                ...m,
+                content: `⚠️ **Query Error**: ${err.message || 'Failed to complete streaming response.'}\n\nPlease try again or provide clarification.`
+              }
+            : m
+        )
+      );
     } finally {
       setLoading(false);
+      setCurrentAction('');
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   };
@@ -293,7 +370,6 @@ export const SREControlTowerChat: React.FC = () => {
     });
   };
 
-  // Parses markdown text, headers, lists, code, and MARKDOWN TABLES into structured React elements
   const formatMarkdownContent = (content: string) => {
     const lines = content.split('\n');
     const elements: React.ReactNode[] = [];
@@ -302,7 +378,7 @@ export const SREControlTowerChat: React.FC = () => {
     while (i < lines.length) {
       const line = lines[i];
 
-      // Check if this line is the beginning of a Markdown Table (starts and contains '|')
+      // Markdown Table Parser
       if (line.trim().startsWith('|') && line.includes('|') && i + 1 < lines.length && lines[i + 1].trim().startsWith('|') && lines[i + 1].includes('-')) {
         const tableLines: string[] = [];
         while (i < lines.length && lines[i].trim().startsWith('|')) {
@@ -311,13 +387,11 @@ export const SREControlTowerChat: React.FC = () => {
         }
 
         if (tableLines.length >= 2) {
-          // Parse Header
           const headerCells = tableLines[0]
             .split('|')
             .map(c => c.trim())
             .filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
 
-          // Parse Rows (skip index 1 which is delimiter |---|---|)
           const rowLines = tableLines.slice(2);
           const rows = rowLines.map(r =>
             r
@@ -359,7 +433,6 @@ export const SREControlTowerChat: React.FC = () => {
         }
       }
 
-      // Check for markdown headers
       if (line.startsWith('### ')) {
         elements.push(<h4 key={i} className="font-bold text-indigo-300 text-sm mt-2.5 mb-1">{line.replace('### ', '')}</h4>);
         i++;
@@ -376,7 +449,6 @@ export const SREControlTowerChat: React.FC = () => {
         continue;
       }
 
-      // Check for bullet list
       if (line.startsWith('- ') || line.startsWith('* ')) {
         const bulletText = line.substring(2);
         elements.push(
@@ -388,7 +460,6 @@ export const SREControlTowerChat: React.FC = () => {
         continue;
       }
 
-      // Check for numbered list
       const numberedMatch = line.match(/^(\d+)\.\s+(.*)/);
       if (numberedMatch) {
         elements.push(
@@ -401,7 +472,6 @@ export const SREControlTowerChat: React.FC = () => {
         continue;
       }
 
-      // Check for blockquote
       if (line.startsWith('> ')) {
         elements.push(
           <div key={i} className="border-l-2 border-indigo-500 pl-2.5 py-0.5 my-1 text-slate-400 italic text-xs">
@@ -473,7 +543,7 @@ export const SREControlTowerChat: React.FC = () => {
                 <div className="flex items-center space-x-2">
                   <span className="text-xs font-bold text-white tracking-wide">SRE Control Tower Assistant</span>
                   <span className="px-1.5 py-0.2 bg-emerald-950/70 border border-emerald-500/40 text-[9px] font-semibold text-emerald-300 rounded">
-                    LIVE DB
+                    LIVE DB • SSE STREAM
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 flex items-center space-x-1">
@@ -483,7 +553,6 @@ export const SREControlTowerChat: React.FC = () => {
               </div>
             </div>
 
-            {/* Drag Handle Indicator & Window Controls */}
             <div className="flex items-center space-x-1.5">
               <div className="text-slate-600 group-hover:text-slate-400 px-1" title="Drag Window">
                 <GripHorizontal className="w-4 h-4" />
@@ -558,7 +627,7 @@ export const SREControlTowerChat: React.FC = () => {
                     </span>
                     <div className="flex items-center space-x-1.5 text-[9px] text-slate-400">
                       <span>{msg.timestamp}</span>
-                      {msg.role === 'assistant' && (
+                      {msg.role === 'assistant' && msg.content && (
                         <button
                           onClick={() => copyToClipboard(msg.content, msg.id)}
                           className="hover:text-white transition"
@@ -570,8 +639,25 @@ export const SREControlTowerChat: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* 12-Iteration Checkpoint Notification Banner */}
+                  {msg.reachedMax && (
+                    <div className="mb-2 p-2 bg-amber-950/50 border border-amber-500/40 rounded-lg flex items-center space-x-2 text-[11px] text-amber-300">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                      <span>
+                        <strong>Reasoning Checkpoint (Iteration 12/12):</strong> Checkpoint reached. Answer the question below to resume from this state.
+                      </span>
+                    </div>
+                  )}
+
                   {/* Formatted Markdown Content with Tables */}
-                  <div className="space-y-1">{formatMarkdownContent(msg.content)}</div>
+                  <div className="space-y-1">
+                    {msg.content ? formatMarkdownContent(msg.content) : (
+                      <span className="text-indigo-300 animate-pulse text-[11px] flex items-center space-x-1.5">
+                        <Activity className="w-3 h-3 animate-spin text-indigo-400" />
+                        <span>Streaming live database query response...</span>
+                      </span>
+                    )}
+                  </div>
 
                   {/* Live Database Query Traces Accordion */}
                   {msg.toolTraces && msg.toolTraces.length > 0 && (
@@ -607,11 +693,12 @@ export const SREControlTowerChat: React.FC = () => {
               </div>
             ))}
 
-            {loading && (
+            {/* Real-time Streaming Activity Indicator */}
+            {loading && currentAction && (
               <div className="flex items-start space-x-2">
-                <div className="p-3 bg-slate-950/70 border border-indigo-500/30 rounded-xl rounded-bl-none text-xs text-indigo-300 flex items-center space-x-2">
+                <div className="p-2.5 bg-slate-950/80 border border-indigo-500/40 rounded-xl rounded-bl-none text-xs text-indigo-300 flex items-center space-x-2 shadow-lg">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                  <span className="text-[11px] font-medium">Querying live platform databases...</span>
+                  <span className="text-[11px] font-medium tracking-wide">{currentAction}</span>
                 </div>
               </div>
             )}
