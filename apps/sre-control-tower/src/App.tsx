@@ -51,6 +51,7 @@ import { IncidentAnalysisView } from './components/IncidentAnalysisView';
 import { ProblemAnalysisView } from './components/ProblemAnalysisView';
 import { AgentExecutionTimelineView } from './components/AgentExecutionTimelineView';
 import { AIRoutingOverview } from './components/AIRoutingOverview';
+import { SREControlTowerChat } from './components/SREControlTowerChat';
 
 type TabId =
   | 'overview'
@@ -686,6 +687,9 @@ export function App() {
           {activeTab === 'config' && <ModelConfigView />}
         </main>
       </div>
+
+      {/* SRE Control Tower Conversational Assistant */}
+      <SREControlTowerChat />
     </div>
   );
 }
