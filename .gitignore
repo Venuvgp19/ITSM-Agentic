@@ -15,11 +15,10 @@ __pycache__/
 eval_log_output.txt
 *.pyc
 *.pptx
-!Enterprise_Autonomous_ITSM_Platform_Presentation.pptx
-!Autonomous_ITSM_Platform_Product_Presentation.pptx
-!Autonomous_ITSM_Platform_Proactive_Presentation.pptx
-!Autonomous_ITSM_Control_Tower_Presentation.pptx
+*.ppt
 ~$*
+docs/presentations/*.pptx
+docs/presentations/*.ppt
 login.json
 query
 stop
