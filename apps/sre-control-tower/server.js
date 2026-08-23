@@ -1032,7 +1032,7 @@ Safety:
         type: 'function',
         function: {
           name: 'query_itsm_database',
-          description: 'Execute a read-only SELECT query against the itsm_db PostgreSQL database. Tables: "Incident", "KnowledgeArticle", "ConfigurationItem", "Problem", "ChangeRequest", "User". Note: Mixed-case column names in itsm_db MUST be quoted in SQL (e.g. "shortDescription", "assignedToName", "resolvedAt", "resolutionSteps").',
+          description: 'Execute a read-only SELECT query against the itsm_db PostgreSQL database. Tables: "Incident", "KnowledgeArticle", "ConfigurationItem", "Problem", "ChangeRequest", "User". NOTE: Ticket numbers (e.g. INC0001171) are in the "number" column (NOT "id", which is a UUID). Mixed-case column names in itsm_db MUST be quoted in SQL (e.g. SELECT id, number, "shortDescription", "description", priority, state, "resolutionNotes", "assignedToName" FROM "Incident" WHERE number = \'INC0001171\').',
           parameters: {
             type: 'object',
             properties: {
@@ -1408,7 +1408,7 @@ Safety:
         type: 'function',
         function: {
           name: 'query_itsm_database',
-          description: 'Execute a read-only SELECT query against the itsm_db PostgreSQL database. Tables: "Incident", "KnowledgeArticle", "ConfigurationItem", "Problem", "ChangeRequest", "User". Note: Mixed-case column names in itsm_db MUST be quoted in SQL (e.g. "shortDescription", "assignedToName", "resolvedAt", "resolutionSteps").',
+          description: 'Execute a read-only SELECT query against the itsm_db PostgreSQL database. Tables: "Incident", "KnowledgeArticle", "ConfigurationItem", "Problem", "ChangeRequest", "User". NOTE: Ticket numbers (e.g. INC0001171) are in the "number" column (NOT "id", which is a UUID). Mixed-case column names in itsm_db MUST be quoted in SQL (e.g. SELECT id, number, "shortDescription", "description", priority, state, "resolutionNotes", "assignedToName" FROM "Incident" WHERE number = \'INC0001171\').',
           parameters: {
             type: 'object',
             properties: {
