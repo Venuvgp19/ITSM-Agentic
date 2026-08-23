@@ -1065,7 +1065,7 @@ Safety:
 
     const fallbackList = [
       modelName,
-      'meta/llama-3.3-70b-instruct'
+      'nvidia/nemotron-3.5-lightning-30b-a3b'
     ].filter((v, i, a) => a.indexOf(v) === i);
 
     while (iterations < maxIterations) {
@@ -1077,17 +1077,14 @@ Safety:
 
       for (const candModel of fallbackList) {
         try {
-          const isNemotron = candModel.toLowerCase().includes('nemotron');
           const payload = {
             model: candModel,
             messages: convoMessages,
             tools: tools,
             temperature: 0.1,
-            max_tokens: 1500
+            max_tokens: 1500,
+            chat_template_kwargs: { enable_thinking: false }
           };
-          if (isNemotron) {
-            payload.chat_template_kwargs = { enable_thinking: false };
-          }
 
           const r = await fetch(`${baseUrl}/chat/completions`, {
             method: 'POST',
@@ -1096,7 +1093,7 @@ Safety:
               'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(15000)
+            signal: AbortSignal.timeout(45000)
           });
 
           if (r.ok) {
