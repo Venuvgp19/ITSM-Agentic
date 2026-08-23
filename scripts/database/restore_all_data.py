@@ -1,4 +1,5 @@
 import psycopg2
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import json
 import os
 import sys
@@ -14,27 +15,117 @@ if not os.path.exists(dump_file):
     sys.exit(1)
 
 print("=========================================================")
-print("🧹 FRESH COPY RESTORATION: CLEARING & RESTORING ALL TABLES")
+print("🌐 MULTI-DATABASE RESTORATION (itsm_db & agentic_sre_db)")
 print("=========================================================")
+
+# Step 0: Ensure both target databases exist on PostgreSQL
+def ensure_database_exists(db_name):
+    try:
+        conn = psycopg2.connect("postgresql://postgres:postgres@localhost:5432/postgres")
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        cur = conn.cursor()
+        cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}';")
+        if not cur.fetchone():
+            print(f"🛠️ Creating database '{db_name}'...")
+            cur.execute(f'CREATE DATABASE "{db_name}";')
+            print(f"  ✅ Database '{db_name}' created successfully.")
+        else:
+            print(f"  ✅ Database '{db_name}' already exists.")
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"  ⚠️ Database check for '{db_name}': {e}")
+
+print("\n--- Step 1: Checking / Auto-Provisioning Databases ---")
+ensure_database_exists("itsm_db")
+ensure_database_exists("agentic_sre_db")
 
 with open(dump_file, "r", encoding="utf-8") as f:
     dump_data = json.load(f)
 
-# 1. Clear & Restore itsm_db
+# Step 2: Clear & Restore itsm_db
 itsm_data = dump_data.get("itsm_db", {})
 conn_itsm = psycopg2.connect("postgresql://postgres:postgres@localhost:5432/itsm_db")
 cur_itsm = conn_itsm.cursor()
 
-print("1. Clearing existing itsm_db data for a clean fresh copy...")
-try:
-    cur_itsm.execute('TRUNCATE TABLE "Incident", "KnowledgeArticle", "Problem", "ConfigurationItem" CASCADE;')
-except Exception as e:
-    conn_itsm.rollback()
-    # Fallback to DELETE if tables or foreign keys have restrictions
-    cur_itsm.execute('DELETE FROM "Incident";')
-    cur_itsm.execute('DELETE FROM "KnowledgeArticle";')
-    cur_itsm.execute('DELETE FROM "Problem";')
-    cur_itsm.execute('DELETE FROM "ConfigurationItem";')
+print("\n--- Step 2: Restoring itsm_db (Incidents, KBs, Problems) ---")
+# Ensure tables exist
+cur_itsm.execute("""
+    CREATE TABLE IF NOT EXISTS "Tenant" (
+        id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        slug VARCHAR(255) UNIQUE,
+        domain VARCHAR(255),
+        "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS "KnowledgeArticle" (
+        id VARCHAR(64) PRIMARY KEY,
+        "tenantId" VARCHAR(64) DEFAULT 'tenant_acme_01',
+        number VARCHAR(64) UNIQUE,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        category VARCHAR(128),
+        "configurationItem" VARCHAR(128),
+        summary TEXT,
+        symptoms TEXT,
+        "rootCause" TEXT,
+        "resolutionSteps" JSONB,
+        "isPublished" BOOLEAN DEFAULT TRUE,
+        "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS "Problem" (
+        id VARCHAR(64) PRIMARY KEY,
+        "tenantId" VARCHAR(64) DEFAULT 'tenant_acme_01',
+        number VARCHAR(64) UNIQUE,
+        "shortDescription" TEXT NOT NULL,
+        description TEXT,
+        "rootCause" TEXT,
+        workaround TEXT,
+        "knownError" BOOLEAN DEFAULT FALSE,
+        state VARCHAR(32) DEFAULT 'NEW',
+        priority VARCHAR(32) DEFAULT 'P3',
+        "configurationItemName" VARCHAR(128),
+        "assignedToName" VARCHAR(128),
+        "relatedIncidentsCount" INTEGER DEFAULT 0,
+        "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS "Incident" (
+        id VARCHAR(64) PRIMARY KEY,
+        "tenantId" VARCHAR(64) DEFAULT 'tenant_acme_01',
+        number VARCHAR(64) UNIQUE,
+        "shortDescription" TEXT NOT NULL,
+        description TEXT,
+        state VARCHAR(32) DEFAULT 'NEW',
+        impact VARCHAR(32) DEFAULT 'LOW',
+        urgency VARCHAR(32) DEFAULT 'LOW',
+        priority VARCHAR(32) DEFAULT 'P3',
+        "callerId" VARCHAR(64),
+        "callerName" VARCHAR(128),
+        "assignedToId" VARCHAR(64),
+        "assignedToName" VARCHAR(128),
+        "assignmentGroupId" VARCHAR(64),
+        "configurationItemId" VARCHAR(64),
+        "configurationItemName" VARCHAR(128),
+        department VARCHAR(128),
+        "resolutionNotes" TEXT,
+        "resolutionCode" VARCHAR(128),
+        "resolvedAt" TIMESTAMP WITH TIME ZONE,
+        "closedAt" TIMESTAMP WITH TIME ZONE,
+        "openedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        "slaDueAt" TIMESTAMP WITH TIME ZONE,
+        "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        "activitiesJson" JSONB
+    );
+
+    TRUNCATE TABLE "Incident", "KnowledgeArticle", "Problem" CASCADE;
+""")
 
 # Restore Tenant
 for t in itsm_data.get("Tenant", []):
@@ -58,7 +149,7 @@ for kb in itsm_data.get("KnowledgeArticle", []):
         kb.get("isPublished", True), kb.get("createdAt"), kb.get("updatedAt")
     ))
 
-print(f"  ✅ Restored {len(itsm_data.get('KnowledgeArticle', []))} fresh Knowledge Articles in itsm_db")
+print(f"  ✅ Restored {len(itsm_data.get('KnowledgeArticle', []))} Knowledge Articles in itsm_db")
 
 # Restore Problems
 for p in itsm_data.get("Problem", []):
@@ -102,12 +193,12 @@ cur_itsm.close()
 conn_itsm.close()
 print(f"  ✅ Restored exact fresh set of {len(incidents)} Incidents in itsm_db")
 
-# 2. Clear & Restore agentic_sre_db
+# Step 3: Clear & Restore agentic_sre_db
 sre_data = dump_data.get("agentic_sre_db", {})
 conn_sre = psycopg2.connect("postgresql://postgres:postgres@localhost:5432/agentic_sre_db")
 cur_sre = conn_sre.cursor()
 
-print("\n2. Clearing existing agentic_sre_db tables for a clean fresh copy...")
+print("\n--- Step 3: Restoring agentic_sre_db (SRE History, Approvals, Timeline) ---")
 cur_sre.execute("""
     CREATE TABLE IF NOT EXISTS sre_approvals (
         id VARCHAR(64) PRIMARY KEY,
@@ -198,7 +289,7 @@ for h in sre_data.get("sre_history", []):
         json.dumps(h.get("details")) if isinstance(h.get("details"), (list, dict)) else h.get("details")
     ))
 
-print(f"  ✅ Restored {len(sre_data.get('sre_history', []))} fresh SRE History Records in agentic_sre_db")
+print(f"  ✅ Restored {len(sre_data.get('sre_history', []))} SRE History Records in agentic_sre_db")
 
 for a in sre_data.get("sre_approvals", []):
     cur_sre.execute("""
@@ -219,7 +310,7 @@ for a in sre_data.get("sre_approvals", []):
         json.dumps(a.get("details")) if isinstance(a.get("details"), (list, dict)) else a.get("details")
     ))
 
-print(f"  ✅ Restored {len(sre_data.get('sre_approvals', []))} fresh Approvals in agentic_sre_db")
+print(f"  ✅ Restored {len(sre_data.get('sre_approvals', []))} Approvals in agentic_sre_db")
 
 for t in sre_data.get("sre_timeline", []):
     cur_sre.execute("""
@@ -255,5 +346,5 @@ cur_sre.close()
 conn_sre.close()
 
 print("\n=========================================================")
-print("🎉 PERFECT FRESH COPY RESTORED: All Stale Data Purged & Snapshot Active!")
+print("🎉 BOTH DATABASES RESTORED COMPLETELY & SYNCHRONIZED!")
 print("=========================================================")
