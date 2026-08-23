@@ -14,11 +14,7 @@ coverage/
 __pycache__/
 eval_log_output.txt
 *.pyc
-*.pptx
-*.ppt
 ~$*
-docs/presentations/*.pptx
-docs/presentations/*.ppt
 login.json
 query
 stop
