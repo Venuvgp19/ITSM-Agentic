@@ -50,7 +50,6 @@ import { VectorSpace3D } from './components/VectorSpace3D';
 import { IncidentAnalysisView } from './components/IncidentAnalysisView';
 import { ProblemAnalysisView } from './components/ProblemAnalysisView';
 import { AgentExecutionTimelineView } from './components/AgentExecutionTimelineView';
-import { ControlTowerChatDrawer } from './components/ControlTowerChatDrawer';
 import { AIRoutingOverview } from './components/AIRoutingOverview';
 
 type TabId =
@@ -97,7 +96,6 @@ export function App() {
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isKillSwitchTriggered, setIsKillSwitchTriggered] = useState<boolean>(false);
-  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
 
   const API_BASE = 'http://localhost:5173/api/v1/agent';
 
@@ -688,19 +686,6 @@ export function App() {
           {activeTab === 'config' && <ModelConfigView />}
         </main>
       </div>
-
-      {/* Floating AI Co-Pilot Trigger Button */}
-      <button
-        onClick={() => setIsChatOpen(prev => !prev)}
-        className="fixed bottom-6 right-6 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white p-3.5 rounded-full shadow-2xl flex items-center space-x-2 z-40 border border-indigo-400/30 transition-all transform hover:scale-105"
-        title="Open Control Tower AI SRE Co-Pilot"
-      >
-        <Bot className="w-5 h-5 animate-pulse" />
-        <span className="text-xs font-semibold pr-1">AI Co-Pilot</span>
-      </button>
-
-      {/* Control Tower Chat Drawer Component */}
-      <ControlTowerChatDrawer isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
     </div>
   );
 }
