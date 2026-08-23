@@ -33,23 +33,23 @@
       pointer-events: none;
     }
     .glass-panel {
-      background: rgba(15, 23, 42, 0.75);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), inset 0 1px 1px 0 rgba(255, 255, 255, 0.12);
       transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .glass-panel:hover {
-      border-color: rgba(6, 182, 212, 0.4);
+      border-color: rgba(6, 182, 212, 0.45);
       transform: translateY(-4px) translateZ(10px);
-      box-shadow: 0 30px 60px -15px rgba(6, 182, 212, 0.2);
+      box-shadow: 0 30px 60px -15px rgba(6, 182, 212, 0.25);
     }
     .slide {
       display: none;
       opacity: 0;
-      transform: scale(0.96) translateY(20px) rotateX(4deg);
-      transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      transform: scale(0.96) translateY(20px) rotateX(3deg);
+      transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .slide.active {
       display: flex;
@@ -57,23 +57,22 @@
       transform: scale(1) translateY(0) rotateX(0deg);
     }
     .glow-cyan {
-      box-shadow: 0 0 40px -10px rgba(6, 182, 212, 0.5);
+      box-shadow: 0 0 35px -8px rgba(6, 182, 212, 0.5);
     }
     .glow-emerald {
-      box-shadow: 0 0 40px -10px rgba(16, 185, 129, 0.5);
+      box-shadow: 0 0 35px -8px rgba(16, 185, 129, 0.5);
     }
-    .badge-glow {
-      position: relative;
+    .snapshot-frame {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.7);
+      transition: transform 0.3s ease, border-color 0.3s ease;
+      cursor: zoom-in;
     }
-    .badge-glow::before {
-      content: '';
-      position: absolute;
-      inset: -2px;
-      border-radius: inherit;
-      background: linear-gradient(90deg, #06B6D4, #6366F1, #10B981);
-      opacity: 0.3;
-      filter: blur(6px);
-      z-index: -1;
+    .snapshot-frame:hover {
+      transform: scale(1.02);
+      border-color: #06B6D4;
     }
   </style>
 </head>
@@ -83,7 +82,7 @@
   <div id="canvas-container"></div>
 
   <!-- Top Navigation Header -->
-  <header class="relative z-20 flex items-center justify-between px-10 py-5 border-b border-slate-800/80 bg-slate-950/40 backdrop-blur-md">
+  <header class="relative z-20 flex items-center justify-between px-10 py-4 border-b border-slate-800/80 bg-slate-950/50 backdrop-blur-md">
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-emerald-400 p-[1.5px] flex items-center justify-center glow-cyan">
         <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
@@ -93,7 +92,7 @@
       <div>
         <h1 class="text-sm font-extrabold tracking-wider text-white uppercase flex items-center gap-2">
           Autonomous ITSM & SRE Control Tower
-          <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">v2.4 Enterprise</span>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">Live Platform Snapshots</span>
         </h1>
         <p class="text-[11px] text-slate-400">Multi-Agent AI • Hybrid RAG • Persistent SSH Auto-Remediation</p>
       </div>
@@ -111,248 +110,180 @@
   <!-- Main Slide Viewport -->
   <main class="relative z-10 flex-1 flex items-center justify-center p-8 overflow-hidden">
     
-    <!-- SLIDE 1: Title Hero -->
-    <div class="slide active w-full max-w-7xl h-full flex-col justify-center items-start gap-8" data-index="0">
-      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold tracking-wide badge-glow">
-        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-        Production Grade Autonomous IT Infrastructure
-      </div>
-
-      <div class="space-y-4 max-w-4xl">
-        <h1 class="text-5xl lg:text-6xl font-black text-white leading-tight tracking-tight">
-          Next-Generation <span class="bg-gradient-to-r from-cyan-400 via-indigo-300 to-emerald-400 bg-clip-text text-transparent">Autonomous ITSM</span> & SRE Control Tower
-        </h1>
-        <p class="text-lg text-slate-400 leading-relaxed max-w-3xl">
-          Transforming enterprise IT operations from reactive manual firefighting to proactive, self-healing systems powered by multi-agent reasoning, ChromaDB dense vector RAG, and immutable human-in-the-loop governance.
-        </p>
-      </div>
-
-      <!-- Hero KPI Matrix -->
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-5 w-full mt-4">
-        <div class="glass-panel p-6 rounded-2xl">
-          <div class="text-3xl font-black text-cyan-400 font-mono tracking-tight">-98.2%</div>
-          <div class="text-sm font-bold text-white mt-1">MTTR Acceleration</div>
-          <div class="text-xs text-slate-400 mt-1">From 45 mins down to 14.8 seconds</div>
-        </div>
-        <div class="glass-panel p-6 rounded-2xl">
-          <div class="text-3xl font-black text-emerald-400 font-mono tracking-tight">92.4%</div>
-          <div class="text-sm font-bold text-white mt-1">Auto-Resolution Rate</div>
-          <div class="text-xs text-slate-400 mt-1">Zero-touch autonomous remediation</div>
-        </div>
-        <div class="glass-panel p-6 rounded-2xl">
-          <div class="text-3xl font-black text-indigo-400 font-mono tracking-tight">12 Steps</div>
-          <div class="text-sm font-bold text-white mt-1">Reasoning Checkpoints</div>
-          <div class="text-xs text-slate-400 mt-1">SSE streaming with live token traces</div>
-        </div>
-        <div class="glass-panel p-6 rounded-2xl">
-          <div class="text-3xl font-black text-amber-400 font-mono tracking-tight">100% HITL</div>
-          <div class="text-sm font-bold text-white mt-1">Safety & Governance</div>
-          <div class="text-xs text-slate-400 mt-1">Granular approval gates & kill switch</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SLIDE 2: Tri-Tier Architecture -->
-    <div class="slide w-full max-w-7xl h-full flex-col justify-center gap-6" data-index="1">
-      <div>
-        <span class="text-xs font-bold text-cyan-400 uppercase tracking-wider font-mono">System Architecture</span>
-        <h2 class="text-3xl font-black text-white mt-1">Tri-Tier Decoupled Autonomous Framework</h2>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
-        <!-- Layer 1 -->
-        <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between border-t-2 border-t-cyan-500">
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-mono font-bold text-cyan-400 px-2 py-1 bg-cyan-500/10 rounded">LAYER 01</span>
-              <span class="text-xs text-slate-400 font-mono">Port 3000 / 4000</span>
-            </div>
-            <h3 class="text-lg font-extrabold text-white">Next.js Core ITSM & NestJS API</h3>
-            <p class="text-xs text-slate-400 leading-relaxed">
-              Enterprise helpdesk console managing 1,187+ incidents, CMDB configuration items, problems, and knowledge articles with role-based JWT auth.
-            </p>
-            <ul class="text-xs text-slate-300 space-y-1.5 pt-2 border-t border-slate-800">
-              <li class="flex items-center gap-2"><span class="text-cyan-400">▸</span> Real-time ticket lifecycle states</li>
-              <li class="flex items-center gap-2"><span class="text-cyan-400">▸</span> PostgreSQL relational integrity</li>
-              <li class="flex items-center gap-2"><span class="text-cyan-400">▸</span> Bidirectional WebSocket updates</li>
-            </ul>
+    <!-- SLIDE 1: Title Hero with Live Overview Snapshot -->
+    <div class="slide active w-full max-w-7xl h-full flex-col justify-center gap-6" data-index="0">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center w-full">
+        <div class="lg:col-span-6 space-y-4">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+            Production Grade Autonomous IT Infrastructure
           </div>
-        </div>
-
-        <!-- Layer 2 -->
-        <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between border-t-2 border-t-indigo-500">
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-mono font-bold text-indigo-400 px-2 py-1 bg-indigo-500/10 rounded">LAYER 02</span>
-              <span class="text-xs text-slate-400 font-mono">Port 5173</span>
-            </div>
-            <h3 class="text-lg font-extrabold text-white">SRE Control Tower & Assistant</h3>
-            <p class="text-xs text-slate-400 leading-relaxed">
-              Real-time governance dashboard offering SSE streaming, Draggable SRE Assistant, 12-iteration reasoning checkpoints, and HITL approval approvals.
-            </p>
-            <ul class="text-xs text-slate-300 space-y-1.5 pt-2 border-t border-slate-800">
-              <li class="flex items-center gap-2"><span class="text-indigo-400">▸</span> Live AI triage stream (15s loop)</li>
-              <li class="flex items-center gap-2"><span class="text-indigo-400">▸</span> Multi-turn database introspection</li>
-              <li class="flex items-center gap-2"><span class="text-indigo-400">▸</span> Emergency Master Kill Switch</li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Layer 3 -->
-        <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between border-t-2 border-t-emerald-500">
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-mono font-bold text-emerald-400 px-2 py-1 bg-emerald-500/10 rounded">LAYER 03</span>
-              <span class="text-xs text-slate-400 font-mono">Daemon Process</span>
-            </div>
-            <h3 class="text-lg font-extrabold text-white">Python SRE Auto-Resolver</h3>
-            <p class="text-xs text-slate-400 leading-relaxed">
-              Autonomous self-healing engine with Persistent SSH multiplexing, Hybrid ChromaDB + BM25 RAG, ReAct diagnostics, and post-remediation guards.
-            </p>
-            <ul class="text-xs text-slate-300 space-y-1.5 pt-2 border-t border-slate-800">
-              <li class="flex items-center gap-2"><span class="text-emerald-400">▸</span> 44 Master SOP Vector Embeddings</li>
-              <li class="flex items-center gap-2"><span class="text-emerald-400">▸</span> Non-destructive shell execution</li>
-              <li class="flex items-center gap-2"><span class="text-emerald-400">▸</span> Immutable terminal proof logs</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SLIDE 3: AI Router & Historical Grounding -->
-    <div class="slide w-full max-w-7xl h-full flex-col justify-center gap-6" data-index="2">
-      <div>
-        <span class="text-xs font-bold text-cyan-400 uppercase tracking-wider font-mono">AI Triage & Classification</span>
-        <h2 class="text-3xl font-black text-white mt-1">Historical Precedent Grounding Engine</h2>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
-        <div class="glass-panel p-6 rounded-2xl space-y-4">
-          <h3 class="text-lg font-bold text-white">How Few-Shot Historical Grounding Works</h3>
-          <div class="space-y-3">
-            <div class="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-3">
-              <div class="text-cyan-400 font-mono font-bold text-sm">01</div>
-              <div>
-                <div class="text-sm font-semibold text-white">Sub-Second Database Lookup</div>
-                <div class="text-xs text-slate-400 mt-0.5">Queries 1,187 incidents & 218 SRE history logs for matching symptoms & CI hosts.</div>
-              </div>
-            </div>
-            <div class="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-3">
-              <div class="text-cyan-400 font-mono font-bold text-sm">02</div>
-              <div>
-                <div class="text-sm font-semibold text-white">Prompt Context Injection</div>
-                <div class="text-xs text-slate-400 mt-0.5">Injects top 5 past resolved cases (team, assignee, priority) into Nemotron 3.5.</div>
-              </div>
-            </div>
-            <div class="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-3">
-              <div class="text-cyan-400 font-mono font-bold text-sm">03</div>
-              <div>
-                <div class="text-sm font-semibold text-white">Confidence-Scored Auto-Dispatch</div>
-                <div class="text-xs text-slate-400 mt-0.5">Dispatches tickets with >85% confidence to Unix, DevOps, DBA, Network, or App Support.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Live Trace Snapshot Box -->
-        <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between font-mono bg-slate-950/90 border border-slate-800">
-          <div class="space-y-3">
-            <div class="flex items-center justify-between pb-2 border-b border-slate-800">
-              <span class="text-xs text-emerald-400 font-bold flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                LIVE CLASSIFICATION TRACE
-              </span>
-              <span class="text-[11px] text-slate-500">Model: Nemotron-3.5-30B</span>
-            </div>
-            <div class="text-xs text-slate-300 space-y-1">
-              <div class="text-cyan-300">Ticket: [INC0001171] offboard user siva from Workernode1HL</div>
-              <div class="text-slate-400">Target CI: WorkerNode1HL (192.168.100.102)</div>
-              <div class="text-amber-400">Matched Precedent: INC0001043 -> Unix (Unix Lead)</div>
-              <div class="text-emerald-400">Assigned Department: Unix | Priority: P3 | Conf: 95%</div>
-            </div>
-            <div class="p-3 rounded-lg bg-slate-900 text-[11px] text-slate-400 border border-slate-800/80">
-              "User offboarding is a standard administration task involving account deletion and sudo permission revocation. Classified as P3 Unix team responsibility."
-            </div>
-          </div>
-          <div class="text-[10px] text-slate-500 pt-3 border-t border-slate-800 flex justify-between">
-            <span>Latency: 0.69s</span>
-            <span>Grounding: 4 Historical Precedents</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SLIDE 4: Draggable SRE Assistant -->
-    <div class="slide w-full max-w-7xl h-full flex-col justify-center gap-6" data-index="3">
-      <div>
-        <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider font-mono">Operator Experience</span>
-        <h2 class="text-3xl font-black text-white mt-1">Real-Time Draggable Assistant & 12-Iteration Reasoning</h2>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
-        <div class="glass-panel p-6 rounded-2xl space-y-3">
-          <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold text-lg">📡</div>
-          <h3 class="text-base font-extrabold text-white">SSE Streaming Protocol</h3>
-          <p class="text-xs text-slate-400 leading-relaxed">
-            Delivers live token chunks and tool execution events in real time. Operator sees database queries and introspections as they execute without UI latency.
+          <h1 class="text-4xl lg:text-5xl font-black text-white leading-tight tracking-tight">
+            Next-Gen <span class="bg-gradient-to-r from-cyan-400 via-indigo-300 to-emerald-400 bg-clip-text text-transparent">Autonomous ITSM</span> & SRE Control Tower
+          </h1>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Multi-agent architecture with live historical data grounding, ChromaDB vector RAG, and immutable human-in-the-loop governance.
           </p>
+          <div class="grid grid-cols-2 gap-3 pt-2">
+            <div class="glass-panel p-3.5 rounded-xl">
+              <div class="text-2xl font-black text-cyan-400 font-mono">-98.2%</div>
+              <div class="text-xs font-bold text-white">MTTR Acceleration</div>
+            </div>
+            <div class="glass-panel p-3.5 rounded-xl">
+              <div class="text-2xl font-black text-emerald-400 font-mono">92.4%</div>
+              <div class="text-xs font-bold text-white">Auto-Resolution Rate</div>
+            </div>
+          </div>
         </div>
 
-        <div class="glass-panel p-6 rounded-2xl space-y-3">
-          <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold text-lg">🛑</div>
-          <h3 class="text-base font-extrabold text-white">12-Iteration Checkpoint</h3>
-          <p class="text-xs text-slate-400 leading-relaxed">
-            Automatic guardrail halting runaway loops. At iteration 12, the assistant summarizes current findings and asks a clarifying question to continue seamlessly.
-          </p>
-        </div>
-
-        <div class="glass-panel p-6 rounded-2xl space-y-3">
-          <div class="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-lg">📊</div>
-          <h3 class="text-base font-extrabold text-white">Structured Markdown Tables</h3>
-          <p class="text-xs text-slate-400 leading-relaxed">
-            Responses are rendered in high-contrast Markdown tables with drilldown links, status badges, and exact column schemas for instant operational clarity.
-          </p>
+        <!-- Live Snapshot 1 -->
+        <div class="lg:col-span-6">
+          <div class="snapshot-frame">
+            <img src="../screenshots/control_tower_live_overview.png" alt="Control Tower Live Overview" class="w-full h-auto object-cover">
+          </div>
+          <div class="text-[11px] text-slate-400 font-mono mt-2 flex items-center justify-between">
+            <span>🔴 Live Control Tower Snapshot (Port 5173)</span>
+            <span class="text-cyan-400">Click to expand</span>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- SLIDE 5: Safety Matrix & Governance -->
-    <div class="slide w-full max-w-7xl h-full flex-col justify-center gap-6" data-index="4">
-      <div>
-        <span class="text-xs font-bold text-amber-400 uppercase tracking-wider font-mono">Enterprise Safety</span>
-        <h2 class="text-3xl font-black text-white mt-1">Multi-Layer Governance & Containment Controls</h2>
+    <!-- SLIDE 2: Live AI Classification & Triage Stream -->
+    <div class="slide w-full max-w-7xl h-full flex-col justify-center gap-5" data-index="1">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-xs font-bold text-cyan-400 uppercase tracking-wider font-mono">Real-Time AI Triage</span>
+          <h2 class="text-2xl font-black text-white mt-0.5">Live AI Classification & Triage Stream</h2>
+        </div>
+        <div class="text-xs text-slate-400 font-mono">Grounded on 1,187+ Database Incidents</div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-        <div class="glass-panel p-5 rounded-2xl flex items-start gap-4">
-          <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold text-xl flex-shrink-0">🛡️</div>
-          <div>
-            <h3 class="text-base font-bold text-white">Human-In-The-Loop Approval Gates</h3>
-            <p class="text-xs text-slate-400 mt-1">High and Critical risk operations require affirmative human operator approval in the Control Tower before shell execution.</p>
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center w-full">
+        <!-- Live Snapshot 2 -->
+        <div class="lg:col-span-7">
+          <div class="snapshot-frame border border-cyan-500/40">
+            <img src="../screenshots/control_tower_live_triage.png" alt="Live AI Triage Stream" class="w-full h-auto object-cover">
           </div>
         </div>
 
-        <div class="glass-panel p-5 rounded-2xl flex items-start gap-4">
-          <div class="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 font-bold text-xl flex-shrink-0">⚡</div>
-          <div>
-            <h3 class="text-base font-bold text-white">Emergency Master Kill Switch</h3>
-            <p class="text-xs text-slate-400 mt-1">Instant hardware containment immediately terminating active SSH sessions and preventing command execution across target nodes.</p>
+        <div class="lg:col-span-5 space-y-3">
+          <div class="glass-panel p-5 rounded-xl space-y-2.5">
+            <div class="text-sm font-bold text-cyan-300">✔ Sub-Second Precedent Search</div>
+            <div class="text-xs text-slate-400">Queries itsm_db and agentic_sre_db to identify top historical matches before LLM triage.</div>
+          </div>
+          <div class="glass-panel p-5 rounded-xl space-y-2.5">
+            <div class="text-sm font-bold text-emerald-300">✔ Few-Shot Grounding</div>
+            <div class="text-xs text-slate-400">Supplies past resolved incident context (team, lead, priority) directly to Nemotron 3.5.</div>
+          </div>
+          <div class="glass-panel p-5 rounded-xl space-y-2.5">
+            <div class="text-sm font-bold text-indigo-300">✔ Diagnostic Thinking Traces</div>
+            <div class="text-xs text-slate-400">Transparent reasoning and confidence scores (85-95%) logged directly to ticket work notes.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 3: Live Governance & Approvals Queue -->
+    <div class="slide w-full max-w-7xl h-full flex-col justify-center gap-5" data-index="2">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-xs font-bold text-amber-400 uppercase tracking-wider font-mono">Safety & Governance</span>
+          <h2 class="text-2xl font-black text-white mt-0.5">Human-In-The-Loop Approval Gates & Containment</h2>
+        </div>
+        <div class="text-xs text-slate-400 font-mono">Emergency Master Kill Switch Active</div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center w-full">
+        <div class="lg:col-span-5 space-y-3">
+          <div class="glass-panel p-5 rounded-xl space-y-2 border-l-4 border-l-amber-500">
+            <div class="text-sm font-bold text-amber-400">🛡️ P1/P2 Approval Barrier</div>
+            <div class="text-xs text-slate-400">Mandatory human review required before executing shell commands on production hosts.</div>
+          </div>
+          <div class="glass-panel p-5 rounded-xl space-y-2 border-l-4 border-l-red-500">
+            <div class="text-sm font-bold text-red-400">⚡ Master Kill Switch</div>
+            <div class="text-xs text-slate-400">Instant hardware containment terminating active SSH sessions across target hosts.</div>
+          </div>
+          <div class="glass-panel p-5 rounded-xl space-y-2 border-l-4 border-l-indigo-500">
+            <div class="text-sm font-bold text-indigo-400">🚫 Catastrophic Command Filter</div>
+            <div class="text-xs text-slate-400">Deterministic AST parser blocking destructive patterns ('rm -rf /', disk overwrites).</div>
           </div>
         </div>
 
-        <div class="glass-panel p-5 rounded-2xl flex items-start gap-4">
-          <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold text-xl flex-shrink-0">🚫</div>
-          <div>
-            <h3 class="text-base font-bold text-white">Catastrophic Command Validator</h3>
-            <p class="text-xs text-slate-400 mt-1">Deterministic AST parser blocking destructive patterns such as 'rm -rf /', raw disk overwrites, and unauthorized firewall modifications.</p>
+        <!-- Live Snapshot 3 -->
+        <div class="lg:col-span-7">
+          <div class="snapshot-frame border border-amber-500/40">
+            <img src="../screenshots/control_tower_live_approvals.png" alt="Governance Approvals Queue" class="w-full h-auto object-cover">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 4: Live Execution Audit History Log -->
+    <div class="slide w-full max-w-7xl h-full flex-col justify-center gap-5" data-index="3">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider font-mono">Compliance & Ground Truth</span>
+          <h2 class="text-2xl font-black text-white mt-0.5">Execution Audit History & Real-Time Persistence</h2>
+        </div>
+        <div class="text-xs text-slate-400 font-mono">agentic_sre_db.sre_history (218 Records)</div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center w-full">
+        <!-- Live Snapshot 4 -->
+        <div class="lg:col-span-7">
+          <div class="snapshot-frame border border-indigo-500/40">
+            <img src="../screenshots/control_tower_live_history.png" alt="Historical Execution Audit Log" class="w-full h-auto object-cover">
           </div>
         </div>
 
-        <div class="glass-panel p-5 rounded-2xl flex items-start gap-4">
-          <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold text-xl flex-shrink-0">📝</div>
-          <div>
-            <h3 class="text-base font-bold text-white">Cryptographic Execution Proofs</h3>
-            <p class="text-xs text-slate-400 mt-1">Full terminal output, exit codes, durations, and post-remediation verification assertions committed directly into PostgreSQL audit logs.</p>
+        <div class="lg:col-span-5 space-y-3">
+          <div class="glass-panel p-5 rounded-xl space-y-2">
+            <div class="text-sm font-bold text-indigo-400">📜 Immutable Execution Proof</div>
+            <div class="text-xs text-slate-400">Real-time recording of shell commands, stdout/stderr, durations, and resolution outcomes.</div>
+          </div>
+          <div class="glass-panel p-5 rounded-xl space-y-2">
+            <div class="text-sm font-bold text-cyan-400">🔍 Sub-Millisecond Indexing</div>
+            <div class="text-xs text-slate-400">Indexed descending on executed_at for instant grounding by SRE Assistant.</div>
+          </div>
+          <div class="glass-panel p-5 rounded-xl space-y-2">
+            <div class="text-sm font-bold text-emerald-400">🔬 Post-Remediation Guard</div>
+            <div class="text-xs text-slate-400">Automated symptom verification before transitioning incident state to RESOLVED.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 5: Core Next.js Helpdesk Console -->
+    <div class="slide w-full max-w-7xl h-full flex-col justify-center gap-5" data-index="4">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-xs font-bold text-cyan-400 uppercase tracking-wider font-mono">Core ITSM Helpdesk</span>
+          <h2 class="text-2xl font-black text-white mt-0.5">Enterprise Helpdesk Console & Knowledge Base</h2>
+        </div>
+        <div class="text-xs text-slate-400 font-mono">Next.js 14 Console (Port 3000)</div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center w-full">
+        <!-- Live Snapshot 5 -->
+        <div class="lg:col-span-7">
+          <div class="snapshot-frame border border-cyan-500/40">
+            <img src="../screenshots/helpdesk_live_console.png" alt="Next.js Helpdesk Console" class="w-full h-auto object-cover">
+          </div>
+        </div>
+
+        <div class="lg:col-span-5 space-y-3">
+          <div class="glass-panel p-5 rounded-xl space-y-2">
+            <div class="text-sm font-bold text-cyan-400">💻 1,187+ Active Incidents</div>
+            <div class="text-xs text-slate-400">Full relational ticket lifecycle management with role-based filtering and search.</div>
+          </div>
+          <div class="glass-panel p-5 rounded-xl space-y-2">
+            <div class="text-sm font-bold text-indigo-400">📚 44 Master SOP Articles</div>
+            <div class="text-xs text-slate-400">Rich knowledge base runbooks with symptoms, root causes, and verification steps.</div>
+          </div>
+          <div class="glass-panel p-5 rounded-xl space-y-2">
+            <div class="text-sm font-bold text-emerald-400">🔄 Bidirectional Synchronization</div>
+            <div class="text-xs text-slate-400">Instant status propagation between Helpdesk, Backend, and SRE Control Tower.</div>
           </div>
         </div>
       </div>
@@ -422,9 +353,7 @@
   </footer>
 
   <script>
-    // -------------------------------------------------------------
-    // 1. Three.js 3D Ambient Particle Grid
-    // -------------------------------------------------------------
+    // 1. Three.js Background
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
@@ -435,7 +364,7 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
 
-    const particlesCount = 750;
+    const particlesCount = 650;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particlesCount * 3);
     const colors = new Float32Array(particlesCount * 3);
@@ -483,9 +412,7 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // -------------------------------------------------------------
     // 2. Slide Navigation Logic
-    // -------------------------------------------------------------
     const slides = document.querySelectorAll('.slide');
     const totalSlides = slides.length;
     let currentSlide = 0;
@@ -498,7 +425,6 @@
 
     totalSlidesNumEl.textContent = totalSlides;
 
-    // Generate Nav Dots
     slides.forEach((_, idx) => {
       const dot = document.createElement('button');
       dot.className = `w-2.5 h-2.5 rounded-full transition-all duration-300 ${idx === 0 ? 'bg-cyan-400 w-6' : 'bg-slate-700 hover:bg-slate-500'}`;
@@ -512,7 +438,6 @@
       });
       currentSlideNumEl.textContent = currentSlide + 1;
 
-      // Update Dots
       const dots = navDotsEl.children;
       for (let i = 0; i < dots.length; i++) {
         if (i === currentSlide) {
@@ -551,9 +476,7 @@
       }
     });
 
-    // -------------------------------------------------------------
     // 3. Chart.js MTTR Initialization
-    // -------------------------------------------------------------
     let mttrChart = null;
     function initMTTRChart() {
       if (mttrChart) return;
