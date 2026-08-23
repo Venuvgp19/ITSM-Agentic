@@ -1,40 +1,42 @@
-# 🚀 Enterprise Autonomous ITSM Platform & Multi-Agent AI Resolver System
+# 🚀 Enterprise Autonomous ITSM Platform & Agentic SRE Control Tower
 
 An enterprise-grade, autonomous **IT Service Management (ITSM) Platform** powered by a **Multi-Agent Artificial Intelligence Engine** and **NVIDIA NIM LLMs** (NVIDIA Nemotron 3.5 Lightning, Llama 3.3 70B, DeepSeek R1).
 
-The platform automates enterprise helpdesk operations end-to-end: autonomous ticket routing and classification, Hybrid Dense & Lexical Vector RAG (ChromaDB 4096-D NV-Embed-v1 + BM25Okapi via Reciprocal Rank Fusion), loop-aware command validation, remote persistent SSH remediation, autonomous post-fix verification, self-learning SOP synthesis, and Human-in-the-Loop (HITL) governance through the **Agent Control Tower Dashboard**.
+The platform automates enterprise helpdesk and Site Reliability Engineering operations end-to-end: autonomous ticket routing and classification, Hybrid Dense & Lexical Vector RAG (ChromaDB 4096-D NV-Embed-v1 + BM25Okapi via Reciprocal Rank Fusion), loop-aware command validation, remote persistent SSH remediation, autonomous in-guest terminal verification, self-learning SOP synthesis, and Human-in-the-Loop (HITL) governance through the **Agent Control Tower Dashboard**.
 
 ---
 
 ## 📋 Table of Contents
 1. [Key Features & Platform Capabilities](#-key-features--platform-capabilities)
 2. [Multi-Agent System Architecture](#-multi-agent-system-architecture)
-3. [Modular Resolver Agent Daemon Architecture](#-modular-resolver-agent-daemon-architecture)
-4. [Hybrid RAG & SOP Synthesis Engine](#-hybrid-rag--sop-synthesis-engine)
-5. [Safety, Validation & Guardrails](#-safety-validation--guardrails)
-6. [System Requirements & Prerequisites](#-system-requirements--prerequisites)
-7. [Installation & Strict Application Startup Sequence](#-installation--strict-application-startup-sequence)
-8. [Database & Vector Store Restoration](#-database--vector-store-restoration)
-9. [Active Service URLs & Port Reference](#-active-service-urls--port-reference)
-10. [Verification & System Testing](#-verification--system-testing)
-11. [Complete Repository Structure](#-complete-repository-structure)
-12. [License](#-license)
+3. [Repository & Service Structure](#-repository--service-structure)
+4. [Modular SRE Resolver Agent Daemon](#-modular-sre-resolver-agent-daemon)
+5. [Agent Control Tower & HITL Governance](#-agent-control-tower--hitl-governance)
+6. [Hybrid RAG & SOP Synthesis Engine](#-hybrid-rag--sop-synthesis-engine)
+7. [Safety, Validation & Guardrails](#-safety-validation--guardrails)
+8. [Active Service URLs & Port Reference](#-active-service-urls--port-reference)
+9. [Installation & Application Startup Directives](#-installation--application-startup-directives)
+10. [Database Management & Integrity](#-database-management--integrity)
+11. [License](#-license)
 
 ---
 
 ## 🌟 Key Features & Platform Capabilities
 
 - **Autonomous Incident Triage & AI Routing**: Real-time evaluation of incoming tickets by priority (P1 Critical to P4 Low), predicting operational assignment groups with high confidence (≥ 85%) and auto-assigning for remediation.
+- **Strict Architectural Decoupling**:
+  - *Core ITSM Backend* (`:4000`): Pure enterprise system of record with PostgreSQL database (`itsm_db`).
+  - *SRE Control Tower & Governance* (`:5173`): Dedicated autonomous AI control plane and database (`agentic_sre_db`) managing approvals, timelines, and execution audit history.
 - **Hybrid RAG Retrieval Engine**: Combines dense vector semantic search (4096-D `nvidia/nv-embed-v1` embeddings in ChromaDB) and BM25Okapi lexical retrieval using Reciprocal Rank Fusion (RRF) and an LLM RAG Judge.
 - **Generic Master SOP & Dynamic Parameterization**: Reusable parameterized SOP blueprints for Linux user management, Kubernetes/ArgoCD operations, IBM DB2, Jenkins secrets, Cloud CLIs, and Python environments.
 - **Dynamic ReAct Execution Loops**:
   - *Read-Only Diagnostic Loop*: Live non-destructive telemetry gathering on target hosts before formulating a solution.
-  - *Remediation Loop*: Dynamic SSH command execution guided by approved runbooks with per-turn tool calling.
-- **Loop-Aware Command Safety Validator**: Shell parser supporting complex bash constructs (`for` loops, `while` loops, pipelines) while strictly validating that every inner invoked binary matches the approved SOP.
-- **Mandatory Domain-Aware Proof-of-Fix Guard**: Verifies real infrastructure health (e.g. Kubernetes Pod Phase == `Running`, Linux User ID existence/deletion, HTTP 200 health probes) before marking tickets as `RESOLVED`.
+  - *Remediation Loop*: Dynamic SSH command execution guided by approved runbooks with per-turn tool calling and automated 10-second service stabilization pauses.
+- **Preemptive Singleton Daemon Locking**: Uses process inspection to guarantee only a single active daemon instance runs at any time, preventing duplicate sessions.
+- **In-Guest Terminal Proof Verification**: Remediation is evaluated 100% directly from live SSH execution proof and stdout/stderr output (`ss -tulpn`, `systemctl status`), eliminating dependency on external host network probes.
 - **Self-Learning Knowledge Base Synthesizer**: Automatically writes and persists newly discovered and verified SOPs to the knowledge base and indexes them in ChromaDB.
-- **Centralized Thread-Safe Session State**: Encapsulates runtime session tracking, per-host execution locks, and per-incident token cost accounting in `SessionStateManager`.
-- **Agent Control Tower Dashboard**: Vite/React real-time HITL dashboard featuring approval cards, timeline traces, audit logs, and live execution abort controls.
+- **Thread-Safe Session & Concurrency Guard**: Centralized session state manager with atomic per-incident locks, per-host serialization mutexes, and token usage accounting.
+- **Execution Audit Log**: Real-time telemetry dashboard featuring executive KPI ribbons, 3-Agent pipeline breakdown (Router 🚦, Resolver 🛠️, Synthesizer 🧠), syntax-highlighted commands, and terminal output streams.
 
 ---
 
@@ -44,31 +46,31 @@ The platform automates enterprise helpdesk operations end-to-end: autonomous tic
 flowchart TD
     START(["1. Incident Ticket Created<br/>State = NEW, Group = UNASSIGNED"])
 
-    subgraph FE["Frontend & Core API"]
+    subgraph FE["Core ITSM Platform (System of Record)"]
         UI["Helpdesk Console (Next.js :3000)"]
         API["NestJS REST API Server (:4000)"]
-        DB[(PostgreSQL Database :5432<br/>947 Seeded Incidents)]
+        DB[(PostgreSQL Database :5432<br/>Database: itsm_db)]
         UI -->|HTTP / REST| API
         API -->|Prisma ORM| DB
     end
 
-    subgraph ROUTER["Phase 1: AI Router Service"]
+    subgraph ROUTER["Phase 1: Agentic AI Router (Decoupled Loop)"]
         R1["scanAndRouteUnassignedQueue()"]
-        R2["Priority & Group Classifier<br/>(NVIDIA Nemotron 3.5 Lightning)"]
+        R2["Priority & Department Classifier<br/>(NVIDIA Nemotron 3.5 Lightning)"]
         R3{"Confidence ≥ 85%?"}
         R4["Assign Group & Set State = IN_PROGRESS"]
         R5["Leave UNASSIGNED for Manual Triage"]
 
-        API --> R1 --> R2 --> R3
+        R1 --> R2 --> R3
         R3 -->|"Yes"| R4 -->|Update DB| DB
         R3 -->|"No"| R5
     end
 
-    subgraph DAEMON["Phase 2: Modular Resolver Agent Daemon"]
+    subgraph DAEMON["Phase 2: SRE Resolver Agent Daemon (services/sre-agent-daemon)"]
         P1["Poll Queue (Every 15s)"]
         P2["Async Parallel Worker Pool (ThreadPoolExecutor)"]
         P3["SessionStateManager & Host Lock"]
-        P4["Hybrid RAG Search (Dense Vector + BM25Okapi)"]
+        P4["Hybrid RAG Search (ChromaDB 4096-D + BM25Okapi)"]
         P5{"Similarity Score ≥ Threshold?"}
 
         R4 --> P1 --> P2 --> P3 --> P4 --> P5
@@ -76,14 +78,14 @@ flowchart TD
 
     subgraph RAGHIT["Phase 3A: Master SOP Match & Parameterization"]
         H1["Retrieve Matched SOP Runbook"]
-        H2["LLM Parameterizer<br/>Substitute {username}, {venv}, {target_ns}"]
+        H2["LLM Parameterizer<br/>Substitute {username}, {venv}, {target_ci}"]
         H3["Direct Remote SSH Execution Path"]
 
         P5 -->|"RAG Hit"| H1 --> H2 --> H3
     end
 
     subgraph RAGMISS["Phase 3B: RAG Miss & Knowledge Synthesis"]
-        M1["Read-Only Diagnostic ReAct Loop<br/>(kubectl, journalctl, ps, ss)"]
+        M1["Read-Only Diagnostic ReAct Loop<br/>(systemctl, ps, ss, journalctl)"]
         M2["Invoke Nemotron SOP Synthesizer"]
         M3["Submit PENDING Approval Card to Control Tower"]
         M4["Set Ticket State = ON_HOLD"]
@@ -91,79 +93,83 @@ flowchart TD
         P5 -->|"RAG Miss"| M1 --> M2 --> M3 --> M4
     end
 
-    subgraph HITL["Phase 4: Agent Control Tower HITL Governance (:5173)"]
+    subgraph HITL["Phase 4: SRE Control Tower HITL Governance (:5173)"]
+        SRE_DB[(PostgreSQL :5432<br/>Database: agentic_sre_db)]
         G1["Human Operator Inspects Approval Card"]
         G2{"Operator Action?"}
-        G3["Click APPROVE<br/>Consume Approval & Reindex Vector Store"]
+        G3["Click APPROVE<br/>Consume Approval & Authorize Execution"]
         G4["Click REJECT<br/>Set Approval = REJECTED & Lock Ticket"]
 
-        M3 --> G1 --> G2
+        M3 --> SRE_DB
+        SRE_DB --> G1 --> G2
         G2 -->|"Approved"| G3
         G2 -->|"Rejected"| G4
     end
 
-    subgraph EXEC["Phase 5: Dynamic SSH ReAct Execution & Verification"]
-        S1["Persistent SSH Session (ControlPlane / WorkerNodes)"]
-        S2["Dynamic ReAct Loop with Loop-Aware Safety Validator"]
-        S3["Capture stdout/stderr & Physical Probes"]
-        S4["Domain-Aware Proof-of-Fix Guard"]
-        S5{"Post-Fix Verification Passed?"}
-        S6["State = RESOLVED<br/>Persist New SOP to KB & Post Work Notes"]
-        S7["State = ON_HOLD<br/>Escalate to Human Specialist"]
+    subgraph EXEC["Phase 5: Dynamic SSH ReAct Execution & Terminal Verification"]
+        S1["Persistent SSH Session (WorkerNode1HL / ControlPlane)"]
+        S2["Dynamic ReAct Loop with 10s Service Stabilization Wait"]
+        S3["Capture In-Guest Terminal stdout/stderr & Socket Proof"]
+        S4{"In-Guest Terminal Proof Verified?"}
+        S5["State = RESOLVED<br/>Persist Trace in Audit Log & Post Work Notes"]
+        S6["State = ON_HOLD<br/>Escalate to Team Lead"]
 
         H3 --> S1
         G3 --> S1
-        S1 --> S2 --> S3 --> S4 --> S5
-        S5 -->|"Yes"| S6 -->|Update DB| DB
-        S5 -->|"No"| S7 -->|Update DB| DB
-        G4 --> S7
+        S1 --> S2 --> S3 --> S4
+        S4 -->|"Yes"| S5 -->|Update Core DB| DB
+        S4 -->|"Yes"| S5 -->|Log Trace| SRE_DB
+        S4 -->|"No"| S6 -->|Update Core DB| DB
+        G4 --> S6
     end
 ```
 
 ---
 
-## 🏛️ Modular Resolver Agent Daemon Architecture
-
-The Resolver Agent daemon has been refactored into a structured, modular Python package located at [`Resolver Agent/daemon/`](file:///c:/Users/praka/OneDrive/Desktop/ITSM-Agentic/Resolver%20Agent/daemon/):
+## 📁 Repository & Service Structure
 
 ```
-Resolver Agent/
-├── continuous_itsm_agent_daemon.py   # Executable entrypoint & backward-compatible module exporter
-└── daemon/
-    ├── __init__.py                   # Package re-exports (88 public symbols)
-    ├── config.py                     # Configuration constants, model routing, CI credentials, PID lock
-    ├── session_state.py              # Thread-safe SessionStateManager (per-host locks, token accounting)
-    ├── llm.py                        # LLM invocation with fallback & token tracking, thinking cleaner
-    ├── orchestrator/
-    │   ├── __init__.py               # Orchestrator interface
-    │   ├── incident_lifecycle.py     # Incident state machine transitions, work notes, verification
-    │   └── poller.py                 # Queue polling timer loop, ChromaDB sync, ThreadPool worker pool
-    ├── itsm/
-    │   ├── client.py                 # REST API client (login, incident queue, KB articles, status)
-    │   └── dashboard.py              # Control Tower HITL approval submissions, audit history, timelines
-    ├── rag/
-    │   ├── bm25.py                   # BM25Okapi lexical retrieval & tokenization
-    │   ├── vector_db.py              # ChromaVectorDB & LocalVectorDB persistent cosine similarity indexes
-    │   ├── hybrid_search.py          # Hybrid RRF search, query distillation, fallback search
-    │   └── judge.py                  # LLM RAG judge for cross-domain validation
-    ├── react/
-    │   ├── diagnostic_loop.py        # Read-only diagnostic ReAct loop for live cluster/host inspection
-    │   ├── remediation_loop.py       # Dynamic execution ReAct loop with loop-aware command safety guard
-    │   └── post_verification.py      # Domain-aware post-remediation verification & health checks
-    ├── safety/
-    │   ├── rules.py                  # Code-level safety enforcement (sudoers, passwords, user rules)
-    │   ├── relevance_audit.py        # Post-synthesis relevance judge & entity validator
-    │   └── validator.py              # Shell syntax parser (for/while loops) & allowed binary adaptation checker
-    ├── sop/
-    │   └── synthesizer.py            # RAG SOP retrieval, LLM synthesis, parameterization & relevance auditing
-    └── ssh/
-        ├── sanitization.py           # SSH command wrapper stripper
-        └── session.py                # PersistentSSHSession, direct command execution, OS fingerprinting
+ITSM-Agentic/
+├── apps/
+│   ├── backend/                    # NestJS Core ITSM API Server (Port 4000)
+│   ├── frontend/                   # Next.js 14 ServiceNow Helpdesk Console (Port 3000)
+│   └── sre-control-tower/          # SRE Agent Control Tower Dashboard & API (Port 5173)
+├── services/
+│   └── sre-agent-daemon/           # Python Multi-Agent Autonomous Daemon & Vector DB
+│       ├── continuous_itsm_agent_daemon.py
+│       └── daemon/
+│           ├── config.py           # Preemptive singleton process lock & configs
+│           ├── session_state.py    # Per-host lock & thread-safe state manager
+│           ├── llm.py              # NVIDIA NIM LLM invocation engine
+│           ├── orchestrator/       # Lifecycle state machine & polling loops
+│           ├── itsm/               # ITSM API & Control Tower governance clients
+│           ├── rag/                # ChromaDB 4096-D dense embeddings & BM25Okapi
+│           ├── react/              # Dynamic ReAct remediation loop with sleep wait
+│           └── ssh/                # Persistent Paramiko SSH connection manager
+├── packages/
+│   └── mcp-server/                 # Model Context Protocol (MCP) Tool Integration
+└── scripts/
+    └── database/                   # Database schemas and baseline dump files
 ```
 
 ---
 
-## 🧠 Hybrid RAG & SOP Synthesis Engine
+## 🛡️ Agent Control Tower & HITL Governance
+
+The **SRE Agent Control Tower** (`http://localhost:5173`) provides unified visibility and governance over autonomous agent operations:
+
+1. **Pending Approvals Gate**: High-risk or newly synthesized SOPs require explicit human review and authorization before remote execution.
+2. **Execution Observability & Live Timeline**: Real-time step-by-step telemetry tracking RAG lookups, SSH connections, parameterization, and verification status.
+3. **Execution Audit Log**:
+   - Executive summary cards (Total Traces, Auto-Executed %, HITL Approved, Avg Latency).
+   - Multi-agent breakdown (Router 🚦, Resolver 🛠️, Synthesizer 🧠).
+   - Syntax-highlighted CLI commands with single-click copy.
+   - Live SSH terminal output stream (`stdout` / `stderr`).
+4. **Emergency Containment & Kill Switch**: Immediate fleet-wide shutdown toggle to instantly freeze all autonomous agent execution.
+
+---
+
+## 🧠 Hybrid RAG & Master SOP Knowledge Base
 
 ### RAG Retrieval Formula
 Retrieval combines dense semantic similarity and BM25Okapi lexical matching via Reciprocal Rank Fusion (RRF):
@@ -176,11 +182,12 @@ $$\text{Blended Score} = 0.55 \times \text{Dense Score} + 0.45 \times \text{Norm
 
 | IT Domain | Master SOP | Parameter Placeholders | Scope |
 | :--- | :--- | :--- | :--- |
+| **Linux Application Recovery** | `KB0000039` | `{service_name}`, `{port}` | Systemd daemon-reload, enable --now, 10s wait, socket verification |
 | **User Account Provisioning** | `KB0000028` | `{username}`, `{password}`, `{group}` | Standard & privileged Linux user creation |
 | **User Account Deprovisioning** | `KB0000038` | `{username_list}`, `{username}` | Single & bulk user deletion, sudoers purge |
 | **Cloud CLI / DevOps Tooling** | `KB0000045` | `{ci_name}`, `{os_type}` | Azure CLI installation, package verification |
 | **Python Virtual Environments** | `KB0000019` | `{venv_name}`, `{packages}` | Python venv provisioning & package installation |
-| **Kubernetes & ArgoCD** | `KB0000039` | `{target_ns}`, `{deployment_name}` | Pod/Deployment health recovery, namespace restarts |
+| **Kubernetes & ArgoCD** | `KB0000026` | `{target_ns}`, `{deployment_name}` | Pod/Deployment health recovery, namespace restarts |
 | **Jenkins Secrets & Credentials**| `KB0000041` | `{service_name}`, `{secret_path}` | Initial admin password & credential retrieval |
 | **IBM DB2 Management** | `KB0000033` | `{db2_user}`, `{access_level}` | DB2 instance administration, CloudBeaver access |
 | **System Performance & Triage** | `KB0468210` | `{ci_name}`, `{threshold_type}` | CPU/Memory pressure triage and process diagnostics |
@@ -189,181 +196,104 @@ $$\text{Blended Score} = 0.55 \times \text{Dense Score} + 0.45 \times \text{Norm
 
 ## 🛡️ Safety, Validation & Guardrails
 
-1. **Loop-Aware Binary Validator**: Allows bash loop syntax (e.g., `for user in ...; do ... done`) while extracting every inner binary (`rm`, `pkill`, `userdel`, `id`) and confirming it is present in the approved SOP.
-2. **Action Direction & Domain Guard**: Prevents cross-domain entity matching (e.g. Kubernetes scheduling tickets matching Linux user SOPs, or Deletion tickets matching Creation SOPs).
-3. **Mandatory Post-Fix Verification**:
-   - *Kubernetes*: Queries `kubectl get pod <name> -o jsonpath='{.status.phase}'` to guarantee the pod reached `Running` or `Completed`.
-   - *Linux Users*: Runs `id <user>` to verify existence (for creation) or confirm removal (for deletion).
-   - *Web Apps*: Probes live HTTP/TCP ports (e.g. `http://<ip>:8080`) to ensure socket binding.
-4. **Session State Isolation**: `SessionStateManager` prevents duplicate concurrent execution on the same ticket across worker threads.
+1. **Pre-Execution Catastrophic Blacklist**: Blocks destructive commands (`rm -rf /`, `mkfs`, `dd if=`, `:(){ :|:& };:`, `fdisk`, `reboot`, `shutdown`) before they reach any live host.
+2. **Loop-Aware Command Safety Validator**: Parses bash control structures (`for`, `while`, pipes) to ensure every invoked binary is strictly within the approved SOP blueprint.
+3. **Mandatory Domain-Aware Proof-of-Fix Guard**: Prevents false resolutions by requiring in-context terminal proof:
+   - *User Deletion*: Confirms `id {username}` returns `no such user`.
+   - *User Creation*: Confirms `id {username}` returns valid UID/GID and sudo permissions exist.
+   - *Service Restarts*: Confirms target port/process is actively listening via `ss -tulpn`.
+4. **Autonomous Emergency Abort (Kill Switch)**:
+   - Operators can instantly abort running executions via the Control Tower UI.
+   - Daemon actively checks containment state and terminates within `< 1.5s`.
 
 ---
 
-## ⚙️ System Requirements & Prerequisites
+## ⚡ Active Service URLs & Port Reference
 
-### Hardware
-- **CPU**: 4 Cores (x86_64 or ARM64)
-- **RAM**: 8 GB minimum (16 GB recommended)
-- **Storage**: 10 GB free space
-
-### Software Dependencies
-| Software | Minimum Version | Purpose |
-| :--- | :--- | :--- |
-| **Node.js** | `>= 18.16.0` (LTS) | NestJS Backend API & Next.js Frontend Portal |
-| **npm** | `>= 9.0.0` | Package management |
-| **Python** | `>= 3.10.0` | Auto-Resolver Agent Daemon & ChromaDB Vector Store |
-| **PostgreSQL** | `>= 15.0` | Primary Relational Database (`itsm_db`) |
-| **Git** | `>= 2.30.0` | Version control |
+| Service | Port | Technology | URL | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| **PostgreSQL Database** | `5432` | PostgreSQL | `localhost:5432` | Data stores: `itsm_db` & `agentic_sre_db` |
+| **ServiceNow Core UI** | `3000` | Next.js 14 | `http://localhost:3000` | Core Helpdesk & ITSM Portal |
+| **ITSM Backend API** | `4000` | NestJS | `http://localhost:4000/api/docs` | System of Record REST API & Swagger |
+| **SRE Control Tower** | `5173` | React + Vite + Node | `http://localhost:5173` | HITL Governance, Audit Logs & Telemetry |
+| **Python SRE Daemon** | Background | Python 3.10 | Daemon PID | Autonomous Resolver & RAG Engine |
+| **ITSM MCP Server** | Background | Node.js | STDIO / SSE | Model Context Protocol Tool Server |
 
 ---
 
-## 🚀 Installation & Strict Application Startup Sequence
+## 🛠️ Installation & Application Startup Directives
 
-To ensure database consistency and avoid duplicate executions, follow the startup sequence defined in [`.agents/AGENTS.md`](file:///c:/Users/praka/OneDrive/Desktop/ITSM-Agentic/.agents/AGENTS.md):
+### 1. Prerequisites
+- **Node.js** v18+ & **npm** v9+
+- **Python** 3.10+
+- **PostgreSQL** 15+ running on port `5432`
+- **NVIDIA NIM API Key** configured in `.env` (`NVIDIA_API_KEY`)
 
-### 1. Start Local PostgreSQL Database (`port 5432`)
+### 2. Startup Directives
+
+#### 🟢 Full Application Startup (All Services)
+Follow this exact sequence to start all platform components:
 ```powershell
+# 1. Start PostgreSQL
 & "$env:USERPROFILE\pgsql\pgsql\bin\postgres.exe" -D "$env:USERPROFILE\pgsql\pgsql\data"
-```
 
-### 2. Build Backend & MCP Server
-```bash
+# 2. Build Backend & MCP Server
 npm run build:backend
 npm run build:mcp
-```
 
-### 3. Start NestJS Backend API Server (`port 4000`)
-```bash
+# 3. Start Backend API Server (Port 4000)
 node apps/backend/dist/main.js
-```
 
-### 4. Start Next.js Frontend Dev Server (`port 3000`)
-```bash
+# 4. Start Next.js Frontend (Port 3000)
 npm run dev:frontend
-```
 
-### 5. Start Agent Control Tower Dashboard Server (`port 5173`)
-```bash
-cd "Resolver Agent/agent-approval-dashboard"
+# 5. Start Agent Control Tower (Port 5173)
+cd apps/sre-control-tower
 node server.js
-```
 
-### 6. Start Python Auto-Resolver Agent Daemon
-```bash
-cd "Resolver Agent"
+# 6. Start Python SRE Daemon
+cd services/sre-agent-daemon
 python -u continuous_itsm_agent_daemon.py
-```
 
-### 7. Start ITSM MCP Server
-```bash
+# 7. Start ITSM MCP Server
 npm run start:mcp
 ```
 
----
-
-## 💾 Database & Vector Store Restoration
-
-The repository includes a single source-of-truth PostgreSQL database dump and pre-indexed ChromaDB vector embeddings:
-
-- **[`database_dump.sql`](file:///c:/Users/praka/OneDrive/Desktop/ITSM-Agentic/database_dump.sql)**: Complete PostgreSQL dump containing **947 Incidents**, **42 Master SOP Articles**, **90 Agent Approvals**, **306 Execution Audits**, and **50 Problem Records**.
-- **[`Resolver Agent/chroma_db`](file:///c:/Users/praka/OneDrive/Desktop/ITSM-Agentic/Resolver%20Agent/chroma_db)**: Persistent ChromaDB HNSW vector index files for all Master SOPs.
-
-### To Restore Database:
-```bash
-psql -U postgres -d itsm_db -f database_dump.sql
-```
-*(Or execute `python import_repo_data_dump.py` to restore automatically via script)*
-
----
-
-## 🌐 Active Service URLs & Port Reference
-
-| Service | Host / Port | URL | Description |
-| :--- | :--- | :--- | :--- |
-| **Next.js Helpdesk Portal** | `localhost:3000` | [http://localhost:3000](http://localhost:3000) | Helpdesk console & ticket stream |
-| **Agent Control Tower Dashboard** | `localhost:5173` | [http://localhost:5173](http://localhost:5173) | Real-time HITL approvals & agent controls |
-| **NestJS REST API Server** | `localhost:4000` | [http://localhost:4000/api/v1](http://localhost:4000/api/v1) | Backend REST API & AI Router Service |
-| **Swagger API Docs** | `localhost:4000` | [http://localhost:4000/api/docs](http://localhost:4000/api/docs) | Interactive OpenAPI documentation |
-| **PostgreSQL Database** | `localhost:5432` | `postgresql://localhost:5432/itsm_db` | Core relational data store |
-| **ChromaDB Vector Database** | Local / SQLite | `Resolver Agent/chroma_db` | Dense 4096-D NV-Embed-v1 Vector Store |
-
----
-
-## 🧪 Verification & System Testing
-
-### 1. Backend Health Check
-```bash
-curl http://localhost:4000/api/v1/health
-```
-
-### 2. Run Resolver Agent Unit Tests
-```bash
-python "C:\Users\praka\.gemini\antigravity\brain\8b77415d-c2d7-46fd-94f6-fe601397f3e9\scratch\test_session_state_and_di.py"
-```
-
-### 3. Test Ticket Creation & Automated Resolution
+#### 🟡 ServiceNow Core ITSM Only
 ```powershell
-$inc = @{
-    title = "install az cli on WorkerNode1HL node"
-    shortDescription = "install az cli on WorkerNode1HL node"
-    description = "Azure CLI tool is missing on WorkerNode1HL host. Please install and verify az command."
-    category = "DevOps Tooling & Cloud CLI"
-    configurationItem = "WorkerNode1HL"
-    priority = "P3"
-    state = "IN_PROGRESS"
-} | ConvertTo-Json
+node apps/backend/dist/main.js
+npm run dev:frontend
+```
 
-Invoke-RestMethod -Uri "http://localhost:4000/api/v1/incidents" -Method POST -Body $inc -ContentType "application/json"
+#### 🔵 Agentic SRE Services Only (Control Tower & AI Daemon)
+```powershell
+node apps/sre-control-tower/server.js
+python -u services/sre-agent-daemon/continuous_itsm_agent_daemon.py
+npm run start:mcp
+```
+
+#### 🛑 Full Platform Teardown Sequence
+```powershell
+# Stop services in reverse order:
+# 1. Stop Python Daemon
+# 2. Stop MCP Server
+# 3. Stop Control Tower (Port 5173)
+# 4. Stop Next.js Frontend (Port 3000)
+# 5. Stop NestJS Backend (Port 4000)
+# 6. Stop PostgreSQL Database (Port 5432)
 ```
 
 ---
 
-## 📁 Complete Repository Structure
+## 💾 Database Management & Integrity
 
-```
-ITSM-Agentic/
-├── apps/
-│   ├── backend/                      # NestJS REST API Server (Port 4000)
-│   │   ├── src/
-│   │   │   ├── modules/
-│   │   │   │   ├── ai-router/        # AI Ticket Classification & Routing
-│   │   │   │   ├── incidents/       # Incident Lifecycle Management
-│   │   │   │   ├── knowledge/       # Knowledge Base CRUD & Search
-│   │   │   │   └── agent/           # Approvals, Timeline & History APIs
-│   │   │   └── main.ts
-│   │   └── package.json
-│   └── frontend/                     # Next.js Helpdesk Portal & UI (Port 3000)
-│       ├── src/                      # React Components & Dashboard Pages
-│       └── package.json
-├── packages/
-│   ├── db/                           # Prisma ORM Schema & Migrations
-│   └── mcp-server/                   # Model Context Protocol (MCP) Server
-├── Resolver Agent/
-│   ├── agent-approval-dashboard/     # HITL Control Tower Dashboard (Port 5173)
-│   │   ├── src/                      # React + Vite Frontend
-│   │   └── server.js                 # Dashboard Express Server
-│   ├── chroma_db/                    # Persistent ChromaDB 4096-D Vector Store
-│   ├── daemon/                       # Modular Resolver Agent Package
-│   │   ├── config.py                 # Daemon configuration & credentials
-│   │   ├── session_state.py          # Centralized SessionStateManager
-│   │   ├── llm.py                    # LLM invocation & token accounting
-│   │   ├── orchestrator/             # Poller & Incident Lifecycle modules
-│   │   ├── itsm/                     # ITSM REST client & Dashboard modules
-│   │   ├── rag/                      # BM25, ChromaDB, Hybrid search & Judge
-│   │   ├── react/                    # Diagnostic, Remediation & Verification loops
-│   │   ├── safety/                   # Safety rules, Relevance audit, Command validator
-│   │   ├── sop/                      # SOP synthesizer & parameterization
-│   │   └── ssh/                      # SSH session holding & wrapper sanitization
-│   ├── continuous_itsm_agent_daemon.py # Daemon Entrypoint & Exporter
-│   └── requirements.txt              # Python Dependencies
-├── database_dump.sql                 # Consolidated PostgreSQL Clean SQL Dump
-├── import_repo_data_dump.py          # Automated Database Restoration Utility
-├── package.json                      # Root Monorepo Configuration
-└── README.md                         # Project Documentation
-```
+- **Database Integrity Policy**: Rebuilding or restarting the backend (`npm run build:backend`) **preserves all existing database records without destructive resets, seeds, or table wipes**.
+- **PostgreSQL Databases**:
+  - `itsm_db`: Stores standard ITSM entities (`Incident`, `KnowledgeArticle`, `ConfigurationItem`, `User`, `ChangeRequest`).
+  - `agentic_sre_db`: Stores SRE governance records (`sre_approvals`, `sre_history`, `sre_timeline`, `sre_containment`).
 
 ---
 
 ## 📄 License
 
-Distributed under the **MIT License**. Standard enterprise ITSM autonomous remediation platform.
+This project is licensed under the MIT License - see the LICENSE file for details.

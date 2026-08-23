@@ -270,7 +270,10 @@ export class AgentGovernanceService implements OnModuleInit {
 
     // Auto-promote approved AI-synthesized SOPs to KnowledgeArticle table so they are indexed into RAG
     if (details.synthesizerOutput || (details.proposedCommands && details.proposedCommands.length > 0)) {
-      const title = details.kbTitle || details.synthesizerOutput?.kbTitle || `Master SOP: Approved Remediation Runbook for ${details.incidentTitle || record.summary}`;
+      let title = details.kbTitle || details.synthesizerOutput?.kbTitle || details.incidentTitle || record.summary;
+      if (!title.toLowerCase().startsWith('master sop:')) {
+        title = `Master SOP: ${title.replace(/^(sop:\s*|reusable investigative standard operating procedure:\s*)/i, '').trim()}`;
+      }
       const steps = details.proposedCommands || details.synthesizerOutput?.resolutionSteps || [];
       const kbNumber = `KB${Math.floor(1000000 + Math.random() * 9000000)}`;
       try {
@@ -279,10 +282,11 @@ export class AgentGovernanceService implements OnModuleInit {
           category: details.department || 'Automated Remediation',
           configurationItem: details.targetCi || 'Unknown CI',
           summary: details.summary || details.aiReasoning || title,
-          symptoms: [],
-          rootCause: '',
+          symptoms: [details.incidentTitle || record.summary],
+          rootCause: details.aiReasoning || 'Root cause verified by human operator approval & automated execution.',
           resolutionSteps: steps,
-          sourceIncidentIds: [record.entityId]
+          sourceIncidentIds: [record.entityId],
+          isPublished: true
         });
         console.log(`[GovernanceService] 📚 Auto-saved newly approved Master SOP ${createdArticle?.number || kbNumber}: "${title}"`);
       } catch (e: any) {

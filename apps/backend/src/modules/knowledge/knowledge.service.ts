@@ -1,8 +1,7 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IncidentService } from '../incidents/incident.service';
 import { PrismaService } from '../../database/prisma.service';
-import { AgentGovernanceService } from '../agent-governance/agent-governance.service';
 
 export interface KnowledgeArticle {
   id: string;
@@ -36,26 +35,11 @@ export class KnowledgeService {
   constructor(
     private readonly incidentService: IncidentService,
     private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
-    @Inject(forwardRef(() => AgentGovernanceService)) private readonly governanceService: AgentGovernanceService
+    private readonly configService: ConfigService
   ) {
     this.liteLlmBaseUrl = this.configService?.get<string>('LITELLM_BASE_URL') || 'https://genailab.tcs.in/v1';
     this.liteLlmApiKey = 'sk-taPdt4_aNdzmFCX3nP0GiA';
     this.llamaModel = this.configService?.get<string>('LITELLM_LLAMA_MODEL') || 'azure/genailab-maas-gpt-4.1-mini';
-
-    // Load from DB on startup
-    this.governanceService.getModelConfig().then(cfg => {
-      if (cfg) {
-        this.liteLlmApiKey = cfg.apiKey || this.liteLlmApiKey;
-        this.llamaModel = cfg.synthesizerModel || cfg.routerModel || this.llamaModel;
-        this.logger.log(`KnowledgeService loaded config from DB: model=${this.llamaModel}`);
-      }
-    });
-
-    // Background continuous synthesis loop disabled to preserve clean Master SOP documents
-    // setTimeout(() => {
-    //   this.runContinuousBackgroundSynthesis('tenant_acme_01');
-    // }, 5000);
   }
 
 

@@ -9,11 +9,11 @@ import { UsersModule } from './modules/users/users.module';
 import { IncidentModule } from './modules/incidents/incident.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
 import { CmdbModule } from './modules/cmdb/cmdb.module';
-import { AiRouterModule } from './modules/ai-router/ai-router.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
-import { AgentGovernanceModule } from './modules/agent-governance/agent-governance.module';
 import { ProblemModule } from './modules/problems/problem.module';
 import { ChangeModule } from './modules/changes/change.module';
+import { ServiceNowModule } from './modules/servicenow/servicenow.module';
+import { AgentGovernanceModule } from './modules/agent-governance/agent-governance.module';
 
 @Module({
   imports: [
@@ -24,11 +24,11 @@ import { ChangeModule } from './modules/changes/change.module';
     IncidentModule,
     WorkflowModule,
     CmdbModule,
-    AiRouterModule,
     KnowledgeModule,
-    AgentGovernanceModule,
     ProblemModule,
     ChangeModule,
+    ServiceNowModule,
+    AgentGovernanceModule,
   ],
   providers: [
     {

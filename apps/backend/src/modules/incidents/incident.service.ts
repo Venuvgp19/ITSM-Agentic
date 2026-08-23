@@ -165,13 +165,23 @@ export class IncidentService {
   }
 
   async findOne(tenantId: string, id: string) {
-    const cleanId = (id || '');
-    const record = await this.prisma.incident.findFirst({
-      where: {
-        tenantId,
-        OR: [{ id: cleanId.toLowerCase() }, { number: cleanId.toUpperCase() }]
-      },
+    const cleanId = (id || '').trim();
+    let record = await this.prisma.incident.findFirst({
+      where: { tenantId, id: cleanId },
     });
+    if (!record) {
+      record = await this.prisma.incident.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            { number: cleanId },
+            { number: cleanId.toUpperCase() },
+            { id: cleanId.toLowerCase() },
+            { id: cleanId.toUpperCase() },
+          ],
+        },
+      });
+    }
     
     if (!record) {
       throw new NotFoundException(`Incident ${cleanId} not found`);
@@ -180,11 +190,24 @@ export class IncidentService {
   }
 
   async update(tenantId: string, id: string, dto: UpdateIncidentDto) {
-    const cleanId = (id || '');
+    const cleanId = (id || '').trim();
 
-    const existing = await this.prisma.incident.findFirst({
-      where: { tenantId, OR: [{ id: cleanId.toLowerCase() }, { number: cleanId.toUpperCase() }] },
+    let existing = await this.prisma.incident.findFirst({
+      where: { tenantId, id: cleanId },
     });
+    if (!existing) {
+      existing = await this.prisma.incident.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            { number: cleanId },
+            { number: cleanId.toUpperCase() },
+            { id: cleanId.toLowerCase() },
+            { id: cleanId.toUpperCase() },
+          ],
+        },
+      });
+    }
 
     if (!existing) throw new NotFoundException(`Incident ${cleanId} not found`);
 
@@ -224,10 +247,23 @@ export class IncidentService {
   }
 
   async updateState(tenantId: string, id: string, state: string, resolutionNotes?: string, resolutionCode?: string, assignedTo?: string) {
-    const cleanId = (id || '');
-    const existing = await this.prisma.incident.findFirst({
-      where: { tenantId, OR: [{ id: cleanId.toLowerCase() }, { number: cleanId.toUpperCase() }] },
+    const cleanId = (id || '').trim();
+    let existing = await this.prisma.incident.findFirst({
+      where: { tenantId, id: cleanId },
     });
+    if (!existing) {
+      existing = await this.prisma.incident.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            { number: cleanId },
+            { number: cleanId.toUpperCase() },
+            { id: cleanId.toLowerCase() },
+            { id: cleanId.toUpperCase() },
+          ],
+        },
+      });
+    }
 
     if (!existing) throw new NotFoundException(`Incident ${cleanId} not found`);
 
@@ -262,10 +298,23 @@ export class IncidentService {
   }
 
   async addActivity(tenantId: string, incidentId: string, authorId: string, dto: { comment: string; isWorkNote: boolean; author?: string; timestamp?: string }) {
-    const cleanId = (incidentId || '');
-    const existing = await this.prisma.incident.findFirst({
-      where: { tenantId, OR: [{ id: cleanId.toLowerCase() }, { number: cleanId.toUpperCase() }] },
+    const cleanId = (incidentId || '').trim();
+    let existing = await this.prisma.incident.findFirst({
+      where: { tenantId, id: cleanId },
     });
+    if (!existing) {
+      existing = await this.prisma.incident.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            { number: cleanId },
+            { number: cleanId.toUpperCase() },
+            { id: cleanId.toLowerCase() },
+            { id: cleanId.toUpperCase() },
+          ],
+        },
+      });
+    }
 
     if (!existing) throw new NotFoundException(`Incident ${incidentId} not found`);
 
@@ -301,10 +350,23 @@ export class IncidentService {
   }
 
   async deleteActivity(tenantId: string, incidentId: string, activityId: string) {
-    const cleanId = (incidentId || '');
-    const existing = await this.prisma.incident.findFirst({
-      where: { tenantId, OR: [{ id: cleanId.toLowerCase() }, { number: cleanId.toUpperCase() }] },
+    const cleanId = (incidentId || '').trim();
+    let existing = await this.prisma.incident.findFirst({
+      where: { tenantId, id: cleanId },
     });
+    if (!existing) {
+      existing = await this.prisma.incident.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            { number: cleanId },
+            { number: cleanId.toUpperCase() },
+            { id: cleanId.toLowerCase() },
+            { id: cleanId.toUpperCase() },
+          ],
+        },
+      });
+    }
 
     if (!existing) throw new NotFoundException(`Incident ${incidentId} not found`);
 

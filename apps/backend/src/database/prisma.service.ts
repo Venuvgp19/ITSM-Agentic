@@ -11,7 +11,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         db: {
           url:
             process.env.DATABASE_URL ||
-            'postgresql://itsm_user:itsm_password@127.0.0.1:5432/itsm_db?schema=public',
+            'postgresql://postgres:postgres@127.0.0.1:5432/itsm_db?schema=public',
         },
       },
     });

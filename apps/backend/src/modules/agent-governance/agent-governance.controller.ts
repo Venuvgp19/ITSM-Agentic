@@ -1,7 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query, Delete } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AgentGovernanceService, AgentApproval, AgentHistoryEntry } from './agent-governance.service';
-import { CopilotService } from './copilot.service';
 import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Agent Governance & Approvals')
@@ -9,7 +8,6 @@ import { Public } from '../../common/decorators/public.decorator';
 export class AgentGovernanceController {
   constructor(
     private readonly governanceService: AgentGovernanceService,
-    private readonly copilotService: CopilotService,
   ) {}
 
   @Public()
@@ -140,13 +138,6 @@ export class AgentGovernanceController {
   @ApiOperation({ summary: 'Cancel/Stop running agent execution cycle for an incident' })
   cancelExecution(@Body() body: { incidentId: string; reason?: string }) {
     return this.governanceService.cancelExecution(body.incidentId, body.reason);
-  }
-
-  @Public()
-  @Post('copilot/chat')
-  @ApiOperation({ summary: 'Control Tower AI Copilot & ChatOps assistant endpoint' })
-  copilotChat(@Body() dto: any) {
-    return this.copilotService.processChat(dto);
   }
 
   @Public()

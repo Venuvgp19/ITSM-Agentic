@@ -394,65 +394,55 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
 
       // ----------------------------------------------------
-      // 6. AI Router & Intelligence Tools
+      // 6. ServiceNow Passive Inbound MCP Tools
       // ----------------------------------------------------
       {
-        name: 'ai_router_get_config',
-        description: 'Get live Agentic AI Router configuration settings (GET /api/v1/ai-router/config)',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-        },
-      },
-      {
-        name: 'ai_router_update_config',
-        description: 'Update live Agentic AI Router configuration settings (PATCH /api/v1/ai-router/config)',
+        name: 'servicenow_fetch_queue',
+        description: 'Fetch active unassigned incidents from ServiceNow Table API (/api/now/table/incident)',
         inputSchema: {
           type: 'object',
           properties: {
-            autoAssignConfidenceThreshold: { type: 'number', description: 'Confidence threshold percentage for auto-routing (0-100)' },
-            autoWorkNoteEnabled: { type: 'boolean', description: 'Enable auto-posting work notes' },
-            modelName: { type: 'string', description: 'LLM model name (gemini-3.1-pro-preview)' },
-            reasoningBudget: { type: 'number', description: 'Reasoning token budget for thinking trace' },
+            limit: { type: 'number', description: 'Limit number of incidents to fetch' },
           },
         },
       },
       {
-        name: 'analyze_incident_routing',
-        description: 'Run NVIDIA Nemotron 3 Ultra 550B LLM reasoning engine to analyze an incident and output target group recommendation with internal thinking trace (POST /api/v1/ai-router/analyze/:id)',
+        name: 'servicenow_update_incident',
+        description: 'Update ServiceNow incident state, assignment group, priority, or resolution notes via Table API',
         inputSchema: {
           type: 'object',
           properties: {
-            incidentId: { type: 'string', description: 'Incident SYS ID or Incident Number (e.g. INC0001001)' },
+            sysId: { type: 'string', description: 'ServiceNow incident sys_id' },
+            state: { type: 'string', description: 'State (NEW, IN_PROGRESS, ON_HOLD, RESOLVED, CLOSED)' },
+            assignmentGroup: { type: 'string', description: 'Operational assignment group' },
+            priority: { type: 'string', description: 'Priority level (P1, P2, P3, P4)' },
+            resolutionNotes: { type: 'string', description: 'Resolution notes' },
           },
-          required: ['incidentId'],
+          required: ['sysId'],
         },
       },
       {
-        name: 'ai_router_route_incident',
-        description: 'Analyze and auto-assign an incident to its recommended group with work note (POST /api/v1/ai-router/route/:id)',
+        name: 'servicenow_add_work_note',
+        description: 'Post formatted SRE execution work note to ServiceNow incident work_notes field',
         inputSchema: {
           type: 'object',
           properties: {
-            incidentId: { type: 'string', description: 'Incident SYS ID or Incident Number (e.g. INC0001001)' },
+            sysId: { type: 'string', description: 'ServiceNow incident sys_id' },
+            workNote: { type: 'string', description: 'Formatted work note text' },
+            author: { type: 'string', description: 'Author label' },
           },
-          required: ['incidentId'],
+          required: ['sysId', 'workNote'],
         },
       },
       {
-        name: 'batch_route_unassigned_queue',
-        description: 'Actively scan the main database queue and auto-route all unassigned incidents to recommended target groups with confidence scores and work notes (POST /api/v1/ai-router/scan-unassigned)',
+        name: 'servicenow_get_ci_details',
+        description: 'Query ServiceNow CMDB table for Configuration Item details and IP address (/api/now/table/cmdb_ci)',
         inputSchema: {
           type: 'object',
-          properties: {},
-        },
-      },
-      {
-        name: 'get_routing_analytics',
-        description: 'Retrieve live Agentic AI routing accuracy metrics, autonomous routing rate, team queue workload distribution, and confidence audit logs (GET /api/v1/ai-router/analytics)',
-        inputSchema: {
-          type: 'object',
-          properties: {},
+          properties: {
+            ciName: { type: 'string', description: 'Configuration Item name' },
+          },
+          required: ['ciName'],
         },
       },
 
@@ -615,26 +605,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case 'cmdb_create_relationship':
         resultData = await callApi('/api/v1/cmdb/relationships', 'POST', args);
-        break;
-
-      // AI Router
-      case 'ai_router_get_config':
-        resultData = await callApi('/api/v1/ai-router/config', 'GET');
-        break;
-      case 'ai_router_update_config':
-        resultData = await callApi('/api/v1/ai-router/config', 'PATCH', args);
-        break;
-      case 'analyze_incident_routing':
-        resultData = await callApi(`/api/v1/ai-router/analyze/${args?.incidentId}`, 'POST');
-        break;
-      case 'ai_router_route_incident':
-        resultData = await callApi(`/api/v1/ai-router/route/${args?.incidentId}`, 'POST');
-        break;
-      case 'batch_route_unassigned_queue':
-        resultData = await callApi('/api/v1/ai-router/scan-unassigned', 'POST');
-        break;
-      case 'get_routing_analytics':
-        resultData = await callApi('/api/v1/ai-router/analytics', 'GET');
         break;
 
       // Knowledge Base & Nemotron Agent
