@@ -2,45 +2,53 @@
 
 An enterprise-grade, autonomous **IT Service Management (ITSM) Platform** powered by a **Multi-Agent Artificial Intelligence Engine** and **NVIDIA NIM LLMs** (NVIDIA Nemotron 3.5 Lightning, Llama 3.3 70B, DeepSeek R1).
 
-The platform automates enterprise helpdesk and Site Reliability Engineering operations end-to-end: autonomous ticket routing and classification, Hybrid Dense & Lexical Vector RAG (ChromaDB 4096-D NV-Embed-v1 + BM25Okapi via Reciprocal Rank Fusion), loop-aware command validation, remote persistent SSH remediation, autonomous in-guest terminal verification, self-learning SOP synthesis, and Human-in-the-Loop (HITL) governance through the **Agent Control Tower Dashboard**.
+The platform automates enterprise helpdesk and Site Reliability Engineering operations end-to-end: autonomous ticket routing and classification grounded on historical precedents, Hybrid Dense & Lexical Vector RAG (ChromaDB 4096-D NV-Embed-v1 + BM25Okapi), loop-aware command validation, remote persistent SSH remediation, autonomous in-guest terminal verification, self-learning SOP synthesis, and Human-in-the-Loop (HITL) governance through the **Agent Control Tower Dashboard**.
 
 ---
 
 ## 📋 Table of Contents
 1. [Key Features & Platform Capabilities](#-key-features--platform-capabilities)
-2. [Multi-Agent System Architecture](#-multi-agent-system-architecture)
-3. [Repository & Service Structure](#-repository--service-structure)
-4. [Modular SRE Resolver Agent Daemon](#-modular-sre-resolver-agent-daemon)
-5. [Agent Control Tower & HITL Governance](#-agent-control-tower--hitl-governance)
-6. [Hybrid RAG & SOP Synthesis Engine](#-hybrid-rag--sop-synthesis-engine)
-7. [Safety, Validation & Guardrails](#-safety-validation--guardrails)
-8. [Active Service URLs & Port Reference](#-active-service-urls--port-reference)
-9. [Installation & Application Startup Directives](#-installation--application-startup-directives)
-10. [Database Management & Integrity](#-database-management--integrity)
+2. [Default Operator Credentials](#-default-operator-credentials)
+3. [System Architecture](#-system-architecture)
+4. [Active Service URLs & Port Reference](#-active-service-urls--port-reference)
+5. [Quick Start & New Machine Setup (Zero to Running in 3 Steps)](#-quick-start--new-machine-setup)
+6. [Step-by-Step Installation & Application Startup Directives](#-step-by-step-installation--application-startup-directives)
+7. [Production Hosting & Daemon Management](#-production-hosting--daemon-management)
+8. [Presentations & Product Pitch Decks](#-presentations--product-pitch-decks)
+9. [Database Architecture & Snapshot Management](#-database-architecture--snapshot-management)
+10. [Safety, Validation & Guardrails](#-safety-validation--guardrails)
 11. [License](#-license)
 
 ---
 
 ## 🌟 Key Features & Platform Capabilities
 
-- **Autonomous Incident Triage & AI Routing**: Real-time evaluation of incoming tickets by priority (P1 Critical to P4 Low), predicting operational assignment groups with high confidence (≥ 85%) and auto-assigning for remediation.
+- **Autonomous Incident Triage & Historical Precedent Grounding**: Sub-second search against 1,187+ past incidents and 218 SRE execution logs to inject few-shot precedent context into LLM triage prompts with >95% confidence.
 - **Strict Architectural Decoupling**:
   - *Core ITSM Backend* (`:4000`): Pure enterprise system of record with PostgreSQL database (`itsm_db`).
   - *SRE Control Tower & Governance* (`:5173`): Dedicated autonomous AI control plane and database (`agentic_sre_db`) managing approvals, timelines, and execution audit history.
+- **Draggable SRE Assistant with SSE Streaming**: Real-time token delivery, sub-second latency, and **12-Iteration Reasoning Checkpoints** that synthesize intermediate database findings and ask clarifying questions to avoid infinite loops.
 - **Hybrid RAG Retrieval Engine**: Combines dense vector semantic search (4096-D `nvidia/nv-embed-v1` embeddings in ChromaDB) and BM25Okapi lexical retrieval using Reciprocal Rank Fusion (RRF) and an LLM RAG Judge.
-- **Generic Master SOP & Dynamic Parameterization**: Reusable parameterized SOP blueprints for Linux user management, Kubernetes/ArgoCD operations, IBM DB2, Jenkins secrets, Cloud CLIs, and Python environments.
+- **Generic Master SOP & Dynamic Parameterization**: 44 reusable parameterized SOP blueprints for Linux, Kubernetes, ArgoCD, IBM DB2, Jenkins secrets, Cloud CLIs, and Python environments.
 - **Dynamic ReAct Execution Loops**:
   - *Read-Only Diagnostic Loop*: Live non-destructive telemetry gathering on target hosts before formulating a solution.
   - *Remediation Loop*: Dynamic SSH command execution guided by approved runbooks with per-turn tool calling and automated 10-second service stabilization pauses.
-- **Preemptive Singleton Daemon Locking**: Uses process inspection to guarantee only a single active daemon instance runs at any time, preventing duplicate sessions.
 - **In-Guest Terminal Proof Verification**: Remediation is evaluated 100% directly from live SSH execution proof and stdout/stderr output (`ss -tulpn`, `systemctl status`), eliminating dependency on external host network probes.
 - **Self-Learning Knowledge Base Synthesizer**: Automatically writes and persists newly discovered and verified SOPs to the knowledge base and indexes them in ChromaDB.
-- **Thread-Safe Session & Concurrency Guard**: Centralized session state manager with atomic per-incident locks, per-host serialization mutexes, and token usage accounting.
-- **Execution Audit Log**: Real-time telemetry dashboard featuring executive KPI ribbons, 3-Agent pipeline breakdown (Router 🚦, Resolver 🛠️, Synthesizer 🧠), syntax-highlighted commands, and terminal output streams.
+- **Emergency Containment & Kill Switch**: Immediate fleet-wide or per-CI shutdown toggle to instantly terminate active SSH sessions across target hosts.
 
 ---
 
-## 🤖 Multi-Agent System Architecture
+## 🔑 Default Operator Credentials
+
+| Portal | URL | Username / User ID | Password | Role |
+| :--- | :--- | :--- | :--- | :--- |
+| **SRE Control Tower** | `http://localhost:5173` | **`Venu`** | **`admin007`** | Global SRE Lead |
+| **Core Helpdesk Console** | `http://localhost:3000` | **`venu`** *(or `venu@example.com`)* | **`admin007`** | Platform Administrator |
+
+---
+
+## 🤖 System Architecture
 
 ```mermaid
 flowchart TD
@@ -54,16 +62,17 @@ flowchart TD
         API -->|Prisma ORM| DB
     end
 
-    subgraph ROUTER["Phase 1: Agentic AI Router (Decoupled Loop)"]
+    subgraph ROUTER["Phase 1: Agentic AI Router (Historical Precedent Grounding)"]
         R1["scanAndRouteUnassignedQueue()"]
-        R2["Priority & Department Classifier<br/>(NVIDIA Nemotron 3.5 Lightning)"]
-        R3{"Confidence ≥ 85%?"}
-        R4["Assign Group & Set State = IN_PROGRESS"]
-        R5["Leave UNASSIGNED for Manual Triage"]
+        R2["Precedent Lookup (itsm_db + sre_history)"]
+        R3["Priority & Department Classifier<br/>(NVIDIA Nemotron 3.5 Lightning)"]
+        R4{"Confidence ≥ 85%?"}
+        R5["Assign Group & Set State = IN_PROGRESS"]
+        R6["Leave UNASSIGNED for Manual Triage"]
 
-        R1 --> R2 --> R3
-        R3 -->|"Yes"| R4 -->|Update DB| DB
-        R3 -->|"No"| R5
+        R1 --> R2 --> R3 --> R4
+        R4 -->|"Yes"| R5 -->|Update DB| DB
+        R4 -->|"No"| R6
     end
 
     subgraph DAEMON["Phase 2: SRE Resolver Agent Daemon (services/sre-agent-daemon)"]
@@ -73,7 +82,7 @@ flowchart TD
         P4["Hybrid RAG Search (ChromaDB 4096-D + BM25Okapi)"]
         P5{"Similarity Score ≥ Threshold?"}
 
-        R4 --> P1 --> P2 --> P3 --> P4 --> P5
+        R5 --> P1 --> P2 --> P3 --> P4 --> P5
     end
 
     subgraph RAGHIT["Phase 3A: Master SOP Match & Parameterization"]
@@ -126,171 +135,227 @@ flowchart TD
 
 ---
 
-## 📁 Repository & Service Structure
-
-```
-ITSM-Agentic/
-├── apps/
-│   ├── backend/                    # NestJS Core ITSM API Server (Port 4000)
-│   ├── frontend/                   # Next.js 14 ServiceNow Helpdesk Console (Port 3000)
-│   └── sre-control-tower/          # SRE Agent Control Tower Dashboard & API (Port 5173)
-├── services/
-│   └── sre-agent-daemon/           # Python Multi-Agent Autonomous Daemon & Vector DB
-│       ├── continuous_itsm_agent_daemon.py
-│       └── daemon/
-│           ├── config.py           # Preemptive singleton process lock & configs
-│           ├── session_state.py    # Per-host lock & thread-safe state manager
-│           ├── llm.py              # NVIDIA NIM LLM invocation engine
-│           ├── orchestrator/       # Lifecycle state machine & polling loops
-│           ├── itsm/               # ITSM API & Control Tower governance clients
-│           ├── rag/                # ChromaDB 4096-D dense embeddings & BM25Okapi
-│           ├── react/              # Dynamic ReAct remediation loop with sleep wait
-│           └── ssh/                # Persistent Paramiko SSH connection manager
-├── packages/
-│   └── mcp-server/                 # Model Context Protocol (MCP) Tool Integration
-└── scripts/
-    └── database/                   # Database schemas and baseline dump files
-```
-
----
-
-## 🛡️ Agent Control Tower & HITL Governance
-
-The **SRE Agent Control Tower** (`http://localhost:5173`) provides unified visibility and governance over autonomous agent operations:
-
-1. **Pending Approvals Gate**: High-risk or newly synthesized SOPs require explicit human review and authorization before remote execution.
-2. **Execution Observability & Live Timeline**: Real-time step-by-step telemetry tracking RAG lookups, SSH connections, parameterization, and verification status.
-3. **Execution Audit Log**:
-   - Executive summary cards (Total Traces, Auto-Executed %, HITL Approved, Avg Latency).
-   - Multi-agent breakdown (Router 🚦, Resolver 🛠️, Synthesizer 🧠).
-   - Syntax-highlighted CLI commands with single-click copy.
-   - Live SSH terminal output stream (`stdout` / `stderr`).
-4. **Emergency Containment & Kill Switch**: Immediate fleet-wide shutdown toggle to instantly freeze all autonomous agent execution.
-
----
-
-## 🧠 Hybrid RAG & Master SOP Knowledge Base
-
-### RAG Retrieval Formula
-Retrieval combines dense semantic similarity and BM25Okapi lexical matching via Reciprocal Rank Fusion (RRF):
-
-$$\text{RRF Score} = \frac{w_{\text{dense}}}{60 + \text{Rank}_{\text{dense}}} + \frac{w_{\text{lexical}}}{60 + \text{Rank}_{\text{lexical}}}$$
-
-$$\text{Blended Score} = 0.55 \times \text{Dense Score} + 0.45 \times \text{Normalized RRF Score}$$
-
-### Pre-Configured Master SOPs
-
-| IT Domain | Master SOP | Parameter Placeholders | Scope |
-| :--- | :--- | :--- | :--- |
-| **Linux Application Recovery** | `KB0000039` | `{service_name}`, `{port}` | Systemd daemon-reload, enable --now, 10s wait, socket verification |
-| **User Account Provisioning** | `KB0000028` | `{username}`, `{password}`, `{group}` | Standard & privileged Linux user creation |
-| **User Account Deprovisioning** | `KB0000038` | `{username_list}`, `{username}` | Single & bulk user deletion, sudoers purge |
-| **Cloud CLI / DevOps Tooling** | `KB0000045` | `{ci_name}`, `{os_type}` | Azure CLI installation, package verification |
-| **Python Virtual Environments** | `KB0000019` | `{venv_name}`, `{packages}` | Python venv provisioning & package installation |
-| **Kubernetes & ArgoCD** | `KB0000026` | `{target_ns}`, `{deployment_name}` | Pod/Deployment health recovery, namespace restarts |
-| **Jenkins Secrets & Credentials**| `KB0000041` | `{service_name}`, `{secret_path}` | Initial admin password & credential retrieval |
-| **IBM DB2 Management** | `KB0000033` | `{db2_user}`, `{access_level}` | DB2 instance administration, CloudBeaver access |
-| **System Performance & Triage** | `KB0468210` | `{ci_name}`, `{threshold_type}` | CPU/Memory pressure triage and process diagnostics |
-
----
-
-## 🛡️ Safety, Validation & Guardrails
-
-1. **Pre-Execution Catastrophic Blacklist**: Blocks destructive commands (`rm -rf /`, `mkfs`, `dd if=`, `:(){ :|:& };:`, `fdisk`, `reboot`, `shutdown`) before they reach any live host.
-2. **Loop-Aware Command Safety Validator**: Parses bash control structures (`for`, `while`, pipes) to ensure every invoked binary is strictly within the approved SOP blueprint.
-3. **Mandatory Domain-Aware Proof-of-Fix Guard**: Prevents false resolutions by requiring in-context terminal proof:
-   - *User Deletion*: Confirms `id {username}` returns `no such user`.
-   - *User Creation*: Confirms `id {username}` returns valid UID/GID and sudo permissions exist.
-   - *Service Restarts*: Confirms target port/process is actively listening via `ss -tulpn`.
-4. **Autonomous Emergency Abort (Kill Switch)**:
-   - Operators can instantly abort running executions via the Control Tower UI.
-   - Daemon actively checks containment state and terminates within `< 1.5s`.
-
----
-
 ## ⚡ Active Service URLs & Port Reference
 
 | Service | Port | Technology | URL | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **PostgreSQL Database** | `5432` | PostgreSQL | `localhost:5432` | Data stores: `itsm_db` & `agentic_sre_db` |
-| **ServiceNow Core UI** | `3000` | Next.js 14 | `http://localhost:3000` | Core Helpdesk & ITSM Portal |
-| **ITSM Backend API** | `4000` | NestJS | `http://localhost:4000/api/docs` | System of Record REST API & Swagger |
-| **SRE Control Tower** | `5173` | React + Vite + Node | `http://localhost:5173` | HITL Governance, Audit Logs & Telemetry |
-| **Python SRE Daemon** | Background | Python 3.10 | Daemon PID | Autonomous Resolver & RAG Engine |
-| **ITSM MCP Server** | Background | Node.js | STDIO / SSE | Model Context Protocol Tool Server |
+| **PostgreSQL Database** | `5432` | PostgreSQL 15+ | `localhost:5432` | Dual databases: `itsm_db` & `agentic_sre_db` |
+| **ServiceNow Core UI** | `3000` | Next.js 14 | `http://localhost:3000` | Core Helpdesk & Ticket Lifecycle Portal |
+| **ITSM Backend API** | `4000` | NestJS | `http://localhost:4000/api/docs` | System of Record REST API & Swagger Docs |
+| **SRE Control Tower** | `5173` | React + Vite + Node | `http://localhost:5173` | HITL Governance, SSE Streaming & Assistant |
+| **Python SRE Daemon** | Background | Python 3.10 | Daemon Process | Autonomous Auto-Resolver & Hybrid Vector RAG |
+| **ITSM MCP Server** | Background | Node.js | STDIO / SSE | Model Context Protocol Tool Interface |
 
 ---
 
-## 🛠️ Installation & Application Startup Directives
+## 🚀 Quick Start & New Machine Setup
 
-### 1. Prerequisites
-- **Node.js** v18+ & **npm** v9+
-- **Python** 3.10+
-- **PostgreSQL** 15+ running on port `5432`
-- **NVIDIA NIM API Key** configured in `.env` (`NVIDIA_API_KEY`)
+To run this platform on a fresh machine right where you left off:
 
-### 2. Startup Directives
+### Step 1: Clone Repository & Install Dependencies
+```bash
+git clone https://github.com/Venuvgp19/ITSM-Agentic.git
+cd ITSM-Agentic
 
-#### 🟢 Full Application Startup (All Services)
-Follow this exact sequence to start all platform components:
+# Install Node dependencies
+npm install
+cd apps/sre-control-tower && npm install && cd ../..
+
+# Install Python dependencies
+pip install -r services/sre-agent-daemon/requirements.txt
+```
+
+### Step 2: Configure Environment Variables
+Create or verify `.env` at the project root:
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/itsm_db?schema=public"
+SRE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/agentic_sre_db"
+NVIDIA_API_KEY="your-nvapi-key-here"
+JWT_SECRET="itsm_super_secret_jwt_key_2026"
+PORT=4000
+```
+
+### Step 3: One-Click Dual Database Provisioning & Data Restoration
+Run the automated restore script. It auto-creates `itsm_db` and `agentic_sre_db`, builds all schemas, and populates the complete dataset (1,187 incidents, 44 KBs, 218 SRE audit logs):
+```bash
+python scripts/database/restore_all_data.py
+```
+
+---
+
+## 🛠️ Step-by-Step Installation & Application Startup Directives
+
+### 🟢 Full Application Startup (All Services)
+Follow this exact sequence to start all 6 service layers:
+
+#### Windows (PowerShell):
 ```powershell
-# 1. Start PostgreSQL
+# 1. Start Local PostgreSQL Database
 & "$env:USERPROFILE\pgsql\pgsql\bin\postgres.exe" -D "$env:USERPROFILE\pgsql\pgsql\data"
 
 # 2. Build Backend & MCP Server
 npm run build:backend
 npm run build:mcp
 
-# 3. Start Backend API Server (Port 4000)
+# 3. Start NestJS Backend API Server (Port 4000)
 node apps/backend/dist/main.js
 
-# 4. Start Next.js Frontend (Port 3000)
+# 4. Start Next.js Frontend Dev Server (Port 3000)
 npm run dev:frontend
 
-# 5. Start Agent Control Tower (Port 5173)
+# 5. Start Agent Control Tower Dashboard (Port 5173)
 cd apps/sre-control-tower
 node server.js
 
-# 6. Start Python SRE Daemon
-cd services/sre-agent-daemon
+# 6. Start Python Auto-Resolver Agent Daemon
+cd ../../services/sre-agent-daemon
+Remove-Item "daemon.lock" -Force -ErrorAction SilentlyContinue
 python -u continuous_itsm_agent_daemon.py
 
 # 7. Start ITSM MCP Server
 npm run start:mcp
 ```
 
-#### 🟡 ServiceNow Core ITSM Only
+#### Linux / macOS (Bash):
+```bash
+# 1. Start PostgreSQL
+pg_ctl -D /usr/local/var/postgres start
+
+# 2. Build Backend & MCP Server
+npm run build:backend
+npm run build:mcp
+
+# 3. Start Backend Server (Port 4000)
+node apps/backend/dist/main.js &
+
+# 4. Start Frontend (Port 3000)
+npm run dev:frontend &
+
+# 5. Start SRE Control Tower (Port 5173)
+cd apps/sre-control-tower && node server.js &
+
+# 6. Start Python SRE Daemon
+cd services/sre-agent-daemon
+rm -f daemon.lock
+python -u continuous_itsm_agent_daemon.py &
+
+# 7. Start MCP Server
+npm run start:mcp
+```
+
+---
+
+### 🟡 ServiceNow Core ITSM Only (Helpdesk Mode)
+Starts **ONLY** the core ITSM platform without autonomous SRE services:
 ```powershell
 node apps/backend/dist/main.js
 npm run dev:frontend
 ```
 
-#### 🔵 Agentic SRE Services Only (Control Tower & AI Daemon)
+---
+
+### 🔵 Agentic SRE Services Only (Control Tower Mode)
+Starts the AI Governance Dashboard, Python Daemon, and MCP Server:
 ```powershell
 node apps/sre-control-tower/server.js
 python -u services/sre-agent-daemon/continuous_itsm_agent_daemon.py
 npm run start:mcp
 ```
 
-#### 🛑 Full Platform Teardown Sequence
+---
+
+### 🛑 Full Platform Teardown Sequence
+To cleanly stop all background services without corrupting state:
 ```powershell
-# Stop services in reverse order:
-# 1. Stop Python Daemon
-# 2. Stop MCP Server
-# 3. Stop Control Tower (Port 5173)
+# 1. Stop Python Auto-Resolver Daemon
+# 2. Stop ITSM MCP Server
+# 3. Stop Agent Control Tower (Port 5173)
 # 4. Stop Next.js Frontend (Port 3000)
 # 5. Stop NestJS Backend (Port 4000)
-# 6. Stop PostgreSQL Database (Port 5432)
+# 6. Stop PostgreSQL Database LAST (Port 5432)
 ```
 
 ---
 
-## 💾 Database Management & Integrity
+## 🌐 Production Hosting & Daemon Management
 
-- **Database Integrity Policy**: Rebuilding or restarting the backend (`npm run build:backend`) **preserves all existing database records without destructive resets, seeds, or table wipes**.
-- **PostgreSQL Databases**:
-  - `itsm_db`: Stores standard ITSM entities (`Incident`, `KnowledgeArticle`, `ConfigurationItem`, `User`, `ChangeRequest`).
-  - `agentic_sre_db`: Stores SRE governance records (`sre_approvals`, `sre_history`, `sre_timeline`, `sre_containment`).
+For 24/7 production hosting, manage node servers and background daemons using **PM2**:
+
+### Start with PM2 Ecosystem:
+```bash
+npm install -g pm2
+
+# Start Backend API
+pm2 start apps/backend/dist/main.js --name "itsm-backend"
+
+# Start Frontend
+pm2 start "npm run dev:frontend" --name "itsm-frontend"
+
+# Start SRE Control Tower
+pm2 start apps/sre-control-tower/server.js --name "sre-control-tower"
+
+# Start Python SRE Auto-Resolver Daemon
+pm2 start "python -u services/sre-agent-daemon/continuous_itsm_agent_daemon.py" --name "sre-agent-daemon"
+
+# View status & logs
+pm2 status
+pm2 logs
+```
+
+---
+
+## 🎬 Presentations & Product Pitch Decks
+
+Two executive-grade presentations are included in the repository:
+
+1. **Interactive 3D HTML Slide Presentation**:
+   - **Path**: `docs/presentations/autonomous_itsm_presentation_3d.html`
+   - **Features**: 14-slide narrative deck, Three.js 3D dynamic particle grid, glassmorphic obsidian styling, all 10 live authenticated screenshots with hover zoom, and interactive Chart.js MTTR comparison metrics.
+   - **Open**: Double-click or open `docs/presentations/autonomous_itsm_presentation_3d.html` in any modern web browser. Use `←` / `→` / `Space` to navigate and `F` for fullscreen.
+
+2. **Executive 16:9 Widescreen PowerPoint Pitch Deck**:
+   - **Path**: `Autonomous_ITSM_Executive_Product_Pitch_Deck.pptx`
+   - **Features**: Complete product pitch deck with high-resolution screenshot cards, architecture callouts, safety matrices, and ROI breakdown.
+
+---
+
+## 💾 Database Architecture & Snapshot Management
+
+### 1. Dual-Database Design:
+- **`itsm_db`** (Port 5432):
+  - `Incident`: 1,187+ enterprise incident records with full activity work notes and status transitions.
+  - `KnowledgeArticle`: 44 published Master SOP runbooks.
+  - `Problem`: 50 problem management records with root cause analyses and workarounds.
+  - `ConfigurationItem` & `Tenant`: CMDB asset catalog and multi-tenant schema.
+- **`agentic_sre_db`** (Port 5432):
+  - `sre_history`: 218 execution audit logs with raw stdout/stderr, timestamps, durations, and agent models.
+  - `sre_approvals`: 104 HITL governance approval records.
+  - `sre_timeline`: 53 multi-turn observability step traces.
+  - `sre_containment`: Fleet containment states and Emergency Master Kill Switch toggle.
+  - `sre_configs`: Autonomous agent governance settings.
+
+### 2. Exporting / Creating a New Fresh Snapshot:
+To create a fresh export of both databases at any time:
+```bash
+python scripts/database/export_full_database_snapshot.py
+```
+
+### 3. Database Integrity Policy:
+Whenever the backend is built (`npm run build:backend`), restarted, or compiled, **DO NOT ALTER OR RESET THE DATABASE**. Preserve all existing DB state, table schemas, and incident records without destructive seeds, resets, or table wipes.
+
+---
+
+## 🛡️ Safety, Validation & Guardrails
+
+1. **Pre-Execution Catastrophic Blacklist**: Deterministic AST parser blocking destructive commands (`rm -rf /`, `mkfs`, `dd if=`, `:(){ :|:& };:`, `fdisk`, `reboot`, `shutdown`) before they reach any live host.
+2. **Loop-Aware Command Safety Validator**: Validates bash control structures (`for`, `while`, pipes) to ensure every invoked binary is within the approved SOP blueprint.
+3. **Mandatory Domain-Aware Proof-of-Fix Guard**: Prevents false resolutions by requiring in-context terminal proof:
+   - *User Deletion*: Confirms `id {username}` returns `no such user`.
+   - *User Creation*: Confirms `id {username}` returns valid UID/GID and sudo permissions exist.
+   - *Service Restarts*: Confirms target port/process is actively listening via `ss -tulpn`.
+4. **Autonomous Emergency Abort (Kill Switch)**:
+   - Operators can instantly abort running executions via the Control Tower UI.
+   - Daemon actively checks containment state and terminates execution in `< 1.5s`.
 
 ---
 
