@@ -38,6 +38,7 @@ import {
   Scale,
   Power
 } from 'lucide-react';
+import { SpatialFlightDeck } from './components/SpatialFlightDeck';
 import { AIControlTowerOverview } from './components/AIControlTowerOverview';
 import { AIAssetInventoryView } from './components/AIAssetInventoryView';
 import { ValueAndROIView } from './components/ValueAndROIView';
@@ -54,6 +55,7 @@ import { AIRoutingOverview } from './components/AIRoutingOverview';
 import { SREControlTowerChat } from './components/SREControlTowerChat';
 
 type TabId =
+  | 'flightdeck'
   | 'overview'
   | 'router'
   | 'inventory'
@@ -89,7 +91,7 @@ export function App() {
   const [authError, setAuthError] = useState<string>('');
   const [authLoading, setAuthLoading] = useState<boolean>(false);
 
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [activeTab, setActiveTab] = useState<TabId>('flightdeck');
   const [approvals, setApprovals] = useState<AgentApproval[]>([]);
   const [history, setHistory] = useState<AgentHistoryEntry[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -97,6 +99,7 @@ export function App() {
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isKillSwitchTriggered, setIsKillSwitchTriggered] = useState<boolean>(false);
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
 
   const API_BASE = 'http://localhost:5173/api/v1/agent';
 
@@ -110,7 +113,9 @@ export function App() {
           setIsAuthenticated(true);
         }
       }
-    } catch {}
+    } catch {
+      // Fallback
+    }
   }, []);
 
   const handleLoginSubmit = (e: React.FormEvent) => {
@@ -118,27 +123,25 @@ export function App() {
     setAuthLoading(true);
     setAuthError('');
 
-    const cleanUser = authUserId.trim();
-    const cleanPass = authPassword.trim();
+    setTimeout(() => {
+      const trimmedUser = authUserId.trim().toLowerCase();
+      const trimmedPwd = authPassword.trim();
 
-    if (
-      (cleanUser.toLowerCase() === 'venu' || cleanUser.toLowerCase() === 'admin') &&
-      cleanPass === 'admin007'
-    ) {
-      localStorage.setItem(
-        'control_tower_auth',
-        JSON.stringify({
-          userId: 'Venu',
-          role: 'Authorized SRE Lead',
-          loginTime: new Date().toISOString(),
-        })
-      );
-      setIsAuthenticated(true);
+      if (
+        (trimmedUser === 'venu' && trimmedPwd === 'admin007') ||
+        (trimmedUser === 'admin' && trimmedPwd === 'admin007') ||
+        (trimmedUser === 'sre' && trimmedPwd === 'admin007')
+      ) {
+        setIsAuthenticated(true);
+        localStorage.setItem(
+          'control_tower_auth',
+          JSON.stringify({ userId: authUserId.trim(), role: 'Global SRE Lead', timestamp: new Date().toISOString() })
+        );
+      } else {
+        setAuthError('Invalid credentials. Use User ID: Venu & Password: admin007');
+      }
       setAuthLoading(false);
-    } else {
-      setAuthError('Authentication Failed: Invalid User ID or Password. (Required: User ID: Venu / Password: admin007)');
-      setAuthLoading(false);
-    }
+    }, 400);
   };
 
   const handleLogout = () => {
@@ -150,18 +153,19 @@ export function App() {
     if (!isAuthenticated) return;
     setLoading(true);
     try {
-      const [apprRes, histRes, statsRes] = await Promise.all([
-        fetch(`${API_BASE}/approvals?status=pending`).then((r) => (r.ok ? r.json() : [])),
-        fetch(`${API_BASE}/history`).then((r) => (r.ok ? r.json() : [])),
-        fetch(`${API_BASE}/stats`).then((r) => (r.ok ? r.json() : null)),
+      const [appRes, histRes, statsRes] = await Promise.all([
+        fetch(`${API_BASE}/approvals`).catch(() => null),
+        fetch(`${API_BASE}/history`).catch(() => null),
+        fetch(`${API_BASE}/stats`).catch(() => null),
       ]);
 
-      setApprovals(apprRes);
-      setHistory(histRes);
-      setStats(statsRes);
+      if (appRes && appRes.ok) setApprovals(await appRes.json());
+      if (histRes && histRes.ok) setHistory(await histRes.json());
+      if (statsRes && statsRes.ok) setStats(await statsRes.json());
+
       setLastRefreshed(new Date().toLocaleTimeString());
     } catch (err) {
-      console.error('Failed to fetch governance data:', err);
+      console.error('Error fetching SRE dashboard telemetry:', err);
     } finally {
       setLoading(false);
     }
@@ -170,12 +174,12 @@ export function App() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
-      const interval = setInterval(fetchData, 8000);
+      const interval = setInterval(fetchData, 10000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
 
-  // 🛑 Sync Master Kill Switch state from backend governance endpoint
+  // Sync Master Kill Switch state
   useEffect(() => {
     if (!isAuthenticated) return;
     const syncKillSwitch = async () => {
@@ -183,14 +187,38 @@ export function App() {
         const res = await fetch(`${API_BASE}/containment`);
         if (res.ok) {
           const data = await res.json();
-          setIsKillSwitchTriggered(Boolean(data.masterKillSwitch));
+          if (data && typeof data.masterKillSwitch === 'boolean') {
+            setIsKillSwitchTriggered(data.masterKillSwitch);
+          }
         }
-      } catch {}
+      } catch (err) {
+        console.error('Failed to sync master kill switch state:', err);
+      }
     };
     syncKillSwitch();
     const ksInterval = setInterval(syncKillSwitch, 5000);
     return () => clearInterval(ksInterval);
   }, [isAuthenticated]);
+
+  const handleToggleKillSwitch = async () => {
+    try {
+      const nextState = !isKillSwitchTriggered;
+      const res = await fetch(`${API_BASE}/kill-switch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          active: nextState,
+          reason: nextState ? 'Operator triggered emergency containment from Spatial Flight Deck' : 'Operator disarmed containment'
+        }),
+      });
+      if (res.ok) {
+        setIsKillSwitchTriggered(nextState);
+        await fetchData();
+      }
+    } catch (e) {
+      console.error('Error toggling kill switch:', e);
+    }
+  };
 
   const handleApprove = async (id: string, proposedCommands?: string[]) => {
     try {
@@ -237,11 +265,18 @@ export function App() {
   // Grouped Navigation Hierarchy (ServiceNow AI Control Tower Specification)
   const navGroups: NavGroup[] = [
     {
-      groupTitle: 'MISSION CONTROL',
+      groupTitle: 'SPATIAL MISSION CONTROL',
       items: [
         {
+          id: 'flightdeck',
+          label: 'Spatial 3D Flight Deck',
+          icon: Radio,
+          badge: 'Live 3D',
+          badgeType: 'success',
+        },
+        {
           id: 'overview',
-          label: 'Overview & Insights',
+          label: 'Overview & Matrix',
           icon: LayoutGrid,
         },
         {
@@ -413,10 +448,10 @@ export function App() {
               <button
                 type="submit"
                 disabled={authLoading}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-400 hover:opacity-90 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-lg shadow-cyan-950/50"
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold text-xs tracking-wider transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer"
               >
                 {authLoading ? (
-                  <span>Authorizing...</span>
+                  <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
                 ) : (
                   <>
                     <span>Unlock AI Control Tower</span>
@@ -443,7 +478,28 @@ export function App() {
     );
   }
 
-  // ── Authenticated ServiceNow AI Control Tower Dashboard ──
+  // ── Primary Spatial 3D Flight Deck View Mode ──
+  if (activeTab === 'flightdeck') {
+    return (
+      <div className="flex h-screen bg-[#030712] text-slate-100 font-sans antialiased overflow-hidden select-text relative">
+        <SpatialFlightDeck
+          approvals={approvals}
+          history={history}
+          stats={stats}
+          isKillSwitchTriggered={isKillSwitchTriggered}
+          onToggleKillSwitch={handleToggleKillSwitch}
+          onApprove={handleApprove}
+          onReject={handleReject}
+          onOpenChat={() => setIsChatOpen(true)}
+          onNavigateTab={(tabId) => setActiveTab(tabId as TabId)}
+          API_BASE={API_BASE}
+        />
+        <SREControlTowerChat />
+      </div>
+    );
+  }
+
+  // ── Matrix / Detailed Canvas Mode ──
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden select-text">
       {/* 1. Collapsible Pro Sidebar */}
@@ -587,6 +643,15 @@ export function App() {
               <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
               <span className="text-white font-bold">{currentNav?.label || 'Mission Control'}</span>
             </div>
+
+            {/* Quick 3D Spatial Flight Deck Switcher */}
+            <button
+              onClick={() => setActiveTab('flightdeck')}
+              className="ml-3 flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-cyan-500/20 to-emerald-500/20 border border-cyan-500/40 text-cyan-300 hover:border-cyan-400 text-xs font-mono font-bold transition shadow-sm cursor-pointer"
+            >
+              <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+              <span>3D Flight Deck</span>
+            </button>
           </div>
 
           {/* Quick Telemetry & Action Pills */}
