@@ -38,7 +38,6 @@ import {
   Scale,
   Power
 } from 'lucide-react';
-import { SpatialFlightDeck } from './components/SpatialFlightDeck';
 import { AIControlTowerOverview } from './components/AIControlTowerOverview';
 import { AIAssetInventoryView } from './components/AIAssetInventoryView';
 import { ValueAndROIView } from './components/ValueAndROIView';
@@ -55,7 +54,6 @@ import { AIRoutingOverview } from './components/AIRoutingOverview';
 import { SREControlTowerChat } from './components/SREControlTowerChat';
 
 type TabId =
-  | 'flightdeck'
   | 'overview'
   | 'router'
   | 'inventory'
@@ -91,7 +89,7 @@ export function App() {
   const [authError, setAuthError] = useState<string>('');
   const [authLoading, setAuthLoading] = useState<boolean>(false);
 
-  const [activeTab, setActiveTab] = useState<TabId>('flightdeck');
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [approvals, setApprovals] = useState<AgentApproval[]>([]);
   const [history, setHistory] = useState<AgentHistoryEntry[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -99,7 +97,6 @@ export function App() {
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isKillSwitchTriggered, setIsKillSwitchTriggered] = useState<boolean>(false);
-  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
 
   const API_BASE = 'http://localhost:5173/api/v1/agent';
 
@@ -200,26 +197,6 @@ export function App() {
     return () => clearInterval(ksInterval);
   }, [isAuthenticated]);
 
-  const handleToggleKillSwitch = async () => {
-    try {
-      const nextState = !isKillSwitchTriggered;
-      const res = await fetch(`${API_BASE}/kill-switch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          active: nextState,
-          reason: nextState ? 'Operator triggered emergency containment from Spatial Flight Deck' : 'Operator disarmed containment'
-        }),
-      });
-      if (res.ok) {
-        setIsKillSwitchTriggered(nextState);
-        await fetchData();
-      }
-    } catch (e) {
-      console.error('Error toggling kill switch:', e);
-    }
-  };
-
   const handleApprove = async (id: string, proposedCommands?: string[]) => {
     try {
       const res = await fetch(`${API_BASE}/approvals/${id}/approve`, {
@@ -265,18 +242,11 @@ export function App() {
   // Grouped Navigation Hierarchy (ServiceNow AI Control Tower Specification)
   const navGroups: NavGroup[] = [
     {
-      groupTitle: 'SPATIAL MISSION CONTROL',
+      groupTitle: 'MISSION CONTROL',
       items: [
         {
-          id: 'flightdeck',
-          label: 'Spatial 3D Flight Deck',
-          icon: Radio,
-          badge: 'Live 3D',
-          badgeType: 'success',
-        },
-        {
           id: 'overview',
-          label: 'Overview & Matrix',
+          label: 'Overview & Insights',
           icon: LayoutGrid,
         },
         {
@@ -478,28 +448,7 @@ export function App() {
     );
   }
 
-  // ── Primary Spatial 3D Flight Deck View Mode ──
-  if (activeTab === 'flightdeck') {
-    return (
-      <div className="flex h-screen bg-[#030712] text-slate-100 font-sans antialiased overflow-hidden select-text relative">
-        <SpatialFlightDeck
-          approvals={approvals}
-          history={history}
-          stats={stats}
-          isKillSwitchTriggered={isKillSwitchTriggered}
-          onToggleKillSwitch={handleToggleKillSwitch}
-          onApprove={handleApprove}
-          onReject={handleReject}
-          onOpenChat={() => setIsChatOpen(true)}
-          onNavigateTab={(tabId) => setActiveTab(tabId as TabId)}
-          API_BASE={API_BASE}
-        />
-        <SREControlTowerChat />
-      </div>
-    );
-  }
-
-  // ── Matrix / Detailed Canvas Mode ──
+  // ── Authenticated ServiceNow AI Control Tower Dashboard ──
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden select-text">
       {/* 1. Collapsible Pro Sidebar */}
@@ -643,15 +592,6 @@ export function App() {
               <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
               <span className="text-white font-bold">{currentNav?.label || 'Mission Control'}</span>
             </div>
-
-            {/* Quick 3D Spatial Flight Deck Switcher */}
-            <button
-              onClick={() => setActiveTab('flightdeck')}
-              className="ml-3 flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-cyan-500/20 to-emerald-500/20 border border-cyan-500/40 text-cyan-300 hover:border-cyan-400 text-xs font-mono font-bold transition shadow-sm cursor-pointer"
-            >
-              <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-              <span>3D Flight Deck</span>
-            </button>
           </div>
 
           {/* Quick Telemetry & Action Pills */}
