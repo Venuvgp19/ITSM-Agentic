@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -10,7 +11,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5173;
-const DATABASE_URL = process.env.AGENTIC_SRE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:5433/agentic_sre_db';
+const DATABASE_URL = process.env.AGENTIC_SRE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:5432/agentic_sre_db';
 
 app.use(cors());
 app.use(express.json());
@@ -24,7 +25,7 @@ pool.on('error', (err) => {
 });
 
 // PostgreSQL Pool for ITSM Database (Read-only access for queries)
-const ITSM_DATABASE_URL = process.env.ITSM_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:5433/itsm_db';
+const ITSM_DATABASE_URL = process.env.ITSM_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:5432/itsm_db';
 const itsmPool = new Pool({
   connectionString: ITSM_DATABASE_URL,
 });
