@@ -238,5 +238,21 @@ def get_embedding(text, client=None, input_type="query"):
             except Exception as e:
                 logger.warning(f"GenAILab embedding failed: {e}")
 
-    # High-speed deterministic 4096-D semantic keyword vector (Zero latency, robust offline)
+    # Primary NVIDIA NIM embedding model: nvidia/nemotron-3-embed-1b
+    if api_key and NVIDIA_BASE_URL:
+        try:
+            emb_client = OpenAI(api_key=api_key, base_url=NVIDIA_BASE_URL, http_client=custom_httpx_client)
+            res = emb_client.embeddings.create(
+                input=[clean_text],
+                model="nvidia/nemotron-3-embed-1b",
+                extra_body={"input_type": input_type}
+            )
+            emb = res.data[0].embedding
+            if len(emb) < 4096:
+                emb.extend([0.0] * (4096 - len(emb)))
+            return emb[:4096]
+        except Exception as e:
+            logger.warning(f"NVIDIA nemotron-3-embed-1b embedding call failed: {e}. Falling back to keyword vector.")
+
+    # High-speed deterministic 4096-D semantic keyword vector fallback
     return get_keyword_vector(clean_text, target_dim=4096)
