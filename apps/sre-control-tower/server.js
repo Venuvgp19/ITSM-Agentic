@@ -19,11 +19,17 @@ app.use(express.json());
 const pool = new Pool({
   connectionString: DATABASE_URL,
 });
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle agentic_sre_db client:', err.message);
+});
 
 // PostgreSQL Pool for ITSM Database (Read-only access for queries)
 const ITSM_DATABASE_URL = process.env.ITSM_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:5433/itsm_db';
 const itsmPool = new Pool({
   connectionString: ITSM_DATABASE_URL,
+});
+itsmPool.on('error', (err) => {
+  console.error('Unexpected error on idle itsm_db client:', err.message);
 });
 
 async function initDatabase() {

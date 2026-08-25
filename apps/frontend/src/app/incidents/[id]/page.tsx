@@ -122,15 +122,32 @@ export default function IncidentDetailPage() {
   const [commentText, setCommentText] = useState('');
   const [isWorkNote, setIsWorkNote] = useState(true);
 
-  const normalizeDateTime = (raw?: string | Date | null, fallbackDate = '2026-08-21'): string => {
-    if (!raw) return `${fallbackDate} 15:25:34 UTC`;
+  const normalizeDateTime = (raw?: string | Date | null, fallbackDate?: string): string => {
+    if (!raw) {
+      return fallbackDate ? (fallbackDate.endsWith('UTC') ? fallbackDate : `${fallbackDate} UTC`) : new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    }
     
+    if (raw instanceof Date) {
+      if (!isNaN(raw.getTime())) {
+        return raw.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+      }
+    }
+
     if (typeof raw === 'string') {
       const trimmed = raw.trim();
 
       // If already "YYYY-MM-DD HH:mm:ss UTC"
-      if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(\s+UTC)?$/.test(trimmed)) {
-        return trimmed.endsWith('UTC') ? trimmed : `${trimmed} UTC`;
+      if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+UTC$/i.test(trimmed)) {
+        return trimmed;
+      }
+      if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(trimmed)) {
+        return `${trimmed} UTC`;
+      }
+
+      // Check if parseable as ISO date
+      const parsed = new Date(trimmed);
+      if (!isNaN(parsed.getTime()) && !/^\d{1,2}:\d{2}/.test(trimmed)) {
+        return parsed.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
       }
 
       // If 12-hour format "4:03:06 pm" or "2026-08-21 4:03:06 pm"
@@ -145,17 +162,10 @@ export default function IncidentDetailPage() {
         const hh = hours.toString().padStart(2, '0');
         
         const dateMatch = trimmed.match(/(\d{4}-\d{2}-\d{2})/);
-        const datePart = dateMatch ? dateMatch[1] : fallbackDate;
+        const datePart = dateMatch ? dateMatch[1] : (fallbackDate ? fallbackDate.split(' ')[0] : new Date().toISOString().slice(0, 10));
         return `${datePart} ${hh}:${minutes}:${seconds} UTC`;
       }
     }
-
-    try {
-      const d = new Date(raw);
-      if (!isNaN(d.getTime())) {
-        return d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
-      }
-    } catch {}
 
     return String(raw);
   };
@@ -652,9 +662,18 @@ export default function IncidentDetailPage() {
                   </div>
                 </form>
 
-                {/* Activity Stream Entries */}
+                {/* Activity Stream Entries (Latest comment on top, oldest at bottom) */}
                 <div className="space-y-3">
-                  {activities.map((act) => (
+                  {[...activities]
+                    .sort((a, b) => {
+                      const timeA = new Date(a.timestamp || a.createdAt || 0).getTime();
+                      const timeB = new Date(b.timestamp || b.createdAt || 0).getTime();
+                      if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+                        return timeB - timeA;
+                      }
+                      return 0;
+                    })
+                    .map((act) => (
                     <div
                       key={act.id}
                       className={`p-3.5 rounded border space-y-1.5 ${

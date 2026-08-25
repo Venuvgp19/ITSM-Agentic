@@ -73,9 +73,16 @@ export class IncidentService {
 
   private mapIncidentToDTO(record: any) {
     if (!record) return null;
+    const rawActs = Array.isArray(record.activitiesJson) ? (record.activitiesJson as any[]) : [];
+    const sortedActs = [...rawActs].sort((a: any, b: any) => {
+      const tA = new Date(a.timestamp || 0).getTime();
+      const tB = new Date(b.timestamp || 0).getTime();
+      return tB - tA;
+    });
+
     return {
       ...record,
-      activities: record.activitiesJson || [],
+      activities: sortedActs,
       assignedTo: record.assignedToName,
       caller: record.callerName,
       configurationItem: record.configurationItemName,
@@ -129,7 +136,7 @@ export class IncidentService {
         resolvedAt: (dto as any).resolvedAt ? new Date((dto as any).resolvedAt) : (dto.state === 'RESOLVED' ? now : null),
         closedAt: (dto as any).closedAt ? new Date((dto as any).closedAt) : (dto.state === 'CLOSED' ? now : null),
         activitiesJson: [
-          { id: `act_${nextNumber}_1`, author: dto.caller || 'System Admin', isWorkNote: true, comment: `Logged new incident ticket ${nextNumber}.`, timestamp: new Date().toLocaleTimeString() }
+          { id: `act_${nextNumber}_1`, author: dto.caller || 'System Admin', isWorkNote: true, comment: `Logged new incident ticket ${nextNumber}.`, timestamp: openedDate.toISOString() }
         ]
       },
     });
@@ -328,18 +335,27 @@ export class IncidentService {
     }
 
     const now = new Date();
-    const fullDateStr = dto.timestamp || now.toISOString().replace('T', ' ').slice(0, 19);
+    let fullDateStr = now.toISOString();
+    if (dto.timestamp) {
+      const parsed = new Date(dto.timestamp);
+      fullDateStr = !isNaN(parsed.getTime()) ? parsed.toISOString() : now.toISOString();
+    }
 
     const newAct = {
       id: `act_${Date.now()}`,
       author,
       comment: dto.comment,
-      isWorkNote: dto.isWorkNote,
+      isWorkNote: dto.isWorkNote !== false,
       timestamp: fullDateStr,
     };
 
-    let activities = Array.isArray(existing.activitiesJson) ? existing.activitiesJson as any[] : [];
+    let activities = Array.isArray(existing.activitiesJson) ? (existing.activitiesJson as any[]) : [];
     activities.unshift(newAct);
+    activities.sort((a: any, b: any) => {
+      const tA = new Date(a.timestamp || 0).getTime();
+      const tB = new Date(b.timestamp || 0).getTime();
+      return tB - tA;
+    });
 
     await this.prisma.incident.update({
       where: { id: existing.id },
