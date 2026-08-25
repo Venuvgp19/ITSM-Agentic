@@ -357,11 +357,11 @@ export const SREControlTowerChat: React.FC = () => {
     const parts = text.split(/(\$\$.*?\$\$|\*\*.*?\*\*|`.*?`)/g);
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} className="font-bold text-white">{part.slice(2, -2)}</strong>;
+        return <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>;
       }
       if (part.startsWith('`') && part.endsWith('`')) {
         return (
-          <code key={i} className="px-1.5 py-0.5 bg-slate-950 text-emerald-400 rounded font-mono text-[11px] border border-slate-800">
+          <code key={i} className="px-1.5 py-0.5 bg-black/40 text-emerald-400 rounded-md font-mono text-[11px] border border-white/10">
             {part.slice(1, -1)}
           </code>
         );
@@ -401,10 +401,10 @@ export const SREControlTowerChat: React.FC = () => {
           );
 
           elements.push(
-            <div key={`table-${i}`} className="my-2.5 overflow-x-auto rounded-lg border border-slate-700/80 bg-slate-950/90 shadow-md">
+            <div key={`table-${i}`} className="my-2.5 overflow-x-auto rounded-xl border border-white/10 bg-black/20 shadow-inner">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-slate-900/95 border-b border-slate-700 text-indigo-300 font-semibold">
+                  <tr className="bg-white/[0.04] border-b border-white/10 text-cyan-300 font-semibold">
                     {headerCells.map((h, hIdx) => (
                       <th key={hIdx} className="px-3 py-2 text-left font-medium tracking-wide">
                         {renderInlineFormatting(h)}
@@ -412,11 +412,11 @@ export const SREControlTowerChat: React.FC = () => {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/80">
+                <tbody className="divide-y divide-white/[0.05]">
                   {rows.map((row, rIdx) => (
                     <tr
                       key={rIdx}
-                      className="hover:bg-indigo-950/30 transition-colors odd:bg-slate-950/40 even:bg-slate-900/40"
+                      className="hover:bg-cyan-500/[0.06] transition-colors"
                     >
                       {row.map((cell, cIdx) => (
                         <td key={cIdx} className="px-3 py-1.5 text-slate-200 font-mono text-[11px]">
@@ -434,17 +434,17 @@ export const SREControlTowerChat: React.FC = () => {
       }
 
       if (line.startsWith('### ')) {
-        elements.push(<h4 key={i} className="font-bold text-indigo-300 text-sm mt-2.5 mb-1">{line.replace('### ', '')}</h4>);
+        elements.push(<h4 key={i} className="font-semibold text-cyan-300 text-[13px] mt-2.5 mb-1">{line.replace('### ', '')}</h4>);
         i++;
         continue;
       }
       if (line.startsWith('## ')) {
-        elements.push(<h3 key={i} className="font-bold text-white text-base mt-3 mb-1">{line.replace('## ', '')}</h3>);
+        elements.push(<h3 key={i} className="font-bold text-white text-sm mt-3 mb-1">{line.replace('## ', '')}</h3>);
         i++;
         continue;
       }
       if (line.startsWith('# ')) {
-        elements.push(<h2 key={i} className="font-extrabold text-white text-lg mt-3.5 mb-1.5">{line.replace('# ', '')}</h2>);
+        elements.push(<h2 key={i} className="font-extrabold text-white text-base mt-3.5 mb-1.5">{line.replace('# ', '')}</h2>);
         i++;
         continue;
       }
@@ -452,7 +452,7 @@ export const SREControlTowerChat: React.FC = () => {
       if (line.startsWith('- ') || line.startsWith('* ')) {
         const bulletText = line.substring(2);
         elements.push(
-          <li key={i} className="ml-4 list-disc text-slate-200 text-xs leading-relaxed my-0.5">
+          <li key={i} className="ml-4 list-disc marker:text-cyan-500/60 text-slate-200 text-[13px] leading-relaxed my-0.5">
             {renderInlineFormatting(bulletText)}
           </li>
         );
@@ -463,8 +463,8 @@ export const SREControlTowerChat: React.FC = () => {
       const numberedMatch = line.match(/^(\d+)\.\s+(.*)/);
       if (numberedMatch) {
         elements.push(
-          <div key={i} className="flex items-start space-x-1.5 my-0.5 text-xs text-slate-200 ml-1">
-            <span className="font-mono text-indigo-400 font-bold">{numberedMatch[1]}.</span>
+          <div key={i} className="flex items-start space-x-1.5 my-0.5 text-[13px] text-slate-200 ml-1">
+            <span className="font-mono text-cyan-400 font-bold">{numberedMatch[1]}.</span>
             <span className="leading-relaxed">{renderInlineFormatting(numberedMatch[2])}</span>
           </div>
         );
@@ -474,7 +474,7 @@ export const SREControlTowerChat: React.FC = () => {
 
       if (line.startsWith('> ')) {
         elements.push(
-          <div key={i} className="border-l-2 border-indigo-500 pl-2.5 py-0.5 my-1 text-slate-400 italic text-xs">
+          <div key={i} className="border-l-2 border-cyan-500/50 pl-2.5 py-0.5 my-1 text-slate-400 italic text-[13px]">
             {renderInlineFormatting(line.replace('> ', ''))}
           </div>
         );
@@ -489,7 +489,7 @@ export const SREControlTowerChat: React.FC = () => {
       }
 
       elements.push(
-        <p key={i} className="text-xs leading-relaxed my-0.5 text-slate-200">
+        <p key={i} className="text-[13px] leading-relaxed my-0.5 text-slate-200">
           {renderInlineFormatting(line)}
         </p>
       );
@@ -505,14 +505,14 @@ export const SREControlTowerChat: React.FC = () => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-4 py-3 rounded-full shadow-2xl flex items-center space-x-2.5 z-40 border border-indigo-400/40 transition-all transform hover:scale-105 group"
+          className="fixed bottom-6 right-6 bg-gradient-to-br from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 text-white pl-3.5 pr-4.5 py-3 rounded-full shadow-[0_8px_30px_-8px_rgba(6,182,212,0.5)] hover:shadow-[0_8px_36px_-6px_rgba(6,182,212,0.65)] flex items-center space-x-2.5 z-40 border border-white/20 transition-all duration-200 transform hover:scale-[1.03] group"
           title="Open SRE Control Tower Assistant"
         >
           <div className="relative">
-            <Bot className="w-5 h-5 text-indigo-100 group-hover:animate-bounce" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-900 animate-pulse" />
+            <Bot className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-950 animate-pulse" />
           </div>
-          <span className="text-xs font-bold tracking-wide pr-1">SRE Assistant</span>
+          <span className="text-xs font-bold tracking-wide">SRE Assistant</span>
         </button>
       )}
 
@@ -525,55 +525,57 @@ export const SREControlTowerChat: React.FC = () => {
             width: `${size.width}px`,
             height: `${size.height}px`
           }}
-          className={`fixed z-50 flex flex-col bg-slate-900/95 backdrop-blur-xl border border-indigo-500/35 rounded-2xl shadow-2xl overflow-hidden select-text transition-shadow duration-150 ${
-            isDragging ? 'shadow-indigo-500/20 shadow-2xl opacity-95' : ''
+          className={`fixed z-50 flex flex-col bg-[rgba(10,13,22,0.92)] backdrop-blur-2xl border border-white/10 rounded-[20px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.75)] overflow-hidden select-text transition-shadow duration-200 ${
+            isDragging ? 'shadow-[0_25px_70px_-10px_rgba(6,182,212,0.25)] opacity-95' : ''
           }`}
         >
           {/* Draggable Header */}
           <div
             onMouseDown={handleMouseDownHeader}
-            className="bg-slate-950/90 px-4 py-3 border-b border-slate-800 flex items-center justify-between cursor-move select-none group"
+            className="relative bg-black/20 px-4 py-3 border-b border-white/[0.07] flex items-center justify-between cursor-move select-none group"
             title="Click and drag to move window anywhere on screen"
           >
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
             <div className="flex items-center space-x-2.5">
-              <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center">
-                <Bot className="w-4 h-4 text-indigo-400" />
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500/25 to-violet-600/25 border border-white/10 flex items-center justify-center shadow-inner">
+                <Bot className="w-4 h-4 text-cyan-300" />
               </div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs font-bold text-white tracking-wide">SRE Control Tower Assistant</span>
-                  <span className="px-1.5 py-0.2 bg-emerald-950/70 border border-emerald-500/40 text-[9px] font-semibold text-emerald-300 rounded">
-                    LIVE DB • SSE STREAM
+                  <span className="text-[13px] font-bold text-white tracking-wide">SRE Control Tower Assistant</span>
+                  <span className="flex items-center gap-1 px-1.5 py-[3px] bg-emerald-500/10 border border-emerald-500/30 text-[9px] font-semibold text-emerald-300 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    LIVE
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-400 flex items-center space-x-1">
-                  <Database className="w-2.5 h-2.5 text-indigo-400" />
-                  <span>agentic_sre_db & itsm_db (Read-Only)</span>
+                <p className="text-[10px] text-slate-400 flex items-center space-x-1 mt-0.5">
+                  <Database className="w-2.5 h-2.5 text-cyan-500/70" />
+                  <span>agentic_sre_db &amp; itsm_db · read-only</span>
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center space-x-1.5">
-              <div className="text-slate-600 group-hover:text-slate-400 px-1" title="Drag Window">
+            <div className="flex items-center space-x-1">
+              <div className="text-slate-600 group-hover:text-slate-500 px-1 transition-colors" title="Drag Window">
                 <GripHorizontal className="w-4 h-4" />
               </div>
               <button
                 onClick={clearChat}
-                className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 rounded-md transition"
+                className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-white/[0.06] rounded-lg transition-colors"
                 title="Clear Conversation"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={toggleExpand}
-                className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 rounded-md transition"
+                className="p-1.5 text-slate-400 hover:text-cyan-300 hover:bg-white/[0.06] rounded-lg transition-colors"
                 title={isExpanded ? 'Restore Size' : 'Maximize Window'}
               >
                 {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
               </button>
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 rounded-md transition"
+                className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-white/[0.06] rounded-lg transition-colors"
                 title="Close Assistant"
               >
                 <X className="w-4 h-4" />
@@ -583,14 +585,14 @@ export const SREControlTowerChat: React.FC = () => {
 
           {/* Quick Prompt Chips */}
           {messages.length <= 2 && (
-            <div className="px-3.5 py-2 bg-slate-950/40 border-b border-slate-800/50 flex flex-wrap gap-1.5 overflow-x-auto select-none">
+            <div className="px-3.5 py-2.5 bg-black/10 border-b border-white/[0.06] flex flex-wrap gap-1.5 overflow-x-auto select-none">
               {DEFAULT_PROMPTS.map((p, i) => (
                 <button
                   key={i}
                   onClick={() => handleSend(p.prompt)}
-                  className="px-2.5 py-1 bg-slate-800/70 hover:bg-indigo-600/30 border border-slate-700 hover:border-indigo-500/50 text-[11px] text-slate-300 hover:text-indigo-200 rounded-full transition-all flex items-center space-x-1"
+                  className="px-2.5 py-1.5 bg-white/[0.03] hover:bg-cyan-500/[0.1] border border-white/[0.08] hover:border-cyan-500/40 text-[11px] text-slate-300 hover:text-cyan-200 rounded-full transition-all duration-150 flex items-center space-x-1.5"
                 >
-                  <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
+                  <Sparkles className="w-2.5 h-2.5 text-violet-400" />
                   <span>{p.label}</span>
                 </button>
               ))}
@@ -598,107 +600,122 @@ export const SREControlTowerChat: React.FC = () => {
           )}
 
           {/* Messages Stream */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
             {messages.map(msg => (
               <div
                 key={msg.id}
-                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                className={`flex items-start gap-2 animate-message-in ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
               >
+                {/* Avatar */}
                 <div
-                  className={`max-w-[95%] rounded-xl px-3.5 py-2.5 text-xs shadow-md border ${
+                  className={`w-6 h-6 mt-0.5 rounded-full flex items-center justify-center flex-shrink-0 ${
                     msg.role === 'user'
-                      ? 'bg-indigo-600 text-white border-indigo-500/40 rounded-br-none'
-                      : 'bg-slate-950/80 text-slate-200 border-slate-800/90 rounded-bl-none'
+                      ? 'bg-white/[0.06] border border-white/10'
+                      : 'bg-gradient-to-br from-cyan-500/25 to-violet-600/25 border border-white/10'
                   }`}
                 >
-                  <div className="flex items-center justify-between space-x-2 mb-1.5 pb-1 border-b border-white/10">
-                    <span className="font-semibold text-[10px] tracking-wide flex items-center space-x-1">
-                      {msg.role === 'user' ? (
-                        <>
-                          <User className="w-3 h-3 text-indigo-200" />
-                          <span>You (Operator)</span>
-                        </>
-                      ) : (
-                        <>
-                          <Bot className="w-3 h-3 text-indigo-400" />
-                          <span className="text-indigo-300">SRE Assistant</span>
-                        </>
-                      )}
+                  {msg.role === 'user' ? (
+                    <User className="w-3 h-3 text-slate-300" />
+                  ) : (
+                    <Bot className="w-3 h-3 text-cyan-300" />
+                  )}
+                </div>
+
+                <div className={`flex flex-col min-w-0 max-w-[86%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  {/* Meta row */}
+                  <div className={`flex items-center gap-1.5 mb-1 px-1 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                    <span className="text-[10px] font-medium text-slate-500">
+                      {msg.role === 'user' ? 'You' : 'SRE Assistant'}
                     </span>
-                    <div className="flex items-center space-x-1.5 text-[9px] text-slate-400">
-                      <span>{msg.timestamp}</span>
-                      {msg.role === 'assistant' && msg.content && (
-                        <button
-                          onClick={() => copyToClipboard(msg.content, msg.id)}
-                          className="hover:text-white transition"
-                          title="Copy message"
-                        >
-                          {copiedId === msg.id ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
-                        </button>
-                      )}
-                    </div>
+                    <span className="text-[9px] text-slate-600">{msg.timestamp}</span>
                   </div>
 
-                  {/* 12-Iteration Checkpoint Notification Banner */}
-                  {msg.reachedMax && (
-                    <div className="mb-2 p-2 bg-amber-950/50 border border-amber-500/40 rounded-lg flex items-center space-x-2 text-[11px] text-amber-300">
-                      <AlertCircle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-                      <span>
-                        <strong>Reasoning Checkpoint (Iteration 12/12):</strong> Checkpoint reached. Answer the question below to resume from this state.
-                      </span>
-                    </div>
-                  )}
+                  <div
+                    className={`group/bubble relative rounded-2xl px-3.5 py-2.5 text-[13px] shadow-sm ${
+                      msg.role === 'user'
+                        ? 'bg-cyan-600/90 text-white rounded-tr-sm'
+                        : 'bg-white/[0.035] text-slate-200 border border-white/[0.07] rounded-tl-sm'
+                    }`}
+                  >
+                    {/* 12-Iteration Checkpoint Notification Banner */}
+                    {msg.reachedMax && (
+                      <div className="mb-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center space-x-2 text-[11px] text-amber-300">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                        <span>
+                          <strong>Reasoning Checkpoint (12/12):</strong> Answer below to resume from this state.
+                        </span>
+                      </div>
+                    )}
 
-                  {/* Formatted Markdown Content with Tables */}
-                  <div className="space-y-1">
-                    {msg.content ? formatMarkdownContent(msg.content) : (
-                      <span className="text-indigo-300 animate-pulse text-[11px] flex items-center space-x-1.5">
-                        <Activity className="w-3 h-3 animate-spin text-indigo-400" />
-                        <span>Streaming live database query response...</span>
-                      </span>
+                    {/* Formatted Markdown Content with Tables */}
+                    <div className="space-y-1">
+                      {msg.content ? formatMarkdownContent(msg.content) : (
+                        <span className="text-cyan-300/90 text-[11px] flex items-center space-x-2">
+                          <span className="flex gap-0.5">
+                            <span className="w-1 h-1 rounded-full bg-cyan-400 animate-typing-dot" style={{ animationDelay: '0ms' }} />
+                            <span className="w-1 h-1 rounded-full bg-cyan-400 animate-typing-dot" style={{ animationDelay: '150ms' }} />
+                            <span className="w-1 h-1 rounded-full bg-cyan-400 animate-typing-dot" style={{ animationDelay: '300ms' }} />
+                          </span>
+                          <span>Streaming live database query response…</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Live Database Query Traces Accordion */}
+                    {msg.toolTraces && msg.toolTraces.length > 0 && (
+                      <div className="mt-2.5 pt-2 border-t border-white/[0.08]">
+                        <button
+                          onClick={() => toggleTrace(msg.id)}
+                          className="w-full flex items-center justify-between text-[10px] text-cyan-300/90 hover:text-cyan-200 bg-black/20 px-2 py-1.5 rounded-lg border border-white/[0.06] transition-colors"
+                        >
+                          <span className="flex items-center space-x-1.5 font-mono">
+                            <Database className="w-2.5 h-2.5" />
+                            <span>{msg.toolTraces.length} live DB {msg.toolTraces.length === 1 ? 'query' : 'queries'}</span>
+                          </span>
+                          {openTraces[msg.id] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+
+                        {openTraces[msg.id] && (
+                          <div className="mt-1.5 space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar">
+                            {msg.toolTraces.map((trace, tIdx) => (
+                              <div key={tIdx} className="p-2 bg-black/30 border border-white/[0.06] rounded-lg text-[10px] font-mono">
+                                <div className="flex items-center justify-between text-slate-500 mb-1">
+                                  <span className="text-cyan-300/90 font-semibold">{trace.db}</span>
+                                  <span>{trace.rowCount !== undefined ? `${trace.rowCount} rows` : ''}</span>
+                                </div>
+                                <div className="text-emerald-400/90 break-all">{trace.query}</div>
+                                {trace.error && <div className="text-rose-400 mt-1">Error: {trace.error}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Copy — revealed on hover */}
+                    {msg.role === 'assistant' && msg.content && (
+                      <button
+                        onClick={() => copyToClipboard(msg.content, msg.id)}
+                        className="absolute -bottom-2 -right-2 p-1 bg-slate-800 border border-white/10 rounded-full text-slate-400 hover:text-cyan-300 opacity-0 group-hover/bubble:opacity-100 transition-opacity shadow-md"
+                        title="Copy message"
+                      >
+                        {copiedId === msg.id ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
+                      </button>
                     )}
                   </div>
-
-                  {/* Live Database Query Traces Accordion */}
-                  {msg.toolTraces && msg.toolTraces.length > 0 && (
-                    <div className="mt-2.5 pt-2 border-t border-slate-800/80">
-                      <button
-                        onClick={() => toggleTrace(msg.id)}
-                        className="w-full flex items-center justify-between text-[10px] text-indigo-400 hover:text-indigo-300 bg-slate-900/60 px-2 py-1 rounded border border-indigo-500/20"
-                      >
-                        <span className="flex items-center space-x-1 font-mono">
-                          <Database className="w-2.5 h-2.5 text-indigo-400" />
-                          <span>{msg.toolTraces.length} Live DB Queries Executed</span>
-                        </span>
-                        {openTraces[msg.id] ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                      </button>
-
-                      {openTraces[msg.id] && (
-                        <div className="mt-1.5 space-y-1.5 max-h-48 overflow-y-auto">
-                          {msg.toolTraces.map((trace, tIdx) => (
-                            <div key={tIdx} className="p-2 bg-slate-950 border border-slate-800 rounded text-[10px] font-mono">
-                              <div className="flex items-center justify-between text-slate-400 mb-1">
-                                <span className="text-indigo-300 font-semibold">{trace.db}</span>
-                                <span>{trace.rowCount !== undefined ? `${trace.rowCount} rows` : ''}</span>
-                              </div>
-                              <div className="text-emerald-400 break-all">{trace.query}</div>
-                              {trace.error && <div className="text-rose-400 mt-1">Error: {trace.error}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
             ))}
 
             {/* Real-time Streaming Activity Indicator */}
             {loading && currentAction && (
-              <div className="flex items-start space-x-2">
-                <div className="p-2.5 bg-slate-950/80 border border-indigo-500/40 rounded-xl rounded-bl-none text-xs text-indigo-300 flex items-center space-x-2 shadow-lg">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                  <span className="text-[11px] font-medium tracking-wide">{currentAction}</span>
+              <div className="flex items-center gap-2 animate-message-in">
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500/25 to-violet-600/25 border border-white/10 flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-3 h-3 text-cyan-300" />
+                </div>
+                <div className="px-3 py-2 bg-white/[0.03] border border-white/[0.07] rounded-2xl rounded-tl-sm text-[11px] text-cyan-200/90 flex items-center space-x-2">
+                  <RefreshCw className="w-3 h-3 animate-spin text-cyan-400" />
+                  <span className="font-medium tracking-wide">{currentAction}</span>
                 </div>
               </div>
             )}
@@ -707,8 +724,8 @@ export const SREControlTowerChat: React.FC = () => {
           </div>
 
           {/* Input Bar */}
-          <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-end space-x-2">
-            <div className="flex-1 relative">
+          <div className="p-3 bg-black/20 border-t border-white/[0.07] flex items-end space-x-2">
+            <div className="flex-1 relative focus-within:shadow-[0_0_0_1px_rgba(6,182,212,0.4)] rounded-xl transition-shadow">
               <textarea
                 ref={inputRef}
                 value={input}
@@ -717,13 +734,13 @@ export const SREControlTowerChat: React.FC = () => {
                 placeholder="Ask about live approvals, execution audits, timelines, or ITSM records..."
                 rows={1}
                 disabled={loading}
-                className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none max-h-24 custom-scrollbar disabled:opacity-50"
+                className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3.5 py-2.5 text-[13px] text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 resize-none max-h-24 custom-scrollbar disabled:opacity-50 transition-colors"
               />
             </div>
             <button
               onClick={() => handleSend()}
               disabled={!input.trim() || loading}
-              className="p-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl transition shadow flex items-center justify-center"
+              className="p-2.5 bg-gradient-to-br from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 disabled:bg-white/[0.05] disabled:bg-none disabled:text-slate-600 text-white rounded-xl transition-all shadow-sm flex items-center justify-center"
               title="Send Query"
             >
               <Send className="w-4 h-4" />
@@ -733,7 +750,7 @@ export const SREControlTowerChat: React.FC = () => {
           {/* Corner Resize Drag Handle */}
           <div
             onMouseDown={handleMouseDownResize}
-            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize flex items-end justify-end p-0.5 text-slate-500 hover:text-indigo-400 transition"
+            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize flex items-end justify-end p-0.5 text-slate-500 hover:text-cyan-400 transition"
             title="Click and drag to resize chat window"
           >
             <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 fill-current">
