@@ -238,7 +238,7 @@ def get_embedding(text, client=None, input_type="query"):
             except Exception as e:
                 logger.warning(f"GenAILab embedding failed: {e}")
 
-    # Primary NVIDIA NIM embedding model: nvidia/nemotron-3-embed-1b
+    # Dense 4096-D Neural-Lexical Composite Embedding via NVIDIA Nemotron
     if api_key and NVIDIA_BASE_URL:
         try:
             emb_client = OpenAI(api_key=api_key, base_url=NVIDIA_BASE_URL, http_client=custom_httpx_client)
@@ -247,12 +247,18 @@ def get_embedding(text, client=None, input_type="query"):
                 model="nvidia/nemotron-3-embed-1b",
                 extra_body={"input_type": input_type}
             )
-            emb = res.data[0].embedding
-            if len(emb) < 4096:
-                emb.extend([0.0] * (4096 - len(emb)))
-            return emb[:4096]
+            neural_2048 = res.data[0].embedding
+            lexical_2048 = get_keyword_vector(clean_text, target_dim=2048)
+            
+            # Form full 4096-D dense vector
+            dense_4096 = neural_2048 + lexical_2048
+            import math
+            norm = math.sqrt(sum(x * x for x in dense_4096))
+            if norm > 0:
+                dense_4096 = [x / norm for x in dense_4096]
+            return dense_4096
         except Exception as e:
-            logger.warning(f"NVIDIA nemotron-3-embed-1b embedding call failed: {e}. Falling back to keyword vector.")
+            logger.warning(f"NVIDIA nemotron-3-embed-1b embedding call failed: {e}. Falling back to 4096-D keyword vector.")
 
     # High-speed deterministic 4096-D semantic keyword vector fallback
     return get_keyword_vector(clean_text, target_dim=4096)
