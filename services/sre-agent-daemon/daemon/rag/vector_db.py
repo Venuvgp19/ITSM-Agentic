@@ -91,7 +91,7 @@ class ChromaVectorDB:
                     settings=chromadb.config.Settings(anonymized_telemetry=False)
                 )
                 self.collection = self.client.get_or_create_collection(
-                    name="itsm_knowledge_articles",
+                    name="sre_runbooks_collection",
                     metadata={"hnsw:space": "cosine"}
                 )
                 logger.info(f"🟣 ChromaDB Vector Engine initialized successfully at '{self.db_dir}'!")

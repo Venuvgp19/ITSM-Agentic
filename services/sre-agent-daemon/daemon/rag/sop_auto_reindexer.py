@@ -55,7 +55,7 @@ except ImportError:
             return "DevOps Ops"
         return "App Support"
 
-DB_URL = os.environ.get("DATABASE_URL", "postgresql://itsm_user:itsm_password@localhost:5432/itsm_db")
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/itsm_db")
 CHROMA_DIR = os.path.join(resolver_dir, "chroma_db")
 
 # In-memory fast cache to track recently processed content hashes
@@ -98,7 +98,7 @@ def sync_edited_or_created_sops(force: bool = False, vdb_instance=None):
                 path=CHROMA_DIR,
                 settings=chromadb.config.Settings(anonymized_telemetry=False)
             )
-            col = client.get_or_create_collection("itsm_knowledge_articles", metadata={"hnsw:space": "cosine"})
+            col = client.get_or_create_collection("sre_runbooks_collection", metadata={"hnsw:space": "cosine"})
         
         chroma_res = col.get()
         chroma_meta_map = {}
