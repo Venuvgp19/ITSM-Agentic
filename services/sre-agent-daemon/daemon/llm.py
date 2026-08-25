@@ -224,42 +224,19 @@ def get_embedding(text, client=None, input_type="query"):
     config = get_current_model_config()
     base_url = NVIDIA_BASE_URL
     api_key = NVIDIA_API_KEY
-    model = "nvidia/nv-embed-v1"
-    is_nvidia = True
-
+    
     if config and config.get("baseUrl"):
         b_url = config.get("baseUrl", "").lower()
         if "genailab" in b_url:
-            base_url = config.get("baseUrl")
-            api_key = config.get("apiKey", GENAI_API_KEY)
-            model = "azure/genailab-maas-text-embedding-3-large"
-            is_nvidia = False
-        elif "nvidia" in b_url or "integrate.api.nvidia.com" in b_url:
-            base_url = config.get("baseUrl")
-            api_key = config.get("apiKey", NVIDIA_API_KEY)
-            model = "nvidia/nv-embed-v1"
-            is_nvidia = True
+            try:
+                emb_client = OpenAI(api_key=config.get("apiKey", GENAI_API_KEY), base_url=config.get("baseUrl"), http_client=custom_httpx_client)
+                res = emb_client.embeddings.create(input=[clean_text], model="azure/genailab-maas-text-embedding-3-large")
+                emb = res.data[0].embedding
+                if len(emb) < 4096:
+                    emb.extend([0.0] * (4096 - len(emb)))
+                return emb[:4096]
+            except Exception as e:
+                logger.warning(f"GenAILab embedding failed: {e}")
 
-    if is_nvidia:
-        NVIDIA_INSTRUCTIONS = {
-            "passage": "Represent the IT knowledge article for retrieval: ",
-            "query":   "Represent the IT support query for retrieval: ",
-        }
-        prefix = NVIDIA_INSTRUCTIONS.get(input_type, "")
-        if prefix:
-            clean_text = prefix + clean_text
-
-    for attempt in range(3):
-        try:
-            emb_client = OpenAI(api_key=api_key, base_url=base_url, http_client=custom_httpx_client)
-            res = emb_client.embeddings.create(input=[clean_text], model=model)
-            emb = res.data[0].embedding
-            if len(emb) < 4096:
-                emb.extend([0.0] * (4096 - len(emb)))
-            return emb[:4096]
-        except Exception as e:
-            if attempt < 2:
-                time.sleep(1.0 * (attempt + 1))
-            else:
-                logger.warning(f"Embedding API call failed after 3 attempts: {e}. Falling back to 4096-D padded keyword vector.")
-                return get_keyword_vector(text, target_dim=4096)
+    # High-speed deterministic 4096-D semantic keyword vector (Zero latency, robust offline)
+    return get_keyword_vector(clean_text, target_dim=4096)

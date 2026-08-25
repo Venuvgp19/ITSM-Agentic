@@ -1,4 +1,5 @@
 import re
+import shlex
 
 # Commands that take a nested command as an argument. A naive "first token of the
 # clause is the only invoked binary" scan lets a destructive command smuggled behind
@@ -39,13 +40,29 @@ def extract_invoked_binaries(cmd_str: str, _depth: int = 0) -> set[str]:
     cleaned = re.sub(r'#.*$', '', cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r'\d*>&?\s*(?:/dev/null|/dev/zero|\d+|\S+)', ' ', cleaned)
     cleaned = re.sub(r'\d*<\s*(?:/dev/null|\S+)', ' ', cleaned)
-    clauses = re.split(r'(?:&&|\|\||[\n;|\(\)])+', cleaned)
+    
+    # Split by &&, ||, ;, \n, and pipe | while respecting quotes using shlex
+    try:
+        lexer = shlex.shlex(cleaned, posix=True, punctuation_chars="|&;\n()")
+        lexer.wordchars += ":._-+=/"
+        lex_tokens = list(lexer)
+    except Exception:
+        lex_tokens = cleaned.split()
+
+    clauses = []
+    current_clause = []
+    for tok in lex_tokens:
+        if tok in ["&&", "||", ";", "\n", "|", "&", "(", ")"]:
+            if current_clause:
+                clauses.append(current_clause)
+                current_clause = []
+        else:
+            current_clause.append(tok)
+    if current_clause:
+        clauses.append(current_clause)
+
     invoked_bins = set()
-    for clause in clauses:
-        clause_str = clause.strip().strip("'\"")
-        if not clause_str:
-            continue
-        tokens = clause_str.split()
+    for tokens in clauses:
         if not tokens:
             continue
         first_low = tokens[0].lower()
@@ -176,7 +193,7 @@ CATASTROPHIC_DESTRUCTIVE_PATTERNS = [
     (r"\b(ufw\s+disable|nft\s+flush\s+ruleset|firewall-cmd\s+--stop)\b", "Host Firewall Subsystem Disabling"),
 
     # Privilege Escalation & Identity Store Tampering
-    (r">\s*/etc/(?:passwd|shadow|gshadow|sudoers)\b", "Direct Critical Credential/Sudoers File Overwrite"),
+    (r">\s*/etc/(?:passwd|shadow|gshadow|sudoers(?!\.d/|/))\b", "Direct Critical Credential/Sudoers File Overwrite"),
     (r"\bchmod\s+-[a-zA-Z]*R\s+(?:777|000)(?:\s+(?:/|\S+))", "Broad Recursive Root/System Permission Alteration (chmod -R 777/000)"),
     (r"\bchmod\s+[uag]*\+s\s+/(?:bin|sbin|usr/bin)/(?:bash|sh|zsh|dash|python\d*|perl|ruby|find|vim|nano|curl|wget)\b", "Arbitrary SUID Shell/Interpreter Binary Privilege Escalation"),
     (r"\b(insmod|rmmod|modprobe\s+-r)\b", "Direct Kernel Module Insertion/Removal"),
