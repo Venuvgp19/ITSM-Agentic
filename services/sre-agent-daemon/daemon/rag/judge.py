@@ -32,7 +32,8 @@ def verify_rag_match_intent_with_llm(short_desc, desc, sop_number, sop_title, so
             call_label=f"LLM RAG Judge [{sop_number}]",
             enable_thinking=False,
             max_tokens=300,
-            temperature=0.0
+            temperature=0.0,
+            role="governance"
         )
         
         # 1. Primary JSON Parse

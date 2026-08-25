@@ -97,7 +97,8 @@ def run_read_only_diagnostic_react_loop(
                     session_state=state,
                     enable_thinking=False,
                     max_tokens=1024,
-                    temperature=0.1
+                    temperature=0.1,
+                    role="resolver"
                 )
                 
                 if not msg:

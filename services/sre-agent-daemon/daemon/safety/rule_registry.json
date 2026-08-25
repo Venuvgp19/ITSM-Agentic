@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "_readme": "Single source of truth for SOP business rules and capability classification. Adding/adjusting a rule for a new or existing SOP is a change to THIS file, not to rules.py, config.py, hybrid_search.py, or synthesizer.py. Those files load this registry instead of hardcoding KB numbers. See daemon/safety/kb_capabilities.py for how 'capabilityTagsAny' matching and legacy fallback work.",
+
+  "capability_inference": {
+    "_readme": "Used only when a KB article has no explicit capabilityTags field (i.e. it hasn't been tagged in the database/JSON dataset yet). Matches on title/category keywords. Once a KB article carries an explicit capabilityTags array, that array is used directly and this inference is skipped for it.",
+
+    "linux.user.create": {
+      "title_any": ["user account provisioning", "user account creation", "linux user account creation", "restricted sudo command execution", "standard linux user account creation", "linux user account provisioning"],
+      "title_none": ["deprovisioning", "deletion", "offboard", "offboarding", "remove", "delete"]
+    },
+    "linux.user.delete": {
+      "title_any": ["deprovisioning", "offboarding", "offboard", "deletion", "remove local user", "remove user account"]
+    },
+    "linux.user.password_reset": {
+      "title_any": ["password reset"]
+    },
+    "linux.user.lock_unlock": {
+      "title_any": ["account lock", "account unlock", "lock/unlock", "lock user account", "unlock user account"]
+    },
+    "linux.user.modify": {
+      "title_any": ["modify user", "user modification", "change user shell", "usermod "]
+    },
+    "db2.any": {
+      "title_any": ["db2", "ibm db2"],
+      "category_any": ["database management"]
+    }
+  },
+
+  "cross_domain_guards": {
+    "_readme": "Replaces hardcoded per-file allowlists (config.py LINUX_USER_SOP_NUMBERS, synthesizer.py _db2_allowed_sops). A ticket detected as domain X may only be served a KB carrying one of the listed capability tags.",
+    "k8s": {
+      "blocked_capabilities": ["linux.user.create", "linux.user.delete", "linux.user.password_reset", "linux.user.lock_unlock", "linux.user.modify"]
+    },
+    "db2": {
+      "required_capability_any": ["db2.any"]
+    }
+  },
+
+  "capabilities": {
+    "linux.user.create": {
+      "placeholder_gate": ["{username}"],
+      "rules": [
+        {
+          "id": "sudo-vs-acl",
+          "when_keywords_any": ["write access to", "read access to", "access to /etc", "access to /var", "write to /etc", "write permission", "read permission", "directory access", "access to directory", "modify /etc"],
+          "when_keywords_none": ["sudo", "sudoers", "root access", "admin access", "privilege", "wheel", "nopasswd"],
+          "action": "replace_sudoers_with_acl"
+        },
+        {
+          "id": "strip-unrequested-sudo",
+          "when_keywords_none": ["sudo", "sudoers", "root access", "admin access", "privilege", "wheel", "nopasswd", "write access to", "read access to", "access to /etc", "access to /var", "write to /etc", "write permission", "read permission", "directory access", "access to directory", "modify /etc"],
+          "action": "strip_commands_containing",
+          "params": {"substrings": ["sudoers", "visudo"]}
+        }
+      ]
+    },
+    "linux.user.delete": {
+      "placeholder_gate": ["{username}"],
+      "rules": []
+    },
+    "linux.user.password_reset": {
+      "placeholder_gate": [],
+      "rules": [
+        {
+          "id": "force-change-gate",
+          "when_keywords_none": ["force", "expire", "first login", "must change"],
+          "action": "strip_commands_containing",
+          "params": {"substrings": ["chage"]}
+        }
+      ]
+    },
+    "linux.user.lock_unlock": {
+      "placeholder_gate": [],
+      "rules": [
+        {
+          "id": "unlock-direction-filter",
+          "when_keywords_any": ["unlock", "enable", "restore", "re-enable"],
+          "action": "filter_commands_keep_matching",
+          "params": {"placeholder": "{lock_unlock_command}", "keep_if_contains_any": ["passwd -u", "usermod -U"]}
+        },
+        {
+          "id": "lock-direction-filter",
+          "when_keywords_any": ["lock", "disable", "freeze", "brute", "lockout"],
+          "when_keywords_none": ["unlock", "enable", "restore", "re-enable"],
+          "action": "filter_commands_keep_matching",
+          "params": {"placeholder": "{lock_unlock_command}", "keep_if_contains_any": ["passwd -l", "usermod -L"]}
+        }
+      ]
+    },
+    "linux.user.modify": {
+      "placeholder_gate": [],
+      "rules": []
+    }
+  },
+
+  "legacy_kb_number_fallback": {
+    "_readme": "Historical KB-number -> capability mapping, preserved only so tickets that already matched a not-yet-tagged KB by number keep the same behavior during migration. Do not add new numbers here; tag the KB article's capabilityTags field instead. Verified against scripts/database/full_platform_data_dump.json on 2026-08-25: several of these numbers now point at unrelated content (KB0000001/14/15/18) because 'number' is an auto-increment field that gets reassigned across dataset reseeds -- kept here only as an inert last-resort match, never as the primary mechanism.",
+    "linux.user.create": ["KB0000001", "KB0000021", "KB0000027", "KB0000028", "KB0000036", "KB0000037"],
+    "linux.user.delete": ["KB0000014", "KB0000022", "KB0000023", "KB0000038"],
+    "linux.user.lock_unlock": ["KB0000015"],
+    "linux.user.password_reset": ["KB0000017"],
+    "linux.user.modify": ["KB0000018"],
+    "db2.any": ["KB0000025", "KB0000042"]
+  },
+
+  "sudoers_sanitizer": {
+    "_readme": "Last-resort net for LLM-hallucinated sudoers.d NOPASSWD command specs. The primary fix lives in the SOP-parameterization prompt (daemon/sop/synthesizer.py), which now instructs the model to emit only a literal command path. Do NOT add literal hostnames or ticket-specific words here -- if a new bad token keeps slipping through, that means the prompt instruction needs strengthening, not that this list needs another entry.",
+    "narrative_stopwords": ["create", "users", "user", "on", "called", "with", "permission", "to", "for", "please"]
+  }
+}

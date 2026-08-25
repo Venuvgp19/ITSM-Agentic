@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CmdbService, CreateCIDto, CreateCIRelationshipDto } from './cmdb.service';
 import { Public } from '../../common/decorators/public.decorator';
@@ -27,6 +27,13 @@ export class CmdbController {
   @ApiOperation({ summary: 'Get Configuration Item topology and details by ID' })
   async findOneCI(@Param('id') id: string) {
     return this.cmdbService.findOneCI('tenant_acme_01', id);
+  }
+
+  @Public()
+  @Patch('ci/:id')
+  @ApiOperation({ summary: 'Update a Configuration Item (e.g. persist SSH credentials/os in attributesJson so the SRE agent can resolve it across environments)' })
+  async updateCI(@Param('id') id: string, @Body() dto: Partial<CreateCIDto>) {
+    return this.cmdbService.updateCI('tenant_acme_01', id, dto);
   }
 
   @Public()

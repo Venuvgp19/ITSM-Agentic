@@ -90,9 +90,14 @@ def add_work_note(token, incident_id, note_text, author="🤖 Unix Auto-Resolver
         return False
 
 def fetch_agent_approvals(token=None):
-    """Fetches pending and active approval requests directly from the dedicated SRE Control Tower Governance service."""
+    """Fetches pending and active approval requests directly from the dedicated SRE Control Tower Governance service.
+
+    Must request status=ALL: the endpoint defaults to PENDING-only when no status
+    query param is given, which would hide APPROVED/REJECTED records the poller
+    needs to detect a human decision and resume/abort execution.
+    """
     try:
-        res = requests.get(f"{GOVERNANCE_BASE_URL}/approvals", timeout=5)
+        res = requests.get(f"{GOVERNANCE_BASE_URL}/approvals", params={"status": "ALL"}, timeout=5)
         if res.status_code == 200:
             return res.json()
     except Exception as e:
@@ -253,9 +258,62 @@ def save_new_kb_article_to_storage(new_article_data, vdb=None):
         logger.error(f"Failed to persist new KB article via API: {e}")
         return None
 
+def fetch_ci_inventory():
+    """
+    Fetches live Configuration Items from the CMDB (`ConfigurationItem.attributesJson`)
+    and shapes them like CI_CREDENTIALS: {name-or-ip: {ip, user, password, os}}.
+    This is what makes CI credentials persist "in the database" instead of only
+    in this checked-out copy's config.py -- a CI's credentials set via
+    PATCH /api/v1/cmdb/ci/:id (or scripts/database/seed_ci_credentials.py) are
+    picked up here on the next call, from any environment pointed at the same
+    database, without a code change or daemon restart.
+    A CMDB asset with no sshUser/sshPassword recorded yet is skipped, not an
+    error -- CMDB tracks assets the agent has no reason to ever resolve too
+    (routers, k8s clusters, ...).
+    """
+    try:
+        res = requests.get(f"{ITSM_BASE_URL}/cmdb/ci", timeout=3)
+        if res.status_code != 200:
+            return {}
+        cis = res.json()
+    except Exception as e:
+        logger.warning(f"CMDB CI inventory fetch failed, using local CI_CREDENTIALS fallback only: {e}")
+        return {}
+
+    inventory = {}
+    for ci in cis if isinstance(cis, list) else []:
+        attrs = ci.get("attributesJson") or {}
+        ssh_user = attrs.get("sshUser")
+        ssh_password = attrs.get("sshPassword")
+        if not ssh_user or not ssh_password:
+            continue
+        primary_ip = ci.get("ipAddress")
+        info = {
+            "ip": primary_ip,
+            "user": ssh_user,
+            "password": ssh_password,
+            "os": attrs.get("os", "Unix / Linux"),
+        }
+        name = ci.get("name")
+        if name:
+            inventory[name] = info
+        if primary_ip:
+            inventory[primary_ip] = info
+        secondary_ip = attrs.get("secondaryIp")
+        if secondary_ip:
+            inventory[secondary_ip] = {**info, "ip": secondary_ip}
+    return inventory
+
+
 def resolve_ci_credentials(incident):
     if not incident or not isinstance(incident, dict):
         return None, None
+
+    # Live CMDB inventory takes priority over (and extends) the hardcoded
+    # fallback -- see fetch_ci_inventory(). Falls back to CI_CREDENTIALS alone
+    # if the backend/CMDB is unreachable, so a fresh checkout with no DB
+    # access yet still resolves the well-known dev hosts.
+    ci_inventory = {**CI_CREDENTIALS, **fetch_ci_inventory()}
 
     # 1. Collect all possible CI candidate values from incident fields
     raw_candidates = [
@@ -277,15 +335,15 @@ def resolve_ci_credentials(incident):
             if s and s.lower() not in ["null", "none", "undefined", "unspecified ci", "unspecified", ""]:
                 ci_candidates.append(s)
 
-    # 2. Check direct and normalized matching against CI_CREDENTIALS inventory
+    # 2. Check direct and normalized matching against the CI inventory
     for candidate in ci_candidates:
-        if candidate in CI_CREDENTIALS:
-            return CI_CREDENTIALS[candidate], candidate
+        if candidate in ci_inventory:
+            return ci_inventory[candidate], candidate
 
         cand_low = candidate.lower()
         cand_clean = re.sub(r'[^a-z0-9]', '', cand_low)
 
-        for key, info in CI_CREDENTIALS.items():
+        for key, info in ci_inventory.items():
             k_low = key.lower()
             k_clean = re.sub(r'[^a-z0-9]', '', k_low)
 
@@ -302,7 +360,7 @@ def resolve_ci_credentials(incident):
     full_text = f"{short_desc} {desc}"
     clean_text = re.sub(r'[^a-z0-9]', '', full_text)
 
-    for key, info in CI_CREDENTIALS.items():
+    for key, info in ci_inventory.items():
         if info.get("ip") and info["ip"] in full_text:
             return info, key
         k_low = key.lower()

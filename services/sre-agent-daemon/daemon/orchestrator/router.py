@@ -183,7 +183,8 @@ class ControlTowerAIRouter:
                 call_label=f"AI-Router-Triage-{number}",
                 enable_thinking=False,
                 max_tokens=512,
-                temperature=0.1
+                temperature=0.1,
+                role="router"
             )
             
             res = safe_json_parse(raw_response)

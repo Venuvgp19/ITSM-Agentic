@@ -55,7 +55,10 @@
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:25:42Z"
+    "createdAt": "2026-07-31T03:25:42Z",
+    "capabilityTags": [
+      "linux.user.create"
+    ]
   },
   {
     "id": "KB0000029",
@@ -85,7 +88,10 @@
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:25:35.302Z"
+    "createdAt": "2026-07-31T03:25:35.302Z",
+    "capabilityTags": [
+      "linux.user.create"
+    ]
   },
   {
     "id": "KB0000028",
@@ -114,7 +120,10 @@
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:25:27.750Z"
+    "createdAt": "2026-07-31T03:25:27.750Z",
+    "capabilityTags": [
+      "linux.user.create"
+    ]
   },
   {
     "id": "KB0000027",
@@ -144,7 +153,10 @@
     "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:24:29.725Z"
+    "createdAt": "2026-07-31T03:24:29.725Z",
+    "capabilityTags": [
+      "linux.user.create"
+    ]
   },
   {
     "id": "KB0000026",
@@ -751,7 +763,10 @@
     "modelUsed": "NVIDIA Nemotron 3 550B / Meta Llama 3.3 70B (NIM)",
     "viewCount": 1,
     "helpfulCount": 0,
-    "createdAt": "2026-07-31T03:12:29.832Z"
+    "createdAt": "2026-07-31T03:12:29.832Z",
+    "capabilityTags": [
+      "linux.user.delete"
+    ]
   },
   {
     "id": "KB0000001",
@@ -818,6 +833,9 @@
       "INC0001021"
     ],
     "author": "\ud83e\udd16 Master Knowledge Engine",
-    "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct"
+    "modelUsed": "azure_ai/genailab-maas-Llama-3.3-70B-Instruct",
+    "capabilityTags": [
+      "linux.user.create"
+    ]
   }
 ]

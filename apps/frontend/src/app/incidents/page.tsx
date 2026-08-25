@@ -101,7 +101,7 @@ const departments = [
   'DBA Team',
 ];
 
-const cis = ['Unspecified CI', 'router-border-nyc-01', 'k8s-prod-cluster-east-1', 'db-postgres-primary', 'api-gateway-envoy-v2', 'vpn-gateway-01', 'control plane', 'WorkerNode1HL'];
+const FALLBACK_CIS = ['Unspecified CI', 'control plane', 'WorkerNode1HL'];
 const callers = ['Monitoring Bot', 'Sarah Connor', 'David Miller', 'Alex Mercer', 'System Admin', 'Richard Stallman'];
 
 export default function IncidentsPage() {
@@ -117,6 +117,7 @@ export default function IncidentsPage() {
   const [pageSize, setPageSize] = useState(20);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'matrix' | 'analysis'>('matrix');
+  const [ciOptions, setCiOptions] = useState<string[]>(FALLBACK_CIS);
 
   // ServiceNow Incident Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -219,6 +220,17 @@ export default function IncidentsPage() {
     loadIncidentsFromDatabase();
     const interval = setInterval(loadIncidentsFromDatabase, 6000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/v1/cmdb/ci')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        const names = data.map((c: any) => c.name).filter(Boolean).sort();
+        setCiOptions(['Unspecified CI', ...names]);
+      })
+      .catch(() => {});
   }, []);
 
   const isUnassignedIncident = (inc: any) => {
@@ -659,7 +671,7 @@ export default function IncidentsPage() {
                       onChange={(e) => setFormState({ ...formState, ci: e.target.value })}
                       className="w-full bg-white border border-[#cbd5e1] rounded p-2 text-xs text-slate-900 focus:outline-none font-mono"
                     >
-                      {cis.map((c) => (
+                      {ciOptions.map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>

@@ -381,7 +381,6 @@ def _solve_in_progress_incident_internal(
             my_approval = approved_rec or pending_appr or rejected_appr
 
             if not my_approval and not state.has_submitted_approval(inc_id):
-                state.mark_submitted_approval(inc_id)
                 res_steps = sop_commands if is_destructive_sop else (new_sop_data or {}).get("resolution_steps", [])
                 formatted_res_steps = []
                 for step in res_steps:
@@ -433,7 +432,13 @@ def _solve_in_progress_incident_internal(
                 }
                 logger.info(f"📝 Submitting pending approval request for SOP on ticket [{number}] (is_destructive={is_destructive_sop})...")
                 if res_steps:
-                    submit_agent_approval(token, approval_payload)
+                    submitted_ok = submit_agent_approval(token, approval_payload)
+                    if not submitted_ok:
+                        # Leave has_submitted_approval unset so the next poll cycle retries
+                        # the submission instead of silently blocking this ticket forever.
+                        logger.warning(f"⚠️ Approval submission failed for [{number}] — will retry on next poll cycle instead of escalating.")
+                        return
+                    state.mark_submitted_approval(inc_id)
                     post_timeline_update(inc_id, number, short_desc, ci_name, "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", f"SOP {kb_title} requires human operator approval in Control Tower.")
                     notice_note = (
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -461,6 +466,7 @@ def _solve_in_progress_incident_internal(
                     state.lock_session(inc_id)
                 else:
                     logger.warning(f"⛔ Refusing to submit approval for [{number}] — the synthesized SOP resolved to 0 usable commands.")
+                    state.mark_submitted_approval(inc_id)
                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "🔐 Human-in-the-Loop Gate", "FAILED", "SOP synthesis produced 0 usable commands; escalation required.")
                     update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
                     state.lock_session(inc_id)
@@ -635,7 +641,8 @@ Respond ONLY in valid JSON format:
                 session_state=state,
                 enable_thinking=False,
                 max_tokens=600,
-                temperature=0.0
+                temperature=0.0,
+                role="resolver"
             )
             if eval_content:
                 evaluation = json.loads(eval_content) if isinstance(eval_content, str) else eval_content

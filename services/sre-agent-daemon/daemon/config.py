@@ -166,13 +166,24 @@ K8S_DOMAIN_KEYWORDS = [
     "kube-controller", "kube-scheduler", "etcd", "nodeport",
 ]
 
-# Linux user-management SOPs. These must NEVER be served to a K8s-domain ticket.
+# DEPRECATED: superseded by daemon/safety/rule_registry.json's
+# cross_domain_guards.k8s.blocked_capabilities + capability_inference, consumed
+# via daemon/safety/kb_capabilities.py::is_blocked_for_domain(). Kept only as
+# the legacy_kb_number_fallback source of truth for that registry entry -- do
+# not read this list directly in new code, and do not add numbers to it.
 LINUX_USER_SOP_NUMBERS = [
     "KB0000038", "KB0000022", "KB0000023",  # Linux user deletion/deprovisioning
     "KB0000028", "KB0000027", "KB0000021",  # Linux user creation
     "KB0000036", "KB0000037",               # restricted-sudo / standard creation
     "KB0000015", "KB0000017", "KB0000018",  # lock/unlock, password reset, modify user
 ]
+
+# Whether newly-synthesized SOPs (RAG miss, brand-new SOP drafted from a live
+# diagnostic probe) also pass through daemon/safety/rules.py's business-rule
+# enforcement, same as RAG-matched SOPs already do. Defaults on; set
+# ENFORCE_SOP_RULES_ON_NEW_SOP=false to disable if this surfaces unexpected
+# step removal on synthesized SOPs during rollout.
+ENFORCE_SOP_RULES_ON_NEW_SOP = os.getenv("ENFORCE_SOP_RULES_ON_NEW_SOP", "true").lower() in ("true", "1", "yes")
 
 MODEL_NAME = ROUTER_MODEL
 POLL_INTERVAL_SECONDS = 15

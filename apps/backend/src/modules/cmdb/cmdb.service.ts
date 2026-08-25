@@ -52,6 +52,30 @@ export class CmdbService {
     });
   }
 
+  async updateCI(tenantId: string, id: string, dto: Partial<CreateCIDto>) {
+    const existing = await this.prisma.configurationItem.findFirst({ where: { id, tenantId } });
+    if (!existing) throw new NotFoundException(`Configuration Item ${id} not found`);
+    return this.prisma.configurationItem.update({
+      where: { id },
+      data: {
+        name: dto.name ?? existing.name,
+        ciClass: dto.ciClass ?? existing.ciClass,
+        status: dto.status ?? existing.status,
+        serialNumber: dto.serialNumber ?? existing.serialNumber,
+        ipAddress: dto.ipAddress ?? existing.ipAddress,
+        macAddress: dto.macAddress ?? existing.macAddress,
+        location: dto.location ?? existing.location,
+        environment: dto.environment ?? existing.environment,
+        // Shallow-merge attributesJson rather than replace, so a partial
+        // update (e.g. just adding sshUser/sshPassword) doesn't clobber
+        // unrelated attributes already stored on the CI.
+        attributesJson: dto.attributesJson
+          ? { ...((existing.attributesJson as Record<string, any>) || {}), ...dto.attributesJson }
+          : existing.attributesJson,
+      },
+    });
+  }
+
   async findOneCI(tenantId: string, id: string) {
     const ci = await this.prisma.configurationItem.findFirst({
       where: { id, tenantId },

@@ -23,3 +23,7 @@ daemon.lock
 .~lock.*
 scratch/
 database_dump_backup.sql
+services/slack-bridge/posted_approvals.json
+# Derived at restore time by restore_all_data.py from KnowledgeArticle rows --
+# shipping this as a binary blob let it drift out of sync with the DB content.
+services/sre-agent-daemon/chroma_db/

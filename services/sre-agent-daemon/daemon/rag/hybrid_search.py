@@ -4,6 +4,7 @@ from ..config import logger
 from ..llm import get_embedding
 from .bm25 import BM25Okapi, tokenize_text
 from .vector_db import infer_kb_department, normalize_department_filters
+from ..safety.kb_capabilities import find_kb_by_capability
 
 def distill_incident_query(short_desc: str, desc: str) -> tuple[str, list[str]]:
     """
@@ -198,7 +199,7 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     is_user_creation = any(p in full_text for p in user_creation_patterns) or bool(re.search(r"create\s+user\s+account", full_text))
     
     if is_user_creation:
-        user_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000001"), None)
+        user_kb = find_kb_by_capability(kb_articles, "linux.user.create")
         if not user_kb:
             user_kb = next((a for a in kb_articles if "user" in a.get("title", "").lower() and "creation" in a.get("title", "").lower()), None)
         if not user_kb:
@@ -223,7 +224,7 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     ]
     is_user_delete = any(p in full_text for p in user_delete_patterns)
     if is_user_delete:
-        delete_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000014"), None)
+        delete_kb = find_kb_by_capability(kb_articles, "linux.user.delete")
         if not delete_kb:
             delete_kb = next((a for a in kb_articles if "deletion" in a.get("title", "").lower() or "offboard" in a.get("title", "").lower()), None)
         if delete_kb:
@@ -237,7 +238,7 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     ]
     is_password_reset = any(p in full_text for p in password_reset_patterns)
     if is_password_reset:
-        pwd_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000017"), None)
+        pwd_kb = find_kb_by_capability(kb_articles, "linux.user.password_reset")
         if not pwd_kb:
             pwd_kb = next((a for a in kb_articles if "password" in a.get("title", "").lower() and "reset" in a.get("title", "").lower()), None)
         if pwd_kb:
@@ -252,7 +253,7 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     ]
     is_lock = any(p in full_text for p in lock_patterns)
     if is_lock:
-        lock_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000015"), None)
+        lock_kb = find_kb_by_capability(kb_articles, "linux.user.lock_unlock")
         if not lock_kb:
             lock_kb = next((a for a in kb_articles if "lock" in a.get("title", "").lower() and "unlock" in a.get("title", "").lower()), None)
         if lock_kb:
@@ -267,7 +268,7 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     ]
     is_modify = any(p in full_text for p in modify_patterns)
     if is_modify:
-        modify_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000018"), None)
+        modify_kb = find_kb_by_capability(kb_articles, "linux.user.modify")
         if not modify_kb:
             modify_kb = next((a for a in kb_articles if "modification" in a.get("title", "").lower() or "modify" in a.get("title", "").lower()), None)
         if modify_kb:
@@ -282,7 +283,7 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     ]
     is_dir_access = any(p in full_text for p in dir_access_patterns)
     if is_dir_access and is_user_creation:
-        user_kb = next((a for a in kb_articles if a.get("number", "") == "KB0000001"), None)
+        user_kb = find_kb_by_capability(kb_articles, "linux.user.create")
         if user_kb:
             logger.info(f"🎯 Embedding-Free Intent Match: User Creation + Directory Access detected -> Matched SOP [{user_kb.get('number')}] '{user_kb.get('title')}' (Score: 0.9850) [ACL MODE]")
             return [{"number": user_kb.get("number"), "title": user_kb.get("title"), "score": 0.9850, "article": user_kb, "acl_mode": True}]

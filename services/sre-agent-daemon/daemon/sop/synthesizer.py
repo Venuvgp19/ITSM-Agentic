@@ -4,7 +4,7 @@ from ..config import (
     logger,
     RAG_SIMILARITY_THRESHOLD,
     K8S_DOMAIN_KEYWORDS,
-    LINUX_USER_SOP_NUMBERS,
+    ENFORCE_SOP_RULES_ON_NEW_SOP,
 )
 from ..session_state import default_session_state
 from ..llm import invoke_llm_with_fallback as default_invoke_llm, safe_json_parse
@@ -18,6 +18,8 @@ from ..rag.judge import verify_rag_match_intent_with_llm
 from ..ssh.sanitization import strip_ssh_wrapper
 from ..safety.rules import _enforce_sop_safety_rules
 from ..safety.relevance_audit import post_synthesis_relevance_audit
+from ..safety.kb_capabilities import is_blocked_for_domain, is_allowed_for_domain, get_capability_tags
+from ..safety.sudoers_sanitizer import clean_sudo_command_spec
 from ..react.diagnostic_loop import run_read_only_diagnostic_react_loop
 from ..itsm.dashboard import post_timeline_update
 
@@ -94,14 +96,16 @@ def evaluate_and_get_sop(
             is_sop_user_mgmt = is_sop_deletion or is_sop_provision
 
             # ── 1. HARD CROSS-DOMAIN GUARDS ──
-            _db2_allowed_sops = ["KB0000025", "KB0000042"]
-            if _ticket_is_db2 and cand_number not in _db2_allowed_sops:
+            # Driven by daemon/safety/rule_registry.json's cross_domain_guards block
+            # instead of hardcoded KB-number allowlists, which drift stale across
+            # dataset reseeds (KB `number` is reassigned, not content-addressed).
+            if _ticket_is_db2 and not is_allowed_for_domain(cand_art, "db2"):
                 logger.warning(f"🛡️ Strict DB2 Guard: DB2 ticket [{ticket_number}] blocked non-DB2 SOP [{cand_number}] '{cand_art.get('title', '')}'.")
                 next_best_info = f"Candidate [{cand_number}] blocked — DB2 ticket only permits DB2 SOPs."
                 continue
 
             if _ticket_is_k8s:
-                if cand_number in LINUX_USER_SOP_NUMBERS or is_linux_only_sop:
+                if is_blocked_for_domain(cand_art, "k8s") or is_linux_only_sop:
                     logger.warning(f"🛡️ Hard Cross-Domain Guard: K8s ticket [{ticket_number}] matched Linux user SOP [{cand_number}] '{cand_art.get('title', '')}'. Rejecting.")
                     next_best_info = f"[{cand_number}] rejected — Linux user SOP blocked for K8s ticket."
                     continue
@@ -227,7 +231,8 @@ Respond ONLY with valid JSON:
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
                 call_label=f"SOP Synthesis [{ticket_number}]",
-                session_state=state
+                session_state=state,
+                role="synthesizer"
             )
             if plan_content:
                 plan = safe_json_parse(plan_content)
@@ -375,13 +380,7 @@ Respond ONLY with valid JSON:
                 raw_cmd = cmd_match.group(1).strip() if cmd_match else ""
                 restricted_cmd = re.split(r'[\.\;\n,]', raw_cmd)[0].strip() if raw_cmd else ""
                 if restricted_cmd:
-                    words = restricted_cmd.split()
-                    valid_words = []
-                    for w in words:
-                        if w.lower() in ["create", "users", "user", "on", "called", "with", "permission", "to", "for", "please", "worker1ol", "worker2ol", "worker1", "worker2", "5"]:
-                            break
-                        valid_words.append(w)
-                    restricted_cmd = " ".join(valid_words).strip()
+                    restricted_cmd = clean_sudo_command_spec(restricted_cmd)
 
                 if users:
                     for u in users:
@@ -450,6 +449,33 @@ Respond ONLY with valid JSON:
                     f"{relevance_metrics['note']}"
                 )
 
+        # Newly-synthesized SOPs (RAG miss) previously never passed through
+        # _enforce_sop_safety_rules -- only the relevance audit above ran, which
+        # checks entity-grounding, not the business rules (unrequested-sudo
+        # stripping, force-change gating, {username} placeholder gate, ...).
+        # Infer capability tags from the ticket text itself since there's no
+        # matched KB article to read tags from yet.
+        if formatted_steps and ENFORCE_SOP_RULES_ON_NEW_SOP:
+            new_sop_capability_tags = []
+            if is_creation_task:
+                new_sop_capability_tags.append("linux.user.create")
+            if is_deletion_task:
+                new_sop_capability_tags.append("linux.user.delete")
+            if any(k in q_low for k in ["reset password", "password reset", "forgot password", "change password", "password expired"]):
+                new_sop_capability_tags.append("linux.user.password_reset")
+            if any(k in q_low for k in ["lock account", "unlock account", "lock user", "unlock user", "account lock", "lockout"]):
+                new_sop_capability_tags.append("linux.user.lock_unlock")
+
+            if new_sop_capability_tags:
+                pre_count = len(formatted_steps)
+                formatted_steps = _enforce_sop_safety_rules(
+                    formatted_steps, short_desc, desc,
+                    kb_number="KB_NEW",
+                    capability_tags=new_sop_capability_tags,
+                )
+                if len(formatted_steps) != pre_count:
+                    logger.info(f"🔒 Safety Rule: new-SOP enforcement adjusted {ticket_number} steps ({pre_count} -> {len(formatted_steps)}) for tags {new_sop_capability_tags}.")
+
         new_sop_data = {
             "title": kb_title,
             "summary": summary,
@@ -459,7 +485,7 @@ Respond ONLY with valid JSON:
             "reasoning": reasoning,
             "relevance": relevance_metrics
         }
-        
+
         return True, "KB_NEW", kb_title, reasoning, formatted_steps, new_sop_data
         
     else:
@@ -486,6 +512,10 @@ Ensure all commands comply with the DIRECT COMMAND EXECUTION RULE (do NOT prefix
 
 CRITICAL: For ALL commands, replace {{ip}} with the target IP address.
 
+CRITICAL SUDOERS COMMAND SPEC RULE:
+- When writing an /etc/sudoers.d NOPASSWD entry (`echo "<user> ALL=(ALL) NOPASSWD: <spec>" > ...`), the <spec> MUST be ONLY a literal absolute command path (e.g. "/usr/bin/systemctl restart nexacore") or the bare word ALL.
+- NEVER copy prose fragments, phrases like "with permission to", or hostnames/usernames from the ticket text into <spec>. If no single literal command/path can be identified from the ticket, use ALL.
+
 CRITICAL PYTHON VIRTUAL ENVIRONMENT PARAMETERIZATION RULE (KB0000019):
 - If the ticket requests creating a Python virtual environment (e.g. "create a python virtual environment called codex ... install chromadb"):
   - Extract the target {{venv_name}} from ticket text (e.g., "codex", "snappy", "myenv").
@@ -498,8 +528,15 @@ CRITICAL MULTI-USER & BULK EXPANSION RULE (PROVISIONING & DELETION):
   - For PROVISIONING tickets: Combine useradd, chpasswd, and sudoers drop-in creation into chained one-liners per user (e.g. `id -u $u &>/dev/null || (useradd -m -s /bin/bash $u && echo '$u:$pass' | chpasswd && echo '$u ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/99-$u && chmod 440 /etc/sudoers.d/99-$u)`) or output full steps for EVERY SINGLE USER in the extracted list.
   - For DELETION / OFFBOARDING tickets: REPLICATE the user deletion commands (`rm -f /etc/sudoers.d/$user /etc/sudoers.d/99-$user; pkill -9 -u $user 2>/dev/null || true; userdel -r -f $user 2>/dev/null || true`) for EVERY SINGLE USER in the extracted list!
 
-For USER DELETION / OFFBOARDING SOP (KB0000038 / KB0000022 / KB0000023), extract:
+For USER DELETION / OFFBOARDING SOP (KB0000038), extract:
 - {{username_list}}: Extract ALL usernames listed in the incident description and expand userdel commands for ALL of them.
+
+CRITICAL USER ACCESS LEVEL SELECTION RULE (KB0000021):
+- This SOP's steps include multiple labeled access-level blocks: "[ACCESS: FULL ADMIN ...]", "[ACCESS: RESTRICTED SINGLE-COMMAND ...]", and "[ACCESS: STANDARD USER ...]". Output commands from ONLY the ONE block matching the incident:
+  - Ticket says "admin access" / "root access" / "full sudo" / "all commands" -> use the FULL ADMIN block's commands (`... ALL=(ALL) NOPASSWD:ALL`).
+  - Ticket grants access to run exactly ONE named command (e.g. "permission to run systemctl restart nginx") -> use the RESTRICTED SINGLE-COMMAND block, substituting {{allowed_command_path}} with that literal command's absolute path (see CRITICAL SUDOERS COMMAND SPEC RULE above).
+  - Ticket does not mention admin/root/sudo access at all -> use ONLY the STANDARD USER block; do NOT emit any /etc/sudoers.d command.
+  - Also select the SINGLE-USER vs BULK-USER creation block per the MULTI-USER & BULK EXPANSION RULE above, independently of the access-level choice (the two are orthogonal — e.g. bulk users can each get restricted access).
 
 Respond ONLY in JSON:
 {{
@@ -516,7 +553,8 @@ Respond ONLY in JSON:
                 session_state=state,
                 enable_thinking=False,
                 max_tokens=1500,
-                temperature=0.1
+                temperature=0.1,
+                role="synthesizer"
             )
             if plan_content:
                 plan = safe_json_parse(plan_content)
@@ -534,7 +572,11 @@ Respond ONLY in JSON:
             
         sop_commands = plan.get("sop_commands", kb_steps_list)
         reasoning = plan.get("reasoning", f"SOP {top_match['number']} parameterized.")
-        
-        sop_commands = _enforce_sop_safety_rules(sop_commands, short_desc, desc, top_match.get("number", ""))
-        
+
+        sop_commands = _enforce_sop_safety_rules(
+            sop_commands, short_desc, desc,
+            kb_number=top_match.get("number", ""),
+            article=matched_kb,
+        )
+
         return False, top_match['number'], top_match['title'], reasoning, sop_commands, None

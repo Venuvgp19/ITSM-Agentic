@@ -56,7 +56,8 @@ def run_dynamic_react_loop(
                 "9. CONSTRAINED SOP COMMAND ADAPTATION: Use the approved 'SOP Guide Commands' as a strict foundational blueprint. You are authorized to adapt and parameterize ONLY the specific commands/binaries present in the SOP Guide (substituting target usernames, IPs, service names, or file paths). You are STRICTLY PROHIBITED from introducing completely new command binaries that are absent from the approved SOP blueprint.\n"
                 "10. NO REDUNDANT AUTHENTICATION: Do NOT run `az login` or re-authentication commands. All target nodes (WorkerNode1HL, control plane) have active pre-authenticated sessions and valid subscriptions. Proceed directly to executing the required resource operations (`az group create`, `az resource`, etc.).\n"
                 "11. ULTIMATE VERIFICATION: Focus on fulfilling the incident requirement (e.g. creating the requested resource groups, users, or services). Output a clear summary once all requested items are created.\n"
-                "12. SERVICE STABILIZATION PAUSE: Whenever starting, enabling, or restarting a system service (e.g. systemctl restart/start/enable, docker/podman start), always wait 10 seconds before verifying listening ports or checking service status."
+                "12. SERVICE STABILIZATION PAUSE: Whenever starting, enabling, or restarting a system service (e.g. systemctl restart/start/enable, docker/podman start), always wait 10 seconds before verifying listening ports or checking service status.\n"
+                "13. USER ACCESS LEVEL RULE: When the SOP Guide offers multiple labeled access-level blocks (e.g. '[ACCESS: FULL ADMIN]', '[ACCESS: RESTRICTED SINGLE-COMMAND]', '[ACCESS: STANDARD USER]'), use ONLY the block matching what the incident actually requests. 'admin access'/'root access'/'full sudo' -> FULL ADMIN block. Access limited to running one named command -> RESTRICTED SINGLE-COMMAND block (substitute the exact command path the ticket names). No mention of admin/root/sudo access at all -> STANDARD USER block (skip creating any sudoers entry). Never grant broader access than the incident requests."
             )
         },
         {"role": "user", "content": f"Target Host: {ip}\nIncident Short Desc: {short_desc}\nIncident Full Description:\n{desc}\n\nSOP Guide Commands:\n" + json.dumps(guide_commands)}
@@ -76,14 +77,15 @@ def run_dynamic_react_loop(
             
             try:
                 msg, used_model = invoker(
-                    messages=messages, 
-                    tools=tools, 
-                    return_message=True, 
+                    messages=messages,
+                    tools=tools,
+                    return_message=True,
                     call_label=f"ReAct Loop Turn {turn}",
                     session_state=state,
                     enable_thinking=False,
                     max_tokens=1024,
-                    temperature=0.1
+                    temperature=0.1,
+                    role="resolver"
                 )
                 if not msg:
                     raise Exception("All fallback models failed to return a valid response.")

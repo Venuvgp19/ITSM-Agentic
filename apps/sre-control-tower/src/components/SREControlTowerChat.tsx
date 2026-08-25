@@ -15,8 +15,32 @@ import {
   Check,
   GripHorizontal,
   Activity,
-  AlertCircle
+  AlertCircle,
+  Search
 } from 'lucide-react';
+
+// Friendly rotating status phrases shown while the assistant is actively
+// querying agentic_sre_db / itsm_db. Picked at random each time a new
+// database call starts, so back-to-back queries don't repeat the same words.
+// The exact table/db name is still shown in the trace accordion below each
+// answer -- this is just the live "what's happening right now" indicator.
+const DB_SEARCH_PHRASES = [
+  'Digging through the database…',
+  'Sifting through the records…',
+  'Scanning live tables…',
+  'Cross-referencing history…',
+  'Pulling matching rows…',
+  'Combing through the archives…'
+];
+
+const randomSearchPhrase = () => DB_SEARCH_PHRASES[Math.floor(Math.random() * DB_SEARCH_PHRASES.length)];
+
+// Minimum window size -- small enough to still be usable, not so small the
+// header/input controls start clipping.
+const MIN_CHAT_WIDTH = 360;
+const MIN_CHAT_HEIGHT = 400;
+
+type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
 interface ToolTrace {
   db: string;
@@ -66,11 +90,14 @@ export const SREControlTowerChat: React.FC = () => {
     initY: 0
   });
 
-  const resizeRef = useRef<{ startX: number; startY: number; initW: number; initH: number }>({
+  const resizeRef = useRef<{ startX: number; startY: number; initW: number; initH: number; initX: number; initY: number; dir: ResizeDir }>({
     startX: 0,
     startY: 0,
     initW: 480,
-    initH: 650
+    initH: 650,
+    initX: 0,
+    initY: 0,
+    dir: 'se'
   });
 
   const [messages, setMessages] = useState<Message[]>([
@@ -122,16 +149,26 @@ export const SREControlTowerChat: React.FC = () => {
     };
   };
 
-  // RESIZE HANDLERS
-  const handleMouseDownResize = (e: React.MouseEvent) => {
+  // RESIZE HANDLERS -- supports all 4 edges + 4 corners so the window can be
+  // grown/shrunk from whichever side is convenient, not just the bottom-right
+  // corner. Each direction resizes by keeping the *opposite* edge fixed
+  // (e.g. dragging the left edge keeps the right edge in place), which is
+  // what makes north/west resizing feel natural instead of the window
+  // jumping.
+  const handleMouseDownResize = (dir: ResizeDir) => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsResizing(true);
+    const currentX = position ? position.x : window.innerWidth - size.width - 24;
+    const currentY = position ? position.y : window.innerHeight - size.height - 24;
     resizeRef.current = {
       startX: e.clientX,
       startY: e.clientY,
       initW: size.width,
-      initH: size.height
+      initH: size.height,
+      initX: currentX,
+      initY: currentY,
+      dir
     };
   };
 
@@ -144,11 +181,37 @@ export const SREControlTowerChat: React.FC = () => {
         const newY = Math.max(10, Math.min(window.innerHeight - size.height - 10, dragRef.current.initY + dy));
         setPosition({ x: newX, y: newY });
       } else if (isResizing) {
-        const dx = e.clientX - resizeRef.current.startX;
-        const dy = e.clientY - resizeRef.current.startY;
-        const newW = Math.max(360, Math.min(window.innerWidth - (position?.x || 0) - 10, resizeRef.current.initW + dx));
-        const newH = Math.max(400, Math.min(window.innerHeight - (position?.y || 0) - 10, resizeRef.current.initH + dy));
+        const { dir, startX, startY, initW, initH, initX, initY } = resizeRef.current;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const maxW = window.innerWidth - 20;
+        const maxH = window.innerHeight - 20;
+
+        let newW = initW;
+        let newX = initX;
+        if (dir.includes('e')) {
+          newW = Math.min(maxW, Math.max(MIN_CHAT_WIDTH, initW + dx));
+        } else if (dir.includes('w')) {
+          const fixedRight = initX + initW;
+          newW = Math.min(maxW, Math.max(MIN_CHAT_WIDTH, initW - dx));
+          newX = fixedRight - newW;
+        }
+
+        let newH = initH;
+        let newY = initY;
+        if (dir.includes('s')) {
+          newH = Math.min(maxH, Math.max(MIN_CHAT_HEIGHT, initH + dy));
+        } else if (dir.includes('n')) {
+          const fixedBottom = initY + initH;
+          newH = Math.min(maxH, Math.max(MIN_CHAT_HEIGHT, initH - dy));
+          newY = fixedBottom - newH;
+        }
+
+        newX = Math.max(10, Math.min(newX, window.innerWidth - newW - 10));
+        newY = Math.max(10, Math.min(newY, window.innerHeight - newH - 10));
+
         setSize({ width: newW, height: newH });
+        setPosition({ x: newX, y: newY });
       }
     };
 
@@ -214,7 +277,7 @@ export const SREControlTowerChat: React.FC = () => {
     setMessages(updatedMessages);
     setInput('');
     setLoading(true);
-    setCurrentAction('Analyzing query & introspecting databases...');
+    setCurrentAction(randomSearchPhrase());
 
     try {
       const apiMessages = updatedMessages
@@ -265,10 +328,14 @@ export const SREControlTowerChat: React.FC = () => {
             const data = JSON.parse(dataStr);
 
             if (eventType === 'tool_start') {
-              setCurrentAction(`Running SQL on ${data.tool === 'query_sre_database' ? 'agentic_sre_db' : 'itsm_db'} (step ${data.iteration}/12)...`);
+              setCurrentAction(randomSearchPhrase());
             } else if (eventType === 'tool_done') {
               collectedTraces.push(data);
-              setCurrentAction(`Retrieved ${data.rowCount !== undefined ? `${data.rowCount} rows` : 'schema'} from ${data.db}`);
+              setCurrentAction(
+                data.rowCount !== undefined
+                  ? `Found ${data.rowCount} matching row${data.rowCount === 1 ? '' : 's'}…`
+                  : randomSearchPhrase()
+              );
               setMessages(prev =>
                 prev.map(m =>
                   m.id === assistantMsgId
@@ -647,16 +714,21 @@ export const SREControlTowerChat: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Formatted Markdown Content with Tables */}
+                    {/* Formatted Markdown Content with Tables. While the
+                        response is still empty, this doubles as the live
+                        "what's happening right now" indicator -- a single
+                        rotating status line anchored where the answer will
+                        appear, instead of a second detached loading row. */}
                     <div className="space-y-1">
                       {msg.content ? formatMarkdownContent(msg.content) : (
                         <span className="text-cyan-300/90 text-[11px] flex items-center space-x-2">
+                          <Search className="w-3 h-3 animate-pulse flex-shrink-0" />
                           <span className="flex gap-0.5">
                             <span className="w-1 h-1 rounded-full bg-cyan-400 animate-typing-dot" style={{ animationDelay: '0ms' }} />
                             <span className="w-1 h-1 rounded-full bg-cyan-400 animate-typing-dot" style={{ animationDelay: '150ms' }} />
                             <span className="w-1 h-1 rounded-full bg-cyan-400 animate-typing-dot" style={{ animationDelay: '300ms' }} />
                           </span>
-                          <span>Streaming live database query response…</span>
+                          <span className="font-medium tracking-wide">{currentAction || 'Thinking…'}</span>
                         </span>
                       )}
                     </div>
@@ -707,19 +779,6 @@ export const SREControlTowerChat: React.FC = () => {
               </div>
             ))}
 
-            {/* Real-time Streaming Activity Indicator */}
-            {loading && currentAction && (
-              <div className="flex items-center gap-2 animate-message-in">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500/25 to-violet-600/25 border border-white/10 flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-3 h-3 text-cyan-300" />
-                </div>
-                <div className="px-3 py-2 bg-white/[0.03] border border-white/[0.07] rounded-2xl rounded-tl-sm text-[11px] text-cyan-200/90 flex items-center space-x-2">
-                  <RefreshCw className="w-3 h-3 animate-spin text-cyan-400" />
-                  <span className="font-medium tracking-wide">{currentAction}</span>
-                </div>
-              </div>
-            )}
-
             <div ref={messagesEndRef} />
           </div>
 
@@ -747,10 +806,20 @@ export const SREControlTowerChat: React.FC = () => {
             </button>
           </div>
 
-          {/* Corner Resize Drag Handle */}
+          {/* Resize Handles -- all 4 edges + 4 corners, so the window can be
+              grown/shrunk from whichever side is convenient. Edge strips are
+              invisible (cursor-only affordance); corners carry a small hit
+              target too since two edge strips would otherwise fight there. */}
+          <div onMouseDown={handleMouseDownResize('n')} className="absolute top-0 left-2.5 right-2.5 h-1.5 cursor-n-resize z-10" title="Resize" />
+          <div onMouseDown={handleMouseDownResize('s')} className="absolute bottom-0 left-2.5 right-2.5 h-1.5 cursor-s-resize z-10" title="Resize" />
+          <div onMouseDown={handleMouseDownResize('w')} className="absolute left-0 top-2.5 bottom-2.5 w-1.5 cursor-w-resize z-10" title="Resize" />
+          <div onMouseDown={handleMouseDownResize('e')} className="absolute right-0 top-2.5 bottom-2.5 w-1.5 cursor-e-resize z-10" title="Resize" />
+          <div onMouseDown={handleMouseDownResize('nw')} className="absolute top-0 left-0 w-2.5 h-2.5 cursor-nw-resize z-20" title="Resize" />
+          <div onMouseDown={handleMouseDownResize('ne')} className="absolute top-0 right-0 w-2.5 h-2.5 cursor-ne-resize z-20" title="Resize" />
+          <div onMouseDown={handleMouseDownResize('sw')} className="absolute bottom-0 left-0 w-2.5 h-2.5 cursor-sw-resize z-20" title="Resize" />
           <div
-            onMouseDown={handleMouseDownResize}
-            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize flex items-end justify-end p-0.5 text-slate-500 hover:text-cyan-400 transition"
+            onMouseDown={handleMouseDownResize('se')}
+            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-20 flex items-end justify-end p-0.5 text-slate-500 hover:text-cyan-400 transition"
             title="Click and drag to resize chat window"
           >
             <svg viewBox="0 0 10 10" className="w-2.5 h-2.5 fill-current">

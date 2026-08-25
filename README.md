@@ -11,13 +11,14 @@ The platform automates enterprise helpdesk and Site Reliability Engineering oper
 2. [Default Operator Credentials](#-default-operator-credentials)
 3. [System Architecture](#-system-architecture)
 4. [Active Service URLs & Port Reference](#-active-service-urls--port-reference)
-5. [Quick Start & New Machine Setup (Zero to Running in 3 Steps)](#-quick-start--new-machine-setup)
+5. [Quick Start & New Machine Setup](#-quick-start--new-machine-setup)
 6. [Step-by-Step Installation & Application Startup Directives](#-step-by-step-installation--application-startup-directives)
-7. [Production Hosting & Daemon Management](#-production-hosting--daemon-management)
-8. [Presentations & Product Pitch Decks](#-presentations--product-pitch-decks)
-9. [Database Architecture & Snapshot Management](#-database-architecture--snapshot-management)
-10. [Safety, Validation & Guardrails](#-safety-validation--guardrails)
-11. [License](#-license)
+7. [Slack Integration (Optional)](#-slack-integration-optional)
+8. [Production Hosting & Daemon Management](#-production-hosting--daemon-management)
+9. [Presentations & Product Pitch Decks](#-presentations--product-pitch-decks)
+10. [Database Architecture & Snapshot Management](#-database-architecture--snapshot-management)
+11. [Safety, Validation & Guardrails](#-safety-validation--guardrails)
+12. [License](#-license)
 
 ---
 
@@ -171,15 +172,45 @@ Create or verify `.env` at the project root:
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/itsm_db?schema=public"
 SRE_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/agentic_sre_db"
 NVIDIA_API_KEY="your-nvapi-key-here"
+GENAI_API_KEY="your-genai-lab-key-here"
 JWT_SECRET="itsm_super_secret_jwt_key_2026"
 PORT=4000
 ```
 
-### Step 3: One-Click Dual Database Provisioning & Data Restoration
-Run the automated restore script. It auto-creates `itsm_db` and `agentic_sre_db`, builds all schemas, and populates the complete dataset (1,187 incidents, 44 KBs, 218 SRE audit logs):
+### Step 3: Build the Schema
+Schema is owned by Prisma migrations (`packages/db/prisma/migrations/`), not by the restore script. Auto-creates `itsm_db`/`agentic_sre_db` if `npm run db:generate` hasn't already, then applies every migration in order:
+```bash
+cd packages/db && npx prisma migrate deploy && cd ../..
+```
+
+### Step 4: Restore Data
+Populates both databases from `scripts/database/full_platform_data_dump.json` (1,193 incidents, 32 KBs, CMDB, agent config, SRE audit logs), then re-derives KB capability tags and rebuilds the ChromaDB vector index from the restored KB content — so nothing can drift out of sync with what just got loaded:
 ```bash
 python scripts/database/restore_all_data.py
 ```
+
+To refresh that snapshot from a live environment (e.g. after editing data directly), run `python scripts/database/export_full_database_snapshot.py` first — see [Database Architecture & Snapshot Management](#-database-architecture--snapshot-management).
+
+### Step 5: Build Everything
+```bash
+npm run build:backend
+npm run build:mcp
+cd apps/sre-control-tower && npm run build && cd ../..
+```
+`apps/sre-control-tower`'s build produces its `dist/` folder — `server.js` serves the dashboard UI from there and returns 404s on `/` without it.
+
+### Step 6: Start All Services
+```bash
+node apps/backend/dist/main.js &                  # :4000
+npm run dev:frontend &                             # :3000
+cd apps/sre-control-tower && node server.js &       # :5173
+cd services/sre-agent-daemon && rm -f daemon.lock && python -u continuous_itsm_agent_daemon.py &
+npm run start:mcp                                   # stdio MCP tool server (foreground; spawned by an MCP client, not a standalone daemon)
+```
+See [Full Application Startup](#-full-application-startup-all-services) below for the platform-specific (PowerShell/Bash) version of this sequence, and [Slack Integration](#-slack-integration-optional) to also wire up approval cards and the SRE chatbot in Slack.
+
+### Restoring Later / Starting Fresh Again
+Once already set up, wiping back to a known-good state (e.g. after test data pollution) only needs Steps 3–4 re-run — `prisma migrate deploy` is a no-op if the schema is already current, and `restore_all_data.py` truncates and reloads both databases plus derived state (capability tags, vector index) from the snapshot every time it runs. No need to redo install/build/`.env`.
 
 ---
 
@@ -193,9 +224,10 @@ Follow this exact sequence to start all 6 service layers:
 # 1. Start Local PostgreSQL Database
 & "$env:USERPROFILE\pgsql\pgsql\bin\postgres.exe" -D "$env:USERPROFILE\pgsql\pgsql\data"
 
-# 2. Build Backend & MCP Server
+# 2. Build Backend, MCP Server & Control Tower Dashboard
 npm run build:backend
 npm run build:mcp
+cd apps/sre-control-tower; npm run build; cd ../..
 
 # 3. Start NestJS Backend API Server (Port 4000)
 node apps/backend/dist/main.js
@@ -221,9 +253,10 @@ npm run start:mcp
 # 1. Start PostgreSQL
 pg_ctl -D /usr/local/var/postgres start
 
-# 2. Build Backend & MCP Server
+# 2. Build Backend, MCP Server & Control Tower Dashboard
 npm run build:backend
 npm run build:mcp
+cd apps/sre-control-tower && npm run build && cd ../..
 
 # 3. Start Backend Server (Port 4000)
 node apps/backend/dist/main.js &
@@ -277,6 +310,21 @@ To cleanly stop all background services without corrupting state:
 
 ---
 
+## 💬 Slack Integration (Optional)
+
+`services/slack-bridge` bridges the Agent Control Tower into Slack: it posts HITL approval cards with Approve/Reject buttons to a channel, and answers ITSM/SRE questions via the same read-only SRE Assistant the dashboard chat uses — via Socket Mode, so no public URL/tunnel is needed.
+
+### Setup
+1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps) → enable **Socket Mode** (generates an App-Level Token, scope `connections:write`) → add Bot Token Scopes `chat:write`, `app_mentions:read`, `im:history`, `im:read`, `im:write`, `users:read` → enable **Event Subscriptions** (`app_mention`, `message.im`) and **Interactivity & Shortcuts** → install to your workspace.
+2. `cp services/slack-bridge/.env.example services/slack-bridge/.env` and fill in `SLACK_BOT_TOKEN` (`xoxb-...`), `SLACK_APP_TOKEN` (`xapp-...`), and `SLACK_APPROVALS_CHANNEL` (invite the bot to that channel first).
+3. Install and start:
+```bash
+cd services/slack-bridge && npm install && node index.js
+```
+New pending approvals appear in the channel within `POLL_INTERVAL_MS` (default 15s); `@mention` the bot or DM it to ask questions.
+
+---
+
 ## 🌐 Production Hosting & Daemon Management
 
 For 24/7 production hosting, manage node servers and background daemons using **PM2**:
@@ -323,25 +371,30 @@ Two executive-grade presentations are included in the repository:
 
 ### 1. Dual-Database Design:
 - **`itsm_db`** (Port 5432):
-  - `Incident`: 1,187+ enterprise incident records with full activity work notes and status transitions.
-  - `KnowledgeArticle`: 44 published Master SOP runbooks.
-  - `Problem`: 50 problem management records with root cause analyses and workarounds.
-  - `ConfigurationItem` & `Tenant`: CMDB asset catalog and multi-tenant schema.
+  - `Incident`, `Problem`, `KnowledgeArticle` (with `capabilityTags` for safety-rule dispatch), `ConfigurationItem` & `Tenant` (CMDB + multi-tenant schema), `AgentConfig` (active LLM provider/model settings), `AgentApproval` / `AgentHistory` (NestJS-side governance records).
+  - Schema is owned by Prisma migrations (`packages/db/prisma/migrations/`) — apply with `npx prisma migrate deploy`, not `db push`.
 - **`agentic_sre_db`** (Port 5432):
-  - `sre_history`: 218 execution audit logs with raw stdout/stderr, timestamps, durations, and agent models.
-  - `sre_approvals`: 104 HITL governance approval records.
-  - `sre_timeline`: 53 multi-turn observability step traces.
+  - `sre_history`, `sre_approvals`, `sre_timeline`: execution audit log / HITL approvals / observability traces backing the live Control Tower dashboard.
   - `sre_containment`: Fleet containment states and Emergency Master Kill Switch toggle.
-  - `sre_configs`: Autonomous agent governance settings.
+  - `sre_configs`: Autonomous agent governance settings (the dashboard chat assistant's LLM config).
+
+Only tables with real data are covered by the snapshot pipeline below — see `scripts/database/export_full_database_snapshot.py` for the exact list. Add a table there (and to `restore_all_data.py`) once it's actually in use.
 
 ### 2. Exporting / Creating a New Fresh Snapshot:
-To create a fresh export of both databases at any time:
+To create a fresh export of both databases at any time (e.g. after editing data directly):
 ```bash
 python scripts/database/export_full_database_snapshot.py
 ```
+`AgentConfig.apiKey` and `sre_configs.config_data.apiKey` are stripped from the exported JSON before it's written — that file is committed to git. `restore_all_data.py` re-injects both from the `GENAI_API_KEY` env var at restore time.
 
-### 3. Database Integrity Policy:
-Whenever the backend is built (`npm run build:backend`), restarted, or compiled, **DO NOT ALTER OR RESET THE DATABASE**. Preserve all existing DB state, table schemas, and incident records without destructive seeds, resets, or table wipes.
+### 3. Restoring & Derived State:
+```bash
+python scripts/database/restore_all_data.py
+```
+Truncates and reloads both databases from the snapshot, then automatically re-derives two things that must never be trusted from a stale snapshot: `KnowledgeArticle.capabilityTags` (regenerated via `scripts/database/tag_kb_capabilities.py`'s keyword inference) and the ChromaDB vector index (rebuilt from the just-restored `KnowledgeArticle` rows via `sync_vector_db_with_kb()` — the index is derived state, not tracked in git, so it can never drift out of sync with what's actually in the database).
+
+### 4. Database Integrity Policy:
+Whenever the backend is built (`npm run build:backend`), restarted, or compiled, **DO NOT ALTER OR RESET THE DATABASE**. Preserve all existing DB state, table schemas, and incident records without destructive seeds, resets, or table wipes. Schema *changes* go through a new Prisma migration (`npx prisma migrate dev --name <change>`), never a manual `ALTER TABLE` against the live database.
 
 ---
 

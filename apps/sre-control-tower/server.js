@@ -16,6 +16,12 @@ const DATABASE_URL = process.env.AGENTIC_SRE_DB_URL || 'postgresql://postgres:po
 app.use(cors());
 app.use(express.json());
 
+// enable_thinking is an NVIDIA/Nemotron-specific chat_template_kwarg; other
+// gateways (Azure OpenAI, Vertex Gemini via genailab.tcs.in) reject unknown args.
+function nvidiaKwargs(modelName) {
+  return /nvidia|nemotron/i.test(modelName || '') ? { chat_template_kwargs: { enable_thinking: false } } : {};
+}
+
 // PostgreSQL Pool for Dedicated Agentic SRE Database
 const pool = new Pool({
   connectionString: DATABASE_URL,
@@ -273,37 +279,51 @@ app.post('/api/v1/agent/approvals', async (req, res) => {
       });
     }
 
-    const newId = `APPR-${Math.floor(1000 + Math.random() * 9000)}`;
     const details = {
       routerOutput: dto.routerOutput,
       resolverOutput: dto.resolverOutput,
       synthesizerOutput: dto.synthesizerOutput
     };
 
-    await pool.query(`
-      INSERT INTO sre_approvals (
-        id, incident_id, incident_title, agent_id, agent_name, model, target_ci, department, risk_level, confidence_score, status, requested_at, summary, proposed_commands, kb_article_reference, kb_title, safety_checks, ai_reasoning, details
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13, $14, $15, $16, $17, $18)
-    `, [
-      newId,
-      dto.incidentId || 'INC0000001',
-      dto.incidentTitle || 'Autonomous Agent Remediation Request',
-      dto.agentId || 'agent-unix-resolver-01',
-      dto.agentName || '🤖 Unix Auto-Resolver Agent',
-      dto.model || 'nvidia/nemotron-3.5-lightning-30b-a3b',
-      dto.targetCi || 'Worker 1 (192.168.56.10)',
-      dto.department || 'Unix',
-      dto.riskLevel || 'HIGH',
-      dto.confidenceScore ? (dto.confidenceScore <= 1.0 ? dto.confidenceScore * 100 : dto.confidenceScore) : 95.0,
-      'PENDING',
-      dto.summary || 'Agent requested approval for system execution.',
-      JSON.stringify(dto.proposedCommands || []),
-      dto.kbArticleReference || 'KB0000001',
-      dto.kbTitle || 'Standard Remediation SOP',
-      JSON.stringify(dto.safetyChecks || []),
-      dto.aiReasoning || 'Identified mandatory high-risk action requiring human approval.',
-      JSON.stringify(details)
-    ]);
+    // 4-digit random IDs collide often once a few hundred approvals exist
+    // (birthday paradox over a 9000-value space) and the daemon treats a
+    // failed 500 as a locked ON_HOLD ticket with no approval ever created --
+    // retry with a fresh ID on a primary-key conflict instead of failing outright.
+    let newId;
+    let inserted = false;
+    for (let attempt = 0; attempt < 5 && !inserted; attempt++) {
+      newId = `APPR-${Math.floor(1000 + Math.random() * 9000)}`;
+      try {
+        await pool.query(`
+          INSERT INTO sre_approvals (
+            id, incident_id, incident_title, agent_id, agent_name, model, target_ci, department, risk_level, confidence_score, status, requested_at, summary, proposed_commands, kb_article_reference, kb_title, safety_checks, ai_reasoning, details
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12, $13, $14, $15, $16, $17, $18)
+        `, [
+          newId,
+          dto.incidentId || 'INC0000001',
+          dto.incidentTitle || 'Autonomous Agent Remediation Request',
+          dto.agentId || 'agent-unix-resolver-01',
+          dto.agentName || '🤖 Unix Auto-Resolver Agent',
+          dto.model || 'nvidia/nemotron-3.5-lightning-30b-a3b',
+          dto.targetCi || 'Worker 1 (192.168.56.10)',
+          dto.department || 'Unix',
+          dto.riskLevel || 'HIGH',
+          dto.confidenceScore ? (dto.confidenceScore <= 1.0 ? dto.confidenceScore * 100 : dto.confidenceScore) : 95.0,
+          'PENDING',
+          dto.summary || 'Agent requested approval for system execution.',
+          JSON.stringify(dto.proposedCommands || []),
+          dto.kbArticleReference || 'KB0000001',
+          dto.kbTitle || 'Standard Remediation SOP',
+          JSON.stringify(dto.safetyChecks || []),
+          dto.aiReasoning || 'Identified mandatory high-risk action requiring human approval.',
+          JSON.stringify(details)
+        ]);
+        inserted = true;
+      } catch (err) {
+        if (err.code !== '23505') throw err; // not a PK collision, surface it
+      }
+    }
+    if (!inserted) throw new Error('Could not allocate a unique approval id after 5 attempts');
 
     const createdRes = await pool.query(`SELECT * FROM sre_approvals WHERE id = $1`, [newId]);
     const r = createdRes.rows[0];
@@ -1090,7 +1110,7 @@ Safety:
         tools: tools,
         temperature: 0.1,
         max_tokens: 1500,
-        chat_template_kwargs: { enable_thinking: false }
+        ...nvidiaKwargs(modelName)
       };
 
       const r = await fetch(`${baseUrl}/chat/completions`, {
@@ -1140,7 +1160,7 @@ When the user replies, you will seamlessly resume from this checkpoint.`
           temperature: 0.2,
           max_tokens: 1200,
           stream: true,
-          chat_template_kwargs: { enable_thinking: false }
+          ...nvidiaKwargs(modelName)
         };
 
         const synthRes = await fetch(`${baseUrl}/chat/completions`, {
@@ -1466,7 +1486,7 @@ Safety:
         tools: tools,
         temperature: 0.1,
         max_tokens: 1500,
-        chat_template_kwargs: { enable_thinking: false }
+        ...nvidiaKwargs(modelName)
       };
 
       const r = await fetch(`${baseUrl}/chat/completions`, {
@@ -1513,7 +1533,7 @@ When the user replies, you will seamlessly resume from this checkpoint.`
             messages: convoMessages,
             temperature: 0.2,
             max_tokens: 1200,
-            chat_template_kwargs: { enable_thinking: false }
+            ...nvidiaKwargs(modelName)
           }),
           signal: AbortSignal.timeout(45000)
         });

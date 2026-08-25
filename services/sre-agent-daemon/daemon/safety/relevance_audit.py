@@ -136,7 +136,8 @@ def post_synthesis_relevance_audit(steps, ticket_number, short_desc, desc, ci_na
                 call_label=f"SOP Relevance Audit [{ticket_number}]",
                 enable_thinking=False,
                 max_tokens=500,
-                temperature=0.0
+                temperature=0.0,
+                role="governance"
             )
             jplan = safe_json_parse(jcontent) if jcontent else {}
             verdicts = jplan.get("verdicts", []) if isinstance(jplan, dict) else []

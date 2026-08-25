@@ -96,7 +96,7 @@ export const ASSIGNMENT_GROUP_MEMBERS: Record<string, string[]> = {
   ],
 };
 
-const cis = ['Unspecified CI', 'router-border-nyc-01', 'k8s-prod-cluster-east-1', 'db-postgres-primary', 'api-gateway-envoy-v2', 'vpn-gateway-01', 'control plane', 'WorkerNode1HL'];
+const FALLBACK_CIS = ['Unspecified CI', 'control plane', 'WorkerNode1HL'];
 
 export default function IncidentDetailPage() {
   const params = useParams();
@@ -109,6 +109,7 @@ export default function IncidentDetailPage() {
   const [resCode, setResCode] = useState('Pending Triage');
   const [resNotes, setResNotes] = useState('');
   const [ciVal, setCiVal] = useState('Unspecified CI');
+  const [ciOptions, setCiOptions] = useState<string[]>(FALLBACK_CIS);
   const [department, setDepartment] = useState('UNASSIGNED (No Team)');
   const [assignedTo, setAssignedTo] = useState('UNASSIGNED (Unassigned)');
   const [caller, setCaller] = useState('System Admin');
@@ -190,6 +191,21 @@ export default function IncidentDetailPage() {
       setAssignedTo(eligible[0]);
     }
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/v1/cmdb/ci')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!isMounted || !Array.isArray(data)) return;
+        const names = data.map((c: any) => c.name).filter(Boolean).sort();
+        setCiOptions(['Unspecified CI', ...names]);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -456,7 +472,7 @@ export default function IncidentDetailPage() {
                   onChange={(e) => setCiVal(e.target.value)}
                   className="w-full bg-white border border-[#cbd5e1] rounded p-2 text-xs text-slate-900 font-mono focus:border-[#30bb7b] focus:outline-none cursor-pointer"
                 >
-                  {cis.map((c) => (
+                  {(ciOptions.includes(ciVal) ? ciOptions : [ciVal, ...ciOptions]).map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>

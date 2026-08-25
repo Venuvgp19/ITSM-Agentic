@@ -15,6 +15,28 @@ from .config import (
 )
 from .session_state import default_session_state
 
+# NVIDIA NIM Build Cloud (integrate.api.nvidia.com) hosts models from several
+# vendors -- nvidia/, meta/, mistralai/, deepseek-ai/ -- behind one endpoint
+# and one API key. A model name matching any of these is served by that NIM
+# endpoint regardless of which environment is selected, so it always needs
+# NVIDIA_API_KEY/NVIDIA_BASE_URL rather than the selected environment's
+# credentials. Distinct from "is the selected environment NVIDIA" (see
+# invoke_llm_with_fallback), which is about which models get tried at all.
+_NVIDIA_NIM_KEYWORDS = ("nvidia/", "nemotron", "meta/", "mistral", "deepseek")
+
+# Agent-role -> the Control Tower config field that holds its assigned model
+# (routerModel/resolverModel/synthesizerModel/governanceModel in ModelConfigView.tsx
+# and agent-governance.service.ts). Pass role= to invoke_llm_with_fallback so a
+# per-role assignment actually gets tried, instead of every call sharing the
+# same environment-wide fallback list regardless of which agent role it's for.
+_ROLE_CONFIG_KEYS = {
+    "router": "routerModel",
+    "resolver": "resolverModel",
+    "synthesizer": "synthesizerModel",
+    "governance": "governanceModel",
+}
+
+
 def get_current_model_config():
     try:
         res = requests.get(f"{ITSM_BASE_URL}/agent/config", timeout=2)
@@ -88,11 +110,16 @@ def safe_json_parse(text):
             pass
     return {}
 
-def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_format=None, tools=None, return_message=False, session_state=None, enable_thinking=True, max_tokens=None, temperature=None):
+def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_format=None, tools=None, return_message=False, session_state=None, enable_thinking=True, max_tokens=None, temperature=None, role=None):
     """
     Invokes LLM with automatic retry (3x) per model and fallback across high-performing NVIDIA NIM & GenAI models.
     Supports enable_thinking=False for sub-second low-latency extraction and classification tasks (RAG Judge, Parameter Extractor).
     Captures and records token usage in the provided or default SessionStateManager.
+
+    `role`, one of "router"/"resolver"/"synthesizer"/"governance" (see
+    _ROLE_CONFIG_KEYS), names which agent role this call is for. If the
+    Control Tower has a specific model assigned to that role, it's tried
+    first -- ahead of the environment's general fallback list.
     """
     state = session_state or default_session_state
     config = get_current_model_config()
@@ -106,12 +133,32 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
         default_base_url = config.get("baseUrl") or default_base_url
         custom_fallbacks = config.get("fallbackModels")
         if custom_fallbacks:
-            fallback_models = list(dict.fromkeys(["nvidia/nemotron-3.5-lightning-30b-a3b"] + [m for m in custom_fallbacks if "llama-3.3-70b" not in m]))
+            selected_models = list(dict.fromkeys([m for m in custom_fallbacks if "llama-3.3-70b" not in m]))
+            is_nvidia_environment = any(
+                kw in m.lower() for m in selected_models for kw in _NVIDIA_NIM_KEYWORDS
+            )
+            if is_nvidia_environment:
+                fallback_models = selected_models
+            else:
+                # Selected environment (e.g. Gen AI Lab) is non-NVIDIA. Try its
+                # models first, in the order configured, so the selected
+                # environment's credentials/endpoint are what actually get
+                # used -- previously a hardcoded NVIDIA model was prepended
+                # here unconditionally, so it was always tried first and (since
+                # the NVIDIA endpoint is reliably up) always won, making the
+                # selected environment's own models unreachable. The default
+                # NVIDIA catalog is now only appended as a true last resort,
+                # tried after every model in the selected environment fails.
+                fallback_models = list(dict.fromkeys(selected_models + FALLBACK_MODELS))
+
+        role_model = config.get(_ROLE_CONFIG_KEYS.get(role, "")) if role else None
+        if role_model:
+            fallback_models = list(dict.fromkeys([role_model] + fallback_models))
 
     for model in fallback_models:
         for attempt in range(1, 4):
             try:
-                is_nvidia_nim = any(kw in model.lower() for kw in ["nvidia/", "nemotron", "meta/", "mistral", "deepseek"])
+                is_nvidia_nim = any(kw in model.lower() for kw in _NVIDIA_NIM_KEYWORDS)
                 m_key = NVIDIA_API_KEY if is_nvidia_nim else default_api_key
                 m_url = NVIDIA_BASE_URL if is_nvidia_nim else default_base_url
 

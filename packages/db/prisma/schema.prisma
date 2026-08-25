@@ -409,6 +409,7 @@ model KnowledgeArticle {
   symptoms          Json?
   rootCause         String?
   resolutionSteps   Json?
+  capabilityTags    Json?   // stable capability classification (e.g. ["linux.user.create"]) consumed by services/sre-agent-daemon/daemon/safety/rule_registry.json; survives dataset reseeds, unlike `number`
   workNotesAnalyzedCount Int?
   sourceIncidentIds Json?
   author            String?
