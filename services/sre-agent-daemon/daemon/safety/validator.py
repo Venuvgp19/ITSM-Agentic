@@ -275,9 +275,11 @@ def is_allowed_command_adaptation(c_str: str, approved: list[str], is_human_auth
         "id", "ss", "ps", "top", "free", "journalctl", "curl", "test",
         "grep", "awk", "sed", "tail", "head", "cat", "echo", "printf", "true",
         "false", "which", "command", "sleep", "cut", "tr", "wc", "sort",
-        "uniq", "uptime", "hostname", "pkill", "pgrep", "kill", "kubectl",
-        "systemctl", "service", "rm", "touch", "chmod", "chown", "mkdir", "seq", "az",
-        "find", "getent", "df", "du", "uname", "netstat", "ip",
+        "uniq", "uptime", "hostname", "pkill", "pgrep", "kill", "killall", "kubectl",
+        "systemctl", "service", "rm", "cp", "mv", "ln", "touch", "chmod", "chown", "mkdir", "seq", "az",
+        "find", "getent", "df", "du", "uname", "netstat", "ip", "tar", "gzip", "gunzip", "rsync",
+        "useradd", "userdel", "usermod", "chpasswd", "chage", "visudo", "passwd", "gpasswd", "crontab",
+        "loginctl", "who", "w", "nc", "ping", "nslookup", "dig",
         "ssh", "bash", "sh", "dash", "zsh", "ksh", "env", "xargs",
         "nice", "ionice", "timeout", "nohup", "watch", "setsid", "stdbuf"
     }
