@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5173;
-const DATABASE_URL = process.env.AGENTIC_SRE_DB_URL || 'postgresql://postgres:postgres@localhost:5432/agentic_sre_db';
+const DATABASE_URL = process.env.AGENTIC_SRE_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:5433/agentic_sre_db';
 
 app.use(cors());
 app.use(express.json());
@@ -21,7 +21,7 @@ const pool = new Pool({
 });
 
 // PostgreSQL Pool for ITSM Database (Read-only access for queries)
-const ITSM_DATABASE_URL = process.env.ITSM_DB_URL || 'postgresql://itsm_user:itsm_password@localhost:5432/itsm_db';
+const ITSM_DATABASE_URL = process.env.ITSM_DB_URL || 'postgresql://postgres:postgres@127.0.0.1:5433/itsm_db';
 const itsmPool = new Pool({
   connectionString: ITSM_DATABASE_URL,
 });
@@ -141,12 +141,12 @@ initDatabase();
 // Approvals
 app.get('/api/v1/agent/approvals', async (req, res) => {
   try {
-    const status = req.query.status ? String(req.query.status).toUpperCase() : null;
-    let query = `SELECT * FROM sre_approvals ORDER BY requested_at DESC`;
-    let params = [];
-    if (status && status !== 'ALL') {
-      query = `SELECT * FROM sre_approvals WHERE UPPER(status) = $1 ORDER BY requested_at DESC`;
-      params = [status];
+    const status = req.query.status ? String(req.query.status).toUpperCase() : 'PENDING';
+    let query = `SELECT * FROM sre_approvals WHERE UPPER(status) = $1 ORDER BY requested_at DESC`;
+    let params = [status];
+    if (status === 'ALL') {
+      query = `SELECT * FROM sre_approvals ORDER BY requested_at DESC`;
+      params = [];
     }
     const result = await pool.query(query, params);
     const mapped = result.rows.map(row => ({
