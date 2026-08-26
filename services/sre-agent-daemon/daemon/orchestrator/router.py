@@ -12,6 +12,7 @@ from psycopg2.extras import RealDictCursor
 from ..config import logger, MODEL_NAME
 from ..llm import invoke_llm_with_fallback, safe_json_parse
 from ..itsm.client import add_work_note, update_incident_status, fetch_incident_queue
+from ..notifications.slack_notifier import notify_router_failure, reset_router_failure_notice
 
 CLASSIFICATION_PROMPT_TEMPLATE = """
 You are the Agentic AI Ticket Router for Enterprise IT Infrastructure.
@@ -41,9 +42,18 @@ Configuration Item: {ci_name}
 {historical_precedents}
 
 ### Instructions:
-1. Examine the historical precedents above to see which team resolved similar issues in the past.
-2. If historical precedents match the pattern (e.g. CPU/Memory on WorkerNode -> Unix, Kubernetes -> DevOps Ops), align your classification with historical precedent.
-3. Return ONLY a valid JSON object matching this exact schema:
+1. First, judge whether the Short Description / Description above actually describe a real IT operational
+   problem (a symptom, error, request, or observable technical condition). Ignore the Configuration Item name
+   when making this judgment -- it identifies *where* the ticket was filed, not *what* is wrong, so shared
+   words between the CI name and a historical precedent's title are NOT evidence the precedent applies here.
+2. If the ticket text is empty, nonsensical, unrelated to IT operations, or too vague to diagnose (e.g. it
+   does not name any symptom, error, component behavior, or request), you MUST return confidenceScore <= 40
+   regardless of what the historical precedents below say -- do not borrow a precedent's department, priority,
+   or reasoning onto a ticket whose own text does not support it.
+3. Otherwise, examine the historical precedents to see which team resolved genuinely similar issues in the
+   past, and align your classification with historical precedent only when the ticket's own described symptom
+   matches the precedent's, not merely its Configuration Item.
+4. Return ONLY a valid JSON object matching this exact schema:
 {{
   "recommendedDepartment": "Unix" | "DevOps Ops" | "DBA Team" | "Network Ops" | "App Support",
   "priority": "P1" | "P2" | "P3" | "P4",
@@ -59,8 +69,14 @@ def get_historical_routing_precedents(short_desc, desc, ci_name, limit=5):
     to provide few-shot grounding evidence for the AI Router.
     """
     precedents = []
-    
-    combined_text = f"{short_desc} {desc} {ci_name}"
+
+    # NOTE: keyword source is short_desc/desc ONLY -- ci_name is deliberately
+    # excluded. ci_name is often multi-word generic infra vocabulary ("control
+    # plane", "worker node") that overlaps unrelated historical tickets on the
+    # same CI, contaminating retrieval with precedents that match the *host*
+    # rather than the *reported problem* (e.g. a nonsense ticket on "control
+    # plane" pulling in real memory/OOM precedents for that CI).
+    combined_text = f"{short_desc} {desc}"
     words = [w.lower() for w in re.findall(r'[a-zA-Z0-9_-]{3,}', combined_text)]
     stopwords = {'the', 'and', 'for', 'with', 'from', 'this', 'that', 'server', 'node', 'incident', 'issue', 'alert', 'error', 'system'}
     keywords = [w for w in words if w not in stopwords][:6]
@@ -140,9 +156,26 @@ def get_historical_routing_precedents(short_desc, desc, ci_name, limit=5):
     return precedents[:limit]
 
 class ControlTowerAIRouter:
-    def __init__(self, confidence_threshold=85):
+    def __init__(self, confidence_threshold=95):
         self.confidence_threshold = confidence_threshold
         self.routing_history = []
+
+    def sync_confidence_threshold(self):
+        """Pulls the live threshold set via the Control Tower's AI Routing
+        Overview slider (persisted in-memory on the backend, same pattern as
+        the containment/kill-switch settings). Falls back silently to
+        whatever threshold is already in effect if the backend is unreachable."""
+        from ..config import ITSM_BASE_URL
+        import requests
+        try:
+            r = requests.get(f"{ITSM_BASE_URL}/agent/router-config", timeout=2)
+            if r.status_code == 200:
+                new_threshold = r.json().get("confidenceThreshold")
+                if isinstance(new_threshold, (int, float)) and new_threshold != self.confidence_threshold:
+                    logger.info(f"🎚️ [Agentic AI Router] Confidence threshold updated: {self.confidence_threshold}% -> {new_threshold}% (synced from Control Tower)")
+                    self.confidence_threshold = new_threshold
+        except Exception:
+            pass
 
     def classify_ticket(self, incident):
         """Uses Historical Data & LLM reasoning to classify ticket priority and assignment group."""
@@ -254,6 +287,11 @@ class ControlTowerAIRouter:
                 f"{conf}% < {self.confidence_threshold}% threshold -- routed to '{dept}' "
                 f"on a low-confidence guess. Reasoning: {reasoning}"
             )
+            notify_router_failure(
+                num,
+                f"Low-confidence classification ({conf}% < {self.confidence_threshold}% threshold) -- "
+                f"guessed department '{dept}' without reliable grounding. Reasoning: {reasoning}"
+            )
 
         from ..config import ITSM_BASE_URL
         import requests
@@ -287,15 +325,19 @@ class ControlTowerAIRouter:
                     f"**Diagnostic Trace:**\n{trace}"
                 )
                 add_work_note(token, inc_id, work_note, author="🤖 Agentic AI Router (15s Loop)")
+                reset_router_failure_notice()
                 return True
             else:
                 logger.warning(f"Failed to update incident [{num}]: HTTP {r.status_code} - {r.text}")
+                notify_router_failure(num, f"ITSM update rejected: HTTP {r.status_code} - {r.text}")
         except Exception as err:
             logger.error(f"Error executing AI routing on [{num}]: {err}")
+            notify_router_failure(num, str(err))
         return False
 
     def poll_and_route_unassigned_queue(self, token):
         """Scans queue for unassigned tickets and routes them automatically using historical data."""
+        self.sync_confidence_threshold()
         incidents = fetch_incident_queue(token)
         unassigned = []
         for inc in incidents:

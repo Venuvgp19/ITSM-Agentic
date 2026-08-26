@@ -28,8 +28,14 @@ import {
   MessageSquare,
   Activity,
   Menu,
-  Settings
+  Settings,
+  UserCircle2
 } from 'lucide-react';
+
+import { useUrlState } from '@/lib/useUrlState';
+import { useAuthStore } from '@/lib/auth-store';
+import { useToast } from '@/components/ui/ToastProvider';
+import { SortIcon } from '@/components/ui/SortIcon';
 
 interface ProblemRecord {
   id: string;
@@ -49,15 +55,53 @@ interface ProblemRecord {
 }
 
 export default function ProblemsPage() {
+  const { showToast } = useToast();
+  const currentUser = useAuthStore((s) => s.user);
   const [problems, setProblems] = useState<ProblemRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [searchField, setSearchField] = useState('All');
-  const [priorityFilter, setPriorityFilter] = useState('ALL');
-  const [stateFilter, setStateFilter] = useState('ALL');
-  const [knownErrorOnly, setKnownErrorOnly] = useState(false);
-  const [page, setPage] = useState(1);
+
+  const { state: urlState, patch: patchUrl } = useUrlState({
+    q: '',
+    field: 'All',
+    priority: 'ALL',
+    state: 'ALL',
+    known: '',
+    mine: '',
+    sort: '',
+    dir: 'asc',
+    page: '1',
+  });
+
+  const search = urlState.q;
+  const setSearch = (v: string) => patchUrl({ q: v });
+  const searchField = urlState.field;
+  const setSearchField = (v: string) => patchUrl({ field: v });
+  const priorityFilter = urlState.priority;
+  const setPriorityFilter = (v: string) => patchUrl({ priority: v });
+  const stateFilter = urlState.state;
+  const setStateFilter = (v: string) => patchUrl({ state: v });
+  const knownErrorOnly = urlState.known === '1';
+  const setKnownErrorOnly = (v: boolean) => patchUrl({ known: v ? '1' : '' });
+  const mineOnly = urlState.mine === '1';
+  const setMineOnly = (v: boolean) => patchUrl({ mine: v ? '1' : '', page: '1' });
+  const sortField = urlState.sort;
+  const sortDir = urlState.dir as 'asc' | 'desc';
+  const page = parseInt(urlState.page, 10) || 1;
+  const setPage = (updater: number | ((p: number) => number)) => {
+    const next = typeof updater === 'function' ? (updater as (p: number) => number)(page) : updater;
+    patchUrl({ page: String(next) });
+  };
   const pageSize = 20;
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      patchUrl({ dir: sortDir === 'asc' ? 'desc' : 'asc' });
+    } else {
+      patchUrl({ sort: field, dir: 'asc' });
+    }
+  };
+
+  const currentUserName = currentUser ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : '';
 
   const [selectedProblem, setSelectedProblem] = useState<ProblemRecord | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -130,9 +174,13 @@ export default function ProblemsPage() {
           workaround: '',
           knownError: false,
         });
+        showToast('Problem record created.', 'success');
+      } else {
+        showToast('Failed to create problem record.', 'error');
       }
     } catch (err) {
       console.error('Failed to create problem:', err);
+      showToast('Failed to create problem — network or server error.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -151,9 +199,13 @@ export default function ProblemsPage() {
         const updated = await res.json();
         setProblems((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
         setSelectedProblem(updated);
+        showToast('Problem record saved.', 'success');
+      } else {
+        showToast('Failed to save problem record.', 'error');
       }
     } catch (err) {
       console.error('Failed to update problem:', err);
+      showToast('Failed to save problem — network or server error.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -173,16 +225,43 @@ export default function ProblemsPage() {
       const matchesPriority = priorityFilter === 'ALL' || p.priority === priorityFilter;
       const matchesState = stateFilter === 'ALL' || p.state === stateFilter;
       const matchesKnownError = !knownErrorOnly || p.knownError;
+      const matchesMine =
+        !mineOnly ||
+        !currentUserName ||
+        (p.assignedTo || '').toLowerCase().includes(currentUserName.toLowerCase());
 
-      return matchesSearch && matchesPriority && matchesState && matchesKnownError;
+      return matchesSearch && matchesPriority && matchesState && matchesKnownError && matchesMine;
     });
-  }, [problems, search, priorityFilter, stateFilter, knownErrorOnly]);
+  }, [problems, search, priorityFilter, stateFilter, knownErrorOnly, mineOnly, currentUserName]);
 
-  const totalPages = Math.ceil(filteredProblems.length / pageSize) || 1;
+  const sortedProblems = useMemo(() => {
+    if (!sortField) return filteredProblems;
+    const arr = [...filteredProblems];
+    arr.sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      if (sortField === 'id') {
+        av = parseInt((a.id || '').replace(/\D/g, ''), 10) || 0;
+        bv = parseInt((b.id || '').replace(/\D/g, ''), 10) || 0;
+      } else if (sortField === 'priority') {
+        av = parseInt((a.priority || '').replace('P', ''), 10) || 9;
+        bv = parseInt((b.priority || '').replace('P', ''), 10) || 9;
+      } else {
+        av = String((a as any)[sortField] ?? '').toLowerCase();
+        bv = String((b as any)[sortField] ?? '').toLowerCase();
+      }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return arr;
+  }, [filteredProblems, sortField, sortDir]);
+
+  const totalPages = Math.ceil(sortedProblems.length / pageSize) || 1;
   const paginatedProblems = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return filteredProblems.slice(start, start + pageSize);
-  }, [filteredProblems, page]);
+    return sortedProblems.slice(start, start + pageSize);
+  }, [sortedProblems, page]);
 
   return (
     <div className="flex flex-col min-h-full bg-[#f8fafc] text-slate-800 font-sans text-xs">
@@ -257,7 +336,7 @@ export default function ProblemsPage() {
           </span>
 
           <span className="text-slate-600 text-[11px]">
-            to {Math.min(page * pageSize, filteredProblems.length)} of {filteredProblems.length}
+            to {Math.min(page * pageSize, sortedProblems.length)} of {sortedProblems.length}
           </span>
 
           <button
@@ -291,6 +370,19 @@ export default function ProblemsPage() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setMineOnly(!mineOnly)}
+            title={currentUserName ? `Assigned to ${currentUserName}` : 'Sign in to filter by yourself'}
+            className={`px-2.5 py-1 rounded text-xs font-bold transition border cursor-pointer flex items-center gap-1 ${
+              mineOnly
+                ? 'bg-[#e6f7ef] text-[#1e6844] border-[#30bb7b]'
+                : 'bg-white text-slate-700 border-[#cbd5e1] hover:bg-slate-50'
+            }`}
+          >
+            <UserCircle2 className="w-3.5 h-3.5" />
+            My Problems
+          </button>
+
+          <button
             onClick={() => setKnownErrorOnly(!knownErrorOnly)}
             className={`px-2.5 py-1 rounded text-xs font-bold transition border cursor-pointer ${
               knownErrorOnly
@@ -315,6 +407,22 @@ export default function ProblemsPage() {
             <option value="P3">3 - Moderate</option>
             <option value="P4">4 - Low</option>
           </select>
+
+          <select
+            value={stateFilter}
+            onChange={(e) => {
+              setStateFilter(e.target.value);
+              setPage(1);
+            }}
+            className="bg-white border border-[#cbd5e1] text-slate-800 text-xs rounded px-2 py-1 focus:outline-none"
+          >
+            <option value="ALL">All States</option>
+            <option value="NEW">New</option>
+            <option value="IN_PROGRESS">In Progress</option>
+            <option value="ON_HOLD">On Hold</option>
+            <option value="RESOLVED">Resolved</option>
+            <option value="CLOSED">Closed</option>
+          </select>
         </div>
       </div>
 
@@ -330,9 +438,12 @@ export default function ProblemsPage() {
                 <th className="p-2.5 w-10 text-center text-[#288554]">
                   <Settings className="w-3.5 h-3.5 cursor-pointer text-slate-500 hover:text-[#288554]" />
                 </th>
-                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
-                  <span className="flex items-center gap-1 cursor-pointer hover:text-[#0284c7]">
-                    <span className="text-[10px] text-slate-400">☰</span> Problem ID
+                <th
+                  className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30] cursor-pointer select-none"
+                  onClick={() => handleSort('id')}
+                >
+                  <span className={`flex items-center gap-1 hover:text-[#0284c7] ${sortField === 'id' ? 'text-[#288554]' : ''}`}>
+                    Problem ID <SortIcon active={sortField === 'id'} dir={sortDir} />
                   </span>
                 </th>
                 <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
@@ -345,14 +456,20 @@ export default function ProblemsPage() {
                     <span className="text-[10px] text-slate-400">☰</span> Root Cause Summary
                   </span>
                 </th>
-                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
-                  <span className="flex items-center gap-1 cursor-pointer text-[#288554]">
-                    <span className="text-[10px]">☰</span> Priority ▼
+                <th
+                  className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30] cursor-pointer select-none"
+                  onClick={() => handleSort('priority')}
+                >
+                  <span className={`flex items-center gap-1 hover:text-[#0284c7] ${sortField === 'priority' ? 'text-[#288554]' : ''}`}>
+                    Priority <SortIcon active={sortField === 'priority'} dir={sortDir} />
                   </span>
                 </th>
-                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
-                  <span className="flex items-center gap-1">
-                    <span className="text-[10px] text-slate-400">☰</span> State
+                <th
+                  className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30] cursor-pointer select-none"
+                  onClick={() => handleSort('state')}
+                >
+                  <span className={`flex items-center gap-1 hover:text-[#0284c7] ${sortField === 'state' ? 'text-[#288554]' : ''}`}>
+                    State <SortIcon active={sortField === 'state'} dir={sortDir} />
                   </span>
                 </th>
                 <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">

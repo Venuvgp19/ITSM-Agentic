@@ -254,7 +254,7 @@ export function RiskAndComplianceView({ onKillSwitchChange }: RiskAndComplianceP
                 value={killReason}
                 onChange={(e) => setKillReason(e.target.value)}
                 placeholder="e.g. Host safety verification / suspected loop"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                className="focus-ring w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:border-rose-500"
               />
             </div>
 

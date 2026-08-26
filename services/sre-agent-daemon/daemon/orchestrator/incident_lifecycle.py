@@ -64,7 +64,7 @@ def prepare_new_incident_sop(
             f"👉 Operator Action: Please update the Configuration Item (CI) or host details in the ticket properties to authorize execution.\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
-        post_timeline_update(inc_id, number, short_desc, "Unspecified CI", "ESCALATED", "🖥️ Target CI Validation", "FAILED", f"Target host/CI is unspecified. Escalated to {team_member}.")
+        post_timeline_update(inc_id, number, short_desc, "Unspecified CI", "ESCALATED", "Target CI Validation", "FAILED", f"Target host/CI is unspecified. Escalated to {team_member}.")
         add_work_note(token, inc_id, clarify_note)
         state.mark_unspecified_ci(inc_id)
         update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
@@ -226,7 +226,7 @@ def _solve_in_progress_incident_internal(
             f"👉 Operator Action: Please update the Configuration Item (CI) or host details in the ticket properties to authorize execution.\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         )
-        post_timeline_update(inc_id, number, short_desc, "Unspecified CI", "ESCALATED", "🖥️ Target CI Validation", "FAILED", f"Target host/CI is unspecified. Escalated to {team_member}.")
+        post_timeline_update(inc_id, number, short_desc, "Unspecified CI", "ESCALATED", "Target CI Validation", "FAILED", f"Target host/CI is unspecified. Escalated to {team_member}.")
         add_work_note(token, inc_id, clarify_note)
         state.mark_unspecified_ci(inc_id)
         update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
@@ -561,7 +561,7 @@ def _solve_in_progress_incident_internal(
     # 5. Execute SSH Commands dynamically via LLM ReAct Tool Calling
     state.mark_processed_in_progress(inc_id)
 
-    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "💻 Dynamic SSH Execution", "RUNNING", f"LLM is dynamically orchestrating execution (human_authorized={is_human_authorized})...")
+    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Dynamic SSH Execution", "RUNNING", f"LLM is dynamically orchestrating execution (human_authorized={is_human_authorized})...")
     success, exec_log = run_dynamic_react_loop(
         ip, user, password, sop_commands, short_desc, number, inc_id, ci_name,
         desc=desc, session_state=state, ssh_session_factory=session_factory, llm_invoker=invoker,
@@ -714,6 +714,11 @@ Respond ONLY in valid JSON format:
         logger.info(f"🔒 Incident [{number}] is now ESCALATED — locked from re-processing this session.")
         return
 
+    # Verification Tests passed to get here -- close it out now rather than deferring to
+    # after the post-remediation guard below, whose own escalation path returns early and
+    # would otherwise leave this step stuck at RUNNING forever (it never fails on its own).
+    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Verification Tests", "SUCCESS", f"Verification passed: {evaluation.get('proof_summary')}")
+
     # 7. Mandatory Post-Remediation Proof-of-Fix Guard
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Post-Remediation Verification", "RUNNING", "Running mandatory post-remediation proof-of-fix verification...")
     proof_session = session_factory(ip, user, password)
@@ -761,7 +766,6 @@ Respond ONLY in valid JSON format:
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Post-Remediation Verification", "SUCCESS", f"Post-remediation proof-of-fix PASSED: {post_fix_evidence}")
 
     # 8. Format & Post Live Terminal Proof Work Note
-    post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Verification Tests", "SUCCESS", f"Verification passed: {evaluation.get('proof_summary')}")
     proof_note = format_execution_proof_work_note(
         number, short_desc, ci_name, ip, kb_num, kb_title,
         evaluation.get("is_healthy", False),

@@ -25,8 +25,14 @@ import {
   Menu,
   Activity,
   Settings,
-  MessageSquare
+  MessageSquare,
+  UserCircle2
 } from 'lucide-react';
+
+import { useUrlState } from '@/lib/useUrlState';
+import { useAuthStore } from '@/lib/auth-store';
+import { useToast } from '@/components/ui/ToastProvider';
+import { SortIcon } from '@/components/ui/SortIcon';
 
 interface ChangeRecord {
   id: string;
@@ -50,15 +56,53 @@ interface ChangeRecord {
 }
 
 export default function ChangesPage() {
+  const { showToast } = useToast();
+  const currentUser = useAuthStore((s) => s.user);
   const [changes, setChanges] = useState<ChangeRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [searchField, setSearchField] = useState('All');
-  const [typeFilter, setTypeFilter] = useState('ALL');
-  const [stateFilter, setStateFilter] = useState('ALL');
-  const [approvalFilter, setApprovalFilter] = useState('ALL');
-  const [page, setPage] = useState(1);
+
+  const { state: urlState, patch: patchUrl } = useUrlState({
+    q: '',
+    field: 'All',
+    type: 'ALL',
+    state: 'ALL',
+    approval: 'ALL',
+    mine: '',
+    sort: '',
+    dir: 'asc',
+    page: '1',
+  });
+
+  const search = urlState.q;
+  const setSearch = (v: string) => patchUrl({ q: v });
+  const searchField = urlState.field;
+  const setSearchField = (v: string) => patchUrl({ field: v });
+  const typeFilter = urlState.type;
+  const setTypeFilter = (v: string) => patchUrl({ type: v });
+  const stateFilter = urlState.state;
+  const setStateFilter = (v: string) => patchUrl({ state: v });
+  const approvalFilter = urlState.approval;
+  const setApprovalFilter = (v: string) => patchUrl({ approval: v });
+  const mineOnly = urlState.mine === '1';
+  const setMineOnly = (v: boolean) => patchUrl({ mine: v ? '1' : '', page: '1' });
+  const sortField = urlState.sort;
+  const sortDir = urlState.dir as 'asc' | 'desc';
+  const page = parseInt(urlState.page, 10) || 1;
+  const setPage = (updater: number | ((p: number) => number)) => {
+    const next = typeof updater === 'function' ? (updater as (p: number) => number)(page) : updater;
+    patchUrl({ page: String(next) });
+  };
   const pageSize = 20;
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      patchUrl({ dir: sortDir === 'asc' ? 'desc' : 'asc' });
+    } else {
+      patchUrl({ sort: field, dir: 'asc' });
+    }
+  };
+
+  const currentUserName = currentUser ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : '';
 
   const [selectedChange, setSelectedChange] = useState<ChangeRecord | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -134,9 +178,13 @@ export default function ChangesPage() {
           implementationPlan: '',
           backoutPlan: '',
         });
+        showToast('Change order created.', 'success');
+      } else {
+        showToast('Failed to create change order.', 'error');
       }
     } catch (err) {
       console.error('Failed to create change:', err);
+      showToast('Failed to create change order — network or server error.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -155,9 +203,13 @@ export default function ChangesPage() {
         const updated = await res.json();
         setChanges((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
         setSelectedChange(updated);
+        showToast('Change order saved.', 'success');
+      } else {
+        showToast('Failed to save change order.', 'error');
       }
     } catch (err) {
       console.error('Failed to update change:', err);
+      showToast('Failed to save change order — network or server error.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -176,16 +228,41 @@ export default function ChangesPage() {
       const matchesType = typeFilter === 'ALL' || c.changeType === typeFilter;
       const matchesState = stateFilter === 'ALL' || c.state === stateFilter;
       const matchesApproval = approvalFilter === 'ALL' || c.approvalState === approvalFilter;
+      const matchesMine =
+        !mineOnly ||
+        !currentUserName ||
+        (c.assignedTo || '').toLowerCase().includes(currentUserName.toLowerCase()) ||
+        (c.requestedBy || '').toLowerCase().includes(currentUserName.toLowerCase());
 
-      return matchesSearch && matchesType && matchesState && matchesApproval;
+      return matchesSearch && matchesType && matchesState && matchesApproval && matchesMine;
     });
-  }, [changes, search, typeFilter, stateFilter, approvalFilter]);
+  }, [changes, search, typeFilter, stateFilter, approvalFilter, mineOnly, currentUserName]);
 
-  const totalPages = Math.ceil(filteredChanges.length / pageSize) || 1;
+  const sortedChanges = useMemo(() => {
+    if (!sortField) return filteredChanges;
+    const arr = [...filteredChanges];
+    arr.sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      if (sortField === 'id') {
+        av = parseInt((a.id || '').replace(/\D/g, ''), 10) || 0;
+        bv = parseInt((b.id || '').replace(/\D/g, ''), 10) || 0;
+      } else {
+        av = String((a as any)[sortField] ?? '').toLowerCase();
+        bv = String((b as any)[sortField] ?? '').toLowerCase();
+      }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return arr;
+  }, [filteredChanges, sortField, sortDir]);
+
+  const totalPages = Math.ceil(sortedChanges.length / pageSize) || 1;
   const paginatedChanges = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return filteredChanges.slice(start, start + pageSize);
-  }, [filteredChanges, page]);
+    return sortedChanges.slice(start, start + pageSize);
+  }, [sortedChanges, page]);
 
   return (
     <div className="flex flex-col min-h-full bg-[#f8fafc] text-slate-800 font-sans text-xs">
@@ -260,7 +337,7 @@ export default function ChangesPage() {
           </span>
 
           <span className="text-slate-600 text-[11px]">
-            to {Math.min(page * pageSize, filteredChanges.length)} of {filteredChanges.length}
+            to {Math.min(page * pageSize, sortedChanges.length)} of {sortedChanges.length}
           </span>
 
           <button
@@ -293,6 +370,19 @@ export default function ChangesPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setMineOnly(!mineOnly)}
+            title={currentUserName ? `Assigned to or requested by ${currentUserName}` : 'Sign in to filter by yourself'}
+            className={`px-2.5 py-1 rounded text-xs font-bold transition border cursor-pointer flex items-center gap-1 ${
+              mineOnly
+                ? 'bg-[#e6f7ef] text-[#1e6844] border-[#30bb7b]'
+                : 'bg-white text-slate-700 border-[#cbd5e1] hover:bg-slate-50'
+            }`}
+          >
+            <UserCircle2 className="w-3.5 h-3.5" />
+            My Changes
+          </button>
+
           <select
             value={typeFilter}
             onChange={(e) => {
@@ -338,9 +428,12 @@ export default function ChangesPage() {
                 <th className="p-2.5 w-10 text-center text-[#288554]">
                   <Settings className="w-3.5 h-3.5 cursor-pointer text-slate-500 hover:text-[#288554]" />
                 </th>
-                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
-                  <span className="flex items-center gap-1 cursor-pointer hover:text-[#0284c7]">
-                    <span className="text-[10px] text-slate-400">☰</span> Change Number
+                <th
+                  className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30] cursor-pointer select-none"
+                  onClick={() => handleSort('id')}
+                >
+                  <span className={`flex items-center gap-1 hover:text-[#0284c7] ${sortField === 'id' ? 'text-[#288554]' : ''}`}>
+                    Change Number <SortIcon active={sortField === 'id'} dir={sortDir} />
                   </span>
                 </th>
                 <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
@@ -348,14 +441,20 @@ export default function ChangesPage() {
                     <span className="text-[10px] text-slate-400">☰</span> Short Description
                   </span>
                 </th>
-                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
-                  <span className="flex items-center gap-1">
-                    <span className="text-[10px] text-slate-400">☰</span> Type
+                <th
+                  className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30] cursor-pointer select-none"
+                  onClick={() => handleSort('changeType')}
+                >
+                  <span className={`flex items-center gap-1 hover:text-[#0284c7] ${sortField === 'changeType' ? 'text-[#288554]' : ''}`}>
+                    Type <SortIcon active={sortField === 'changeType'} dir={sortDir} />
                   </span>
                 </th>
-                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
-                  <span className="flex items-center gap-1 cursor-pointer text-[#288554]">
-                    <span className="text-[10px]">☰</span> State ▼
+                <th
+                  className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30] cursor-pointer select-none"
+                  onClick={() => handleSort('state')}
+                >
+                  <span className={`flex items-center gap-1 hover:text-[#0284c7] ${sortField === 'state' ? 'text-[#288554]' : ''}`}>
+                    State <SortIcon active={sortField === 'state'} dir={sortDir} />
                   </span>
                 </th>
                 <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">

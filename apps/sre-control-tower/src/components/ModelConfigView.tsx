@@ -156,7 +156,7 @@ export function ModelConfigView() {
 
   if (loading) {
     return (
-      <div className="lobe-glass rounded-2xl p-16 text-center flex flex-col items-center justify-center shadow-xl">
+      <div className="pro-card rounded-2xl p-16 text-center flex flex-col items-center justify-center shadow-xl">
         <RefreshCw className="w-8 h-8 animate-spin text-cyan-400 mb-3" />
         <span className="text-xs font-bold text-slate-400">Loading Environment & Model Configuration...</span>
       </div>
@@ -175,7 +175,7 @@ export function ModelConfigView() {
       )}
 
       {/* Header Banner */}
-      <div className="lobe-glass rounded-2xl p-6 border border-slate-800/80 shadow-2xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="pro-card rounded-2xl p-6 border border-slate-800/80 shadow-2xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 bg-cyan-500/20 text-cyan-300 text-xs font-bold px-3 py-1 rounded-full mb-2 border border-cyan-500/30">
             <Sliders className="w-3.5 h-3.5" />
@@ -197,7 +197,7 @@ export function ModelConfigView() {
       </div>
 
       {/* Environment Preset Switcher */}
-      <div className="lobe-glass rounded-2xl p-6 border border-slate-800/80 shadow-xl space-y-4">
+      <div className="pro-card rounded-2xl p-6 border border-slate-800/80 shadow-xl space-y-4">
         <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-2">
           <Server className="w-4 h-4 text-cyan-400" />
           <span>Environment Presets</span>
@@ -254,7 +254,7 @@ export function ModelConfigView() {
       </div>
 
       {/* API Credentials Card */}
-      <div className="lobe-glass rounded-2xl p-6 border border-slate-800/80 shadow-xl space-y-4">
+      <div className="pro-card rounded-2xl p-6 border border-slate-800/80 shadow-xl space-y-4">
         <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-2">
           <Key className="w-4 h-4 text-emerald-400" />
           <span>API Credentials & Service Endpoint</span>
@@ -267,7 +267,7 @@ export function ModelConfigView() {
               type="text"
               value={config.baseUrl}
               onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500 transition"
+              className="focus-ring w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono focus:border-cyan-500 transition"
               placeholder="https://genailab.tcs.in/v1"
             />
           </div>
@@ -279,13 +279,14 @@ export function ModelConfigView() {
                 type={showApiKey ? 'text' : 'password'}
                 value={config.apiKey}
                 onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono focus:outline-none focus:border-cyan-500 pr-10 transition"
+                className="focus-ring w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 font-mono focus:border-cyan-500 pr-10 transition"
                 placeholder="sk-..."
               />
               <button
                 type="button"
                 onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-3 top-2.5 text-slate-400 hover:text-white cursor-pointer"
+                aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                className="focus-ring absolute right-3 top-2.5 text-slate-400 hover:text-white cursor-pointer"
               >
                 {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -295,7 +296,7 @@ export function ModelConfigView() {
       </div>
 
       {/* Specialized Agent Model Selectors */}
-      <div className="lobe-glass rounded-2xl p-6 border border-slate-800/80 shadow-xl space-y-4">
+      <div className="pro-card rounded-2xl p-6 border border-slate-800/80 shadow-xl space-y-4">
         <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-2">
           <Cpu className="w-4 h-4 text-purple-400" />
           <span>Specialized Agent Task Model Assignments</span>
@@ -314,7 +315,7 @@ export function ModelConfigView() {
             <select
               value={config.routerModel}
               onChange={(e) => setConfig({ ...config, routerModel: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+              className="focus-ring w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:border-cyan-500 font-mono"
             >
               {availableModels.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -334,7 +335,7 @@ export function ModelConfigView() {
             <select
               value={config.resolverModel}
               onChange={(e) => setConfig({ ...config, resolverModel: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+              className="focus-ring w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:border-cyan-500 font-mono"
             >
               {availableModels.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -354,7 +355,7 @@ export function ModelConfigView() {
             <select
               value={config.synthesizerModel}
               onChange={(e) => setConfig({ ...config, synthesizerModel: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+              className="focus-ring w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:border-cyan-500 font-mono"
             >
               {availableModels.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -374,7 +375,7 @@ export function ModelConfigView() {
             <select
               value={config.governanceModel}
               onChange={(e) => setConfig({ ...config, governanceModel: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+              className="focus-ring w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:border-cyan-500 font-mono"
             >
               {availableModels.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>

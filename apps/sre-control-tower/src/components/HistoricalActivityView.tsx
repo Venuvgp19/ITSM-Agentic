@@ -82,6 +82,7 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'APPROVED' | 'AUTO_EXECUTED' | 'REJECTED'>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [articles, setArticles] = useState<any[]>([]);
+  const [incidentIdToNumber, setIncidentIdToNumber] = useState<Record<string, string>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -100,6 +101,30 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
       }
     };
     fetchArticles();
+  }, []);
+
+  // Some AgentHistory rows were written with the incident's raw DB UUID as
+  // incidentId instead of its human-readable ticket number -- resolve those
+  // back to the real number here rather than displaying a truncated UUID.
+  useEffect(() => {
+    const fetchIncidents = async () => {
+      try {
+        const res = await fetch('http://localhost:4000/api/v1/incidents');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            const map: Record<string, string> = {};
+            data.forEach((inc: any) => {
+              if (inc.id && inc.number) map[inc.id] = inc.number;
+            });
+            setIncidentIdToNumber(map);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load incidents in HistoricalActivityView:', err);
+      }
+    };
+    fetchIncidents();
   }, []);
 
   const handleCopy = (text: string, id: string) => {
@@ -135,7 +160,7 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
   // Normalization helper to guarantee clean data rendering
   const cleanHistory = history.map((item) => {
     const incId = item.incidentId || 'INC0001001';
-    const cleanIncId = incId.length > 20 && !incId.startsWith('INC') ? `INC-${incId.substring(0, 8)}` : incId;
+    const cleanIncId = incidentIdToNumber[incId] || incId;
     const title = item.incidentTitle && item.incidentTitle.trim() !== ''
       ? item.incidentTitle
       : `Operational System Remediation Task on ${item.targetCi || 'Infrastructure Host'}`;
@@ -289,7 +314,7 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search incident number, host, agent, commands..."
-            className="w-full bg-[#0b0f19] border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-sans"
+            className="focus-ring w-full bg-[#0b0f19] border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:border-cyan-500 font-sans"
           />
         </div>
 

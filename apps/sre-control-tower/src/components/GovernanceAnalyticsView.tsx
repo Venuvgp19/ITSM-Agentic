@@ -1,5 +1,6 @@
 import React from 'react';
 import { ShieldCheck, Clock, Activity, CheckCircle2, Zap, Cpu, Lock, Sliders, AlertOctagon } from 'lucide-react';
+import { SkeletonCard } from './ui';
 
 interface AnalyticsProps {
   stats: {
@@ -22,10 +23,11 @@ interface AnalyticsProps {
 export function GovernanceAnalyticsView({ stats }: AnalyticsProps) {
   if (!stats) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-pulse">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-32 bg-slate-800/40 rounded-2xl border border-slate-800"></div>
-        ))}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
+        <SkeletonCard />
       </div>
     );
   }

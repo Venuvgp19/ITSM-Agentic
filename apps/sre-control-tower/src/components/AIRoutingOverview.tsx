@@ -71,6 +71,28 @@ export const AIRoutingOverview: React.FC = () => {
 
   const API_BASE = 'http://localhost:4000/api/v1';
 
+  // Load the live threshold the daemon is actually enforcing, so the slider
+  // reflects reality instead of always starting from a local default.
+  useEffect(() => {
+    fetch(`${API_BASE}/agent/router-config`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && typeof data.confidenceThreshold === 'number') {
+          setThreshold(data.confidenceThreshold);
+        }
+      })
+      .catch((err) => console.error('Error fetching AI Router confidence threshold:', err));
+  }, []);
+
+  const handleThresholdChange = useCallback((value: number) => {
+    setThreshold(value);
+    fetch(`${API_BASE}/agent/router-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confidenceThreshold: value }),
+    }).catch((err) => console.error('Error updating AI Router confidence threshold:', err));
+  }, []);
+
   const fetchLiveData = useCallback(async () => {
     try {
       setLoading(true);
@@ -232,7 +254,7 @@ export const AIRoutingOverview: React.FC = () => {
               min="60"
               max="95"
               value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
+              onChange={(e) => handleThresholdChange(Number(e.target.value))}
               className="w-24 accent-cyan-500 cursor-pointer"
             />
           </div>
@@ -329,7 +351,7 @@ export const AIRoutingOverview: React.FC = () => {
             placeholder="Search by ticket #, short description, CI, or reasoning..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            className="focus-ring w-full pl-9 pr-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:border-cyan-500"
           />
         </div>
 
@@ -337,7 +359,7 @@ export const AIRoutingOverview: React.FC = () => {
           <select
             value={selectedDept}
             onChange={(e) => setSelectedDept(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+            className="focus-ring px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 focus:border-cyan-500 cursor-pointer"
           >
             <option value="ALL">All Departments</option>
             {Object.keys(queueStats).map((d) => (
@@ -350,7 +372,7 @@ export const AIRoutingOverview: React.FC = () => {
           <select
             value={selectedPriority}
             onChange={(e) => setSelectedPriority(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+            className="focus-ring px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 focus:border-cyan-500 cursor-pointer"
           >
             <option value="ALL">All Priorities</option>
             <option value="P1">P1 - Critical</option>

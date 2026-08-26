@@ -5,8 +5,13 @@ import threading
 from collections import defaultdict
 import urllib3
 import httpx
+from dotenv import load_dotenv
 from openai import OpenAI
 from .session_state import SessionStateManager, default_session_state
+
+# Loads services/sre-agent-daemon/.env (gitignored) -- keeps SLACK_BOT_TOKEN
+# out of source and out of manual per-launch env var passing.
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
 # Configure UTF-8 encoding for stdout
 if hasattr(sys.stdout, "reconfigure"):
@@ -146,6 +151,15 @@ NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "nvapi-5sXSWoDCvHKeXSXCemSlcY20N3xf
 NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 DEMO_MODE = os.getenv("ITSM_DEMO_MODE", "false").lower() in ("true", "1", "yes")
 DEMO_FALLBACK_ON_ERROR = os.getenv("ITSM_DEMO_FALLBACK", "true").lower() in ("true", "1", "yes")
+
+# Slack bot token shared with services/slack-bridge (same workspace app) --
+# used only for one-off alert posts from the daemon (e.g. AI Router failure
+# notifications), not for the interactive approval flow that bridge owns.
+# Empty-string default (fail closed, no embedded secret) matching the SN_*
+# credentials pattern above -- must be set in the environment before the
+# daemon can post to Slack; notify_router_failure() no-ops without it.
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
+ROUTER_FAILURE_SLACK_CHANNEL = os.getenv("ROUTER_FAILURE_SLACK_CHANNEL", "C0BSS1M6MPD")
 
 # Specialized Agent Model Mapping
 ROUTER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"

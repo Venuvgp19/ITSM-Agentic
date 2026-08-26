@@ -37,10 +37,15 @@ import {
   Calendar,
   Settings,
   MessageSquare,
-  Menu
+  Menu,
+  UserCircle2
 } from 'lucide-react';
 
 import { IncidentAnalysisReport } from '@/components/IncidentAnalysisReport';
+import { useUrlState } from '@/lib/useUrlState';
+import { useAuthStore } from '@/lib/auth-store';
+import { useToast } from '@/components/ui/ToastProvider';
+import { SortIcon } from '@/components/ui/SortIcon';
 
 export const ASSIGNMENT_GROUP_MEMBERS: Record<string, string[]> = {
   'Unix': [
@@ -104,17 +109,57 @@ const departments = [
 const FALLBACK_CIS = ['Unspecified CI', 'control plane', 'WorkerNode1HL'];
 const callers = ['Monitoring Bot', 'Sarah Connor', 'David Miller', 'Alex Mercer', 'System Admin', 'Richard Stallman'];
 
+const INCIDENT_STATES = ['NEW', 'IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'CLOSED'];
+
 export default function IncidentsPage() {
   const router = useRouter();
+  const { showToast } = useToast();
+  const currentUser = useAuthStore((s) => s.user);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [searchField, setSearchField] = useState('All');
-  const [deptFilter, setDeptFilter] = useState('ALL');
-  const [priorityFilter, setPriorityFilter] = useState('ALL');
-  const [stateFilter, setStateFilter] = useState('ALL');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+
+  const { state: urlState, patch: patchUrl } = useUrlState({
+    q: '',
+    field: 'All',
+    dept: 'ALL',
+    priority: 'ALL',
+    state: 'ALL',
+    mine: '',
+    sort: '',
+    dir: 'asc',
+    page: '1',
+  });
+
+  const search = urlState.q;
+  const setSearch = (v: string) => patchUrl({ q: v });
+  const searchField = urlState.field;
+  const setSearchField = (v: string) => patchUrl({ field: v });
+  const deptFilter = urlState.dept;
+  const setDeptFilter = (v: string) => patchUrl({ dept: v });
+  const priorityFilter = urlState.priority;
+  const setPriorityFilter = (v: string) => patchUrl({ priority: v });
+  const stateFilter = urlState.state;
+  const setStateFilter = (v: string) => patchUrl({ state: v });
+  const mineOnly = urlState.mine === '1';
+  const setMineOnly = (v: boolean) => patchUrl({ mine: v ? '1' : '', page: '1' });
+  const sortField = urlState.sort;
+  const sortDir = urlState.dir as 'asc' | 'desc';
+  const page = parseInt(urlState.page, 10) || 1;
+  const setPage = (updater: number | ((p: number) => number)) => {
+    const next = typeof updater === 'function' ? (updater as (p: number) => number)(page) : updater;
+    patchUrl({ page: String(next) });
+  };
+  const [pageSize] = useState(20);
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      patchUrl({ dir: sortDir === 'asc' ? 'desc' : 'asc' });
+    } else {
+      patchUrl({ sort: field, dir: 'asc' });
+    }
+  };
+
+  const currentUserName = currentUser ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : '';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'matrix' | 'analysis'>('matrix');
   const [ciOptions, setCiOptions] = useState<string[]>(FALLBACK_CIS);
@@ -268,16 +313,47 @@ export default function IncidentsPage() {
 
       const matchesPriority = priorityFilter === 'ALL' || inc.priority.includes(priorityFilter);
       const matchesState = stateFilter === 'ALL' || inc.state === stateFilter;
+      const matchesMine =
+        !mineOnly ||
+        !currentUserName ||
+        (inc.assignedTo || '').toLowerCase().includes(currentUserName.toLowerCase()) ||
+        (inc.caller || '').toLowerCase().includes(currentUserName.toLowerCase());
 
-      return matchesSearch && matchesDept && matchesPriority && matchesState;
+      return matchesSearch && matchesDept && matchesPriority && matchesState && matchesMine;
     });
-  }, [incidents, search, deptFilter, priorityFilter, stateFilter]);
+  }, [incidents, search, deptFilter, priorityFilter, stateFilter, mineOnly, currentUserName]);
 
-  const totalPages = Math.ceil(filteredIncidents.length / pageSize) || 1;
+  const sortedIncidents = useMemo(() => {
+    if (!sortField) return filteredIncidents;
+    const arr = [...filteredIncidents];
+    arr.sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      if (sortField === 'number') {
+        av = parseInt((a.number || '').replace(/\D/g, ''), 10) || 0;
+        bv = parseInt((b.number || '').replace(/\D/g, ''), 10) || 0;
+      } else if (sortField === 'priority') {
+        av = parseInt((a.priority || '').charAt(0), 10) || 9;
+        bv = parseInt((b.priority || '').charAt(0), 10) || 9;
+      } else if (sortField === 'openedAt') {
+        av = a.openedAtFormatted || '';
+        bv = b.openedAtFormatted || '';
+      } else {
+        av = String(a[sortField] ?? '').toLowerCase();
+        bv = String(b[sortField] ?? '').toLowerCase();
+      }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return arr;
+  }, [filteredIncidents, sortField, sortDir]);
+
+  const totalPages = Math.ceil(sortedIncidents.length / pageSize) || 1;
   const paginatedIncidents = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return filteredIncidents.slice(start, start + pageSize);
-  }, [filteredIncidents, page, pageSize]);
+    return sortedIncidents.slice(start, start + pageSize);
+  }, [sortedIncidents, page, pageSize]);
 
   const handleCreateIncident = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -312,9 +388,12 @@ export default function IncidentsPage() {
 
       if (res.ok) {
         await loadIncidentsFromDatabase();
+        showToast(`Incident created and routed to ${formState.department}.`, 'success');
+      } else {
+        showToast('Failed to create incident. Please try again.', 'error');
       }
     } catch {
-      // Backend handles fallback
+      showToast('Failed to create incident — network or server error.', 'error');
     } finally {
       setIsSubmitting(false);
       setIsModalOpen(false);
@@ -413,7 +492,7 @@ export default function IncidentsPage() {
           </span>
 
           <span className="text-slate-600 text-[11px]">
-            to {Math.min(page * pageSize, filteredIncidents.length)} of {filteredIncidents.length}
+            to {Math.min(page * pageSize, sortedIncidents.length)} of {sortedIncidents.length}
           </span>
 
           <button
@@ -446,6 +525,20 @@ export default function IncidentsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* My Incidents quick filter */}
+          <button
+            onClick={() => setMineOnly(!mineOnly)}
+            title={currentUserName ? `Assigned to or opened by ${currentUserName}` : 'Sign in to filter by yourself'}
+            className={`px-2.5 py-1 rounded text-xs font-bold transition border cursor-pointer flex items-center gap-1 ${
+              mineOnly
+                ? 'bg-[#e6f7ef] text-[#1e6844] border-[#30bb7b]'
+                : 'bg-white text-slate-700 border-[#cbd5e1] hover:bg-slate-50'
+            }`}
+          >
+            <UserCircle2 className="w-3.5 h-3.5" />
+            My Incidents
+          </button>
+
           {/* Assignment Group Filter */}
           <select
             value={deptFilter}
@@ -477,6 +570,21 @@ export default function IncidentsPage() {
             <option value="3 - Moderate">3 - Moderate</option>
             <option value="4 - Low">4 - Low</option>
           </select>
+
+          {/* State Filter (was previously unwired) */}
+          <select
+            value={stateFilter}
+            onChange={(e) => {
+              setStateFilter(e.target.value);
+              setPage(1);
+            }}
+            className="bg-white border border-[#cbd5e1] text-slate-800 text-xs rounded px-2 py-1 focus:outline-none"
+          >
+            <option value="ALL">All States</option>
+            {INCIDENT_STATES.map((s) => (
+              <option key={s} value={s}>{s.replace('_', ' ')}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -494,9 +602,12 @@ export default function IncidentsPage() {
                     <Settings className="w-3.5 h-3.5 cursor-pointer text-slate-500 hover:text-[#288554]" />
                   </span>
                 </th>
-                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
-                  <span className="flex items-center gap-1 cursor-pointer hover:text-[#0284c7]">
-                    <span className="text-[10px] text-slate-400">☰</span> Number
+                <th
+                  className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30] cursor-pointer select-none"
+                  onClick={() => handleSort('number')}
+                >
+                  <span className={`flex items-center gap-1 hover:text-[#0284c7] ${sortField === 'number' ? 'text-[#288554]' : ''}`}>
+                    Number <SortIcon active={sortField === 'number'} dir={sortDir} />
                   </span>
                 </th>
                 <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
@@ -509,14 +620,20 @@ export default function IncidentsPage() {
                     <span className="text-[10px] text-slate-400">☰</span> Configuration Item
                   </span>
                 </th>
-                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
-                  <span className="flex items-center gap-1 cursor-pointer text-[#288554]">
-                    <span className="text-[10px]">☰</span> Priority ▼
+                <th
+                  className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30] cursor-pointer select-none"
+                  onClick={() => handleSort('priority')}
+                >
+                  <span className={`flex items-center gap-1 hover:text-[#0284c7] ${sortField === 'priority' ? 'text-[#288554]' : ''}`}>
+                    Priority <SortIcon active={sortField === 'priority'} dir={sortDir} />
                   </span>
                 </th>
-                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
-                  <span className="flex items-center gap-1">
-                    <span className="text-[10px] text-slate-400">☰</span> State
+                <th
+                  className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30] cursor-pointer select-none"
+                  onClick={() => handleSort('state')}
+                >
+                  <span className={`flex items-center gap-1 hover:text-[#0284c7] ${sortField === 'state' ? 'text-[#288554]' : ''}`}>
+                    State <SortIcon active={sortField === 'state'} dir={sortDir} />
                   </span>
                 </th>
                 <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
@@ -529,9 +646,12 @@ export default function IncidentsPage() {
                     <span className="text-[10px] text-slate-400">☰</span> Assigned To
                   </span>
                 </th>
-                <th className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30]">
-                  <span className="flex items-center gap-1">
-                    <span className="text-[10px] text-slate-400">☰</span> Opened Date & Time
+                <th
+                  className="p-2.5 whitespace-nowrap font-extrabold text-[#1a2c30] cursor-pointer select-none"
+                  onClick={() => handleSort('openedAt')}
+                >
+                  <span className={`flex items-center gap-1 hover:text-[#0284c7] ${sortField === 'openedAt' ? 'text-[#288554]' : ''}`}>
+                    Opened Date & Time <SortIcon active={sortField === 'openedAt'} dir={sortDir} />
                   </span>
                 </th>
               </tr>

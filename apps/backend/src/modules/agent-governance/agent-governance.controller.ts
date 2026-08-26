@@ -160,5 +160,19 @@ export class AgentGovernanceController {
   setMasterKillSwitch(@Body() body: { active: boolean; reason?: string; triggeredBy?: string }) {
     return this.governanceService.setMasterKillSwitch(body.active, body.reason, body.triggeredBy);
   }
+
+  @Public()
+  @Get('router-config')
+  @ApiOperation({ summary: 'Get the live Agentic AI Router confidence threshold' })
+  getRouterConfig() {
+    return this.governanceService.getRouterConfig();
+  }
+
+  @Public()
+  @Post('router-config')
+  @ApiOperation({ summary: 'Set the live Agentic AI Router confidence threshold (0-100)' })
+  setRouterConfig(@Body() body: { confidenceThreshold: number }) {
+    return this.governanceService.setRouterConfig(body.confidenceThreshold);
+  }
 }
 

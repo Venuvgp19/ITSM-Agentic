@@ -25,15 +25,30 @@ import {
   Bot
 } from 'lucide-react';
 import { AgentApproval } from './PendingApprovalsView';
+import { AgentHistoryEntry } from './HistoricalActivityView';
+import { Card, Badge, Button, LoadingState, SkeletonCard, riskTone } from './ui';
 
 interface OverviewProps {
   approvals: AgentApproval[];
+  history: AgentHistoryEntry[];
   stats: any;
   loading: boolean;
   onNavigateTab: (tabId: string) => void;
 }
 
-export function AIControlTowerOverview({ approvals, stats, loading, onNavigateTab }: OverviewProps) {
+function timeAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+  const diffMs = Date.now() - then;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+export function AIControlTowerOverview({ approvals, history, stats, loading, onNavigateTab }: OverviewProps) {
   // Recommendations derived from system telemetry
   const recommendations = [
     {
@@ -70,12 +85,15 @@ export function AIControlTowerOverview({ approvals, stats, loading, onNavigateTa
     },
   ];
 
-  const recentIncidents = [
-    { id: 'INC8127335', host: 'WorkerNode1HL', sop: 'KB0000036', status: 'RESOLVED', action: 'Restricted Sudoers Provisioning (5 Users)', time: '3m ago' },
-    { id: 'INC8127330', host: 'control plane', sop: 'KB0000050', status: 'APPROVED', action: 'ReAct Loop Throttle runaway kube-apiserver', time: '18m ago' },
-    { id: 'INC8127329', host: 'WorkerNode1HL', sop: 'KB0000048', status: 'RESOLVED', action: 'K8s CNI Network Flannel Interface Fix', time: '42m ago' },
-    { id: 'INC8127325', host: 'control plane', sop: 'KB0000045', status: 'RESOLVED', action: 'Etcd Cluster Disk Defrag & Compaction', time: '1h ago' },
-  ];
+  // Sourced live from GET /api/v1/agent/history (already fetched/polled by App.tsx) — not mock data.
+  const recentIncidents = history.slice(0, 4).map((h) => ({
+    id: h.incidentId,
+    host: h.targetCi,
+    sop: h.kbGenerated || '—',
+    status: h.status,
+    action: h.actionType || h.resolutionOutcome,
+    time: timeAgo(h.executedAt),
+  }));
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -286,43 +304,49 @@ export function AIControlTowerOverview({ approvals, stats, loading, onNavigateTa
             </button>
           </div>
 
-          <div className="space-y-2.5">
-            {recentIncidents.map((inc) => (
-              <div
-                key={inc.id}
-                onClick={() => onNavigateTab('timeline')}
-                className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-cyan-500/40 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer group"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="font-mono font-bold text-xs text-cyan-400 group-hover:underline">
-                    {inc.id}
-                  </span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300">
-                    {inc.host}
-                  </span>
-                  <span className="text-xs text-slate-300 font-medium truncate">
-                    {inc.action}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2.5 shrink-0 text-xs">
-                  <span className="font-mono text-[10px] text-purple-400 bg-purple-950/40 px-2 py-0.5 rounded border border-purple-500/30">
-                    {inc.sop}
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full font-mono ${
-                      inc.status === 'RESOLVED'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                    }`}
-                  >
-                    {inc.status}
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-500">{inc.time}</span>
-                </div>
+          <LoadingState
+            loading={loading && history.length === 0}
+            empty={recentIncidents.length === 0}
+            emptyLabel="No autonomous executions recorded yet."
+            skeleton={
+              <div className="space-y-2.5">
+                <SkeletonCard />
+                <SkeletonCard />
               </div>
-            ))}
-          </div>
+            }
+          >
+            <div className="space-y-2.5">
+              {recentIncidents.map((inc) => (
+                <div
+                  key={inc.id}
+                  onClick={() => onNavigateTab('timeline')}
+                  className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-cyan-500/40 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-mono font-bold text-xs text-cyan-400 group-hover:underline">
+                      {inc.id}
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300">
+                      {inc.host}
+                    </span>
+                    <span className="text-xs text-slate-300 font-medium truncate">
+                      {inc.action}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 shrink-0 text-xs">
+                    <span className="font-mono text-[10px] text-purple-400 bg-purple-950/40 px-2 py-0.5 rounded border border-purple-500/30">
+                      {inc.sop}
+                    </span>
+                    <Badge tone={inc.status === 'REJECTED' ? 'critical' : inc.status === 'AUTO_EXECUTED' || inc.status === 'APPROVED' ? 'success' : 'medium'}>
+                      {inc.status}
+                    </Badge>
+                    <span className="text-[10px] font-mono text-slate-500">{inc.time}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </LoadingState>
         </div>
 
         {/* Right 1 Col: AI Fleet Architecture & Active Guardrails */}

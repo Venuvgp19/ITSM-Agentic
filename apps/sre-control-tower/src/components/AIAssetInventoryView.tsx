@@ -22,8 +22,11 @@ import {
   X,
   Workflow,
   Zap,
-  Activity
+  Activity,
+  Box,
+  LayoutGrid
 } from 'lucide-react';
+import { AIFleetTopology3D } from './AIFleetTopology3D';
 
 export interface AIAsset {
   id: string;
@@ -282,6 +285,7 @@ export function AIAssetInventoryView() {
   const [search, setSearch] = useState<string>('');
   const [selectedAsset, setSelectedAsset] = useState<AIAsset | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<'grid' | '3d'>('grid');
 
   // 1. Fetch live containment status from backend
   const fetchLiveContainment = async () => {
@@ -401,6 +405,26 @@ export function AIAssetInventoryView() {
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-xl border border-slate-800 bg-slate-950/80 overflow-hidden">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`px-3 py-1.5 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'grid' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Grid</span>
+            </button>
+            <button
+              onClick={() => setViewMode('3d')}
+              className={`px-3 py-1.5 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                viewMode === '3d' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Box className="w-3.5 h-3.5" />
+              <span>3D Fleet Map</span>
+            </button>
+          </div>
           <button
             onClick={() => setAssets(mockAIAssets)}
             className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold transition flex items-center gap-1.5 border border-slate-800 cursor-pointer shadow-sm"
@@ -447,12 +471,15 @@ export function AIAssetInventoryView() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search ReAct loops, models, CIs..."
-            className="bg-slate-950 border border-slate-800 focus:border-cyan-500 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none w-64 transition"
+            className="focus-ring bg-slate-950 border border-slate-800 focus:border-cyan-500 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 w-64 transition"
           />
         </div>
       </div>
 
-      {/* 3. High-Contrast Inventory Grid */}
+      {/* 3. Inventory: Grid or 3D Fleet Topology */}
+      {viewMode === '3d' ? (
+        <AIFleetTopology3D assets={filteredAssets} onSelectAsset={setSelectedAsset} />
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredAssets.map((asset) => {
           const isContained = asset.status === 'CONTAINED';
@@ -540,6 +567,7 @@ export function AIAssetInventoryView() {
           );
         })}
       </div>
+      )}
 
       {/* 4. Asset Detail Drawer */}
       {selectedAsset && (

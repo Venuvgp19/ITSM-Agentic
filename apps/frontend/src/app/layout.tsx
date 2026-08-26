@@ -1,6 +1,7 @@
 import React from 'react';
 import './globals.css';
 import { AuthGuard } from '@/components/layout/AuthGuard';
+import { ToastProvider } from '@/components/ui/ToastProvider';
 
 export const metadata = {
   title: 'ServiceNow Enterprise ITSM Platform',
@@ -11,7 +12,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="bg-[#162224] text-[#1e293b] antialiased font-sans">
-        <AuthGuard>{children}</AuthGuard>
+        <ToastProvider>
+          <AuthGuard>{children}</AuthGuard>
+        </ToastProvider>
       </body>
     </html>
   );

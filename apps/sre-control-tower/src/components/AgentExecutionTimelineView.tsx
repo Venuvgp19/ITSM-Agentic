@@ -21,6 +21,7 @@ import {
   Search,
   Filter
 } from 'lucide-react';
+import { Card, Badge, Button, LoadingState, EmptyState, type BadgeTone } from './ui';
 
 interface TimelineStep {
   id: string;
@@ -114,46 +115,23 @@ export function AgentExecutionTimelineView() {
     setExpandedSteps(prev => ({ ...prev, [stepId]: !prev[stepId] }));
   };
 
+  const statusMeta: Record<AgentExecution['status'], { tone: BadgeTone; label: string; icon: React.ElementType; spin?: boolean }> = {
+    RUNNING: { tone: 'pending', label: 'RUNNING', icon: Activity, spin: true },
+    SUCCESS: { tone: 'success', label: 'RESOLVED', icon: CheckCircle2 },
+    REJECTED: { tone: 'critical', label: 'REJECTED', icon: XCircle },
+    FAILED: { tone: 'error', label: 'STOPPED', icon: AlertCircle },
+    PENDING_APPROVAL: { tone: 'medium', label: 'HITL GATE', icon: Clock },
+    ESCALATED: { tone: 'high', label: 'ESCALATED', icon: Layers },
+  };
+
   const getStatusBadge = (status: AgentExecution['status']) => {
-    switch (status) {
-      case 'RUNNING':
-        return (
-          <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 animate-pulse shadow-sm shadow-cyan-950/40">
-            <Activity className="w-3 h-3 text-cyan-400 animate-spin" /> RUNNING
-          </span>
-        );
-      case 'SUCCESS':
-        return (
-          <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-950/40">
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" /> RESOLVED
-          </span>
-        );
-      case 'REJECTED':
-        return (
-          <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-950/90 text-rose-300 border border-rose-500/60 shadow-sm shadow-rose-950/50 animate-pulse">
-            <XCircle className="w-3 h-3 text-rose-400" /> REJECTED
-          </span>
-        );
-      case 'FAILED':
-        return (
-          <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-950/80 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-950/40">
-            <AlertCircle className="w-3 h-3 text-rose-400" /> STOPPED
-          </span>
-        );
-      case 'PENDING_APPROVAL':
-        return (
-          <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-950/80 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-950/40">
-            <Clock className="w-3 h-3 text-amber-400" /> HITL GATE
-          </span>
-        );
-      case 'ESCALATED':
-      default:
-        return (
-          <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-purple-950/80 text-purple-300 border border-purple-500/40 shadow-sm shadow-purple-950/40">
-            <Layers className="w-3 h-3 text-purple-400" /> ESCALATED
-          </span>
-        );
-    }
+    const meta = statusMeta[status] || statusMeta.ESCALATED;
+    const Icon = meta.icon;
+    return (
+      <Badge tone={meta.tone} className="text-[10px] font-black">
+        <Icon className={`w-3 h-3 ${meta.spin ? 'animate-spin motion-reduce:animate-none' : ''}`} /> {meta.label}
+      </Badge>
+    );
   };
 
   const getStepStatusIcon = (status: TimelineStep['status']) => {
@@ -212,7 +190,7 @@ export function AgentExecutionTimelineView() {
   return (
     <div className="space-y-6 font-sans">
       {/* Header Banner */}
-      <div className="lobe-glass rounded-2xl p-5 md:p-6 border border-slate-800/80 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="pro-card rounded-2xl p-5 md:p-6 border border-slate-800/80 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-cyan-600 to-teal-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-cyan-500/20">
             <Terminal className="w-6 h-6 text-slate-950" />
@@ -241,21 +219,17 @@ export function AgentExecutionTimelineView() {
             <span>Auto-Poll (3s)</span>
           </label>
 
-          <button
-            onClick={fetchTimeline}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition shadow-sm cursor-pointer"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-cyan-400' : ''}`} />
+          <Button variant="secondary" onClick={fetchTimeline} disabled={loading} className="rounded-xl">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin motion-reduce:animate-none text-cyan-400' : ''}`} />
             Sync
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Main Grid: Queue on Left, Trace View on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Executions Queue */}
-        <div className="lobe-glass rounded-2xl p-4 border border-slate-800/80 shadow-xl space-y-3 lg:col-span-1 flex flex-col max-h-[700px]">
+        <div className="pro-card rounded-2xl p-4 border border-slate-800/80 shadow-xl space-y-3 lg:col-span-1 flex flex-col max-h-[700px]">
           <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
             <h3 className="text-xs font-extrabold uppercase text-slate-400 tracking-wider flex items-center gap-2">
               <Play className="w-3.5 h-3.5 text-cyan-400" /> Cycles ({filteredExecutions.length})
@@ -272,7 +246,7 @@ export function AgentExecutionTimelineView() {
                 placeholder="Search ticket # or title..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                className="focus-ring w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:border-cyan-500"
               />
             </div>
 
@@ -281,7 +255,8 @@ export function AgentExecutionTimelineView() {
                 <button
                   key={tab}
                   onClick={() => setStatusFilter(tab)}
-                  className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition cursor-pointer ${
+                  aria-pressed={statusFilter === tab}
+                  className={`focus-ring px-2 py-0.5 text-[10px] font-bold rounded-md transition cursor-pointer ${
                     statusFilter === tab
                       ? tab === 'REJECTED'
                         ? 'bg-rose-600 text-white shadow-sm'
@@ -295,16 +270,17 @@ export function AgentExecutionTimelineView() {
             </div>
           </div>
 
-          {loading && executions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-500 gap-3">
-              <RefreshCw className="w-7 h-7 animate-spin text-cyan-400" />
-              <span className="text-xs font-bold">Querying master timeline...</span>
-            </div>
-          ) : filteredExecutions.length === 0 ? (
-            <div className="py-20 text-center text-slate-500 text-xs font-medium italic">
-              No executions matched filter criteria.
-            </div>
-          ) : (
+          <LoadingState
+            loading={loading && executions.length === 0}
+            empty={filteredExecutions.length === 0}
+            emptyLabel="No executions matched filter criteria."
+            skeleton={
+              <div className="flex flex-col items-center justify-center py-20 text-slate-500 gap-3">
+                <RefreshCw className="w-7 h-7 animate-spin motion-reduce:animate-none text-cyan-400" />
+                <span className="text-xs font-bold">Querying master timeline...</span>
+              </div>
+            }
+          >
             <div className="space-y-2.5 overflow-y-auto pr-1 flex-1">
               {filteredExecutions.map((ex) => (
                 <div
@@ -331,11 +307,11 @@ export function AgentExecutionTimelineView() {
                 </div>
               ))}
             </div>
-          )}
+          </LoadingState>
         </div>
 
         {/* Selected Execution Detailed Step Stream */}
-        <div className="lobe-glass rounded-2xl p-5 md:p-6 border border-slate-800/80 shadow-xl lg:col-span-2 space-y-5">
+        <div className="pro-card rounded-2xl p-5 md:p-6 border border-slate-800/80 shadow-xl lg:col-span-2 space-y-5">
           {selectedRun ? (
             <>
               {/* Top Meta Bar */}
@@ -352,14 +328,15 @@ export function AgentExecutionTimelineView() {
                 </div>
 
                 {selectedRun.status === 'RUNNING' && (
-                  <button
+                  <Button
+                    variant="danger"
                     onClick={() => handleCancelExecution(selectedRun.id, selectedRun.incidentNumber)}
                     disabled={cancellingId === selectedRun.id}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 text-xs font-black rounded-xl transition-all shadow-md shadow-rose-950/30 cursor-pointer disabled:opacity-50"
+                    className="rounded-xl font-black"
                   >
                     <StopCircle className="w-4 h-4" />
                     <span>Stop Action Cycle</span>
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -377,7 +354,7 @@ export function AgentExecutionTimelineView() {
                         {getStepStatusIcon(step.status)}
                       </div>
 
-                      <div className={`flex-1 lobe-glass rounded-xl p-3.5 border space-y-2 ${
+                      <div className={`flex-1 pro-card rounded-xl p-3.5 border space-y-2 ${
                         step.status === 'FAILED' || step.status === 'REJECTED' || (step.details && step.details.toLowerCase().includes('reject'))
                           ? 'border-rose-500/50 bg-rose-950/20'
                           : 'border-slate-800/80'

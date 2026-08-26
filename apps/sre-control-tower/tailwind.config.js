@@ -7,13 +7,41 @@ export default {
   theme: {
     extend: {
       colors: {
-        cyber: {
-          dark: '#0a0e17',
-          card: '#111827',
-          border: '#1f293d',
-          accent: '#06b6d4',
-        }
-      }
+        bg: {
+          dark: 'var(--bg-dark)',
+          card: 'var(--bg-card)',
+          cardHover: 'var(--bg-card-hover)',
+        },
+        border: {
+          subtle: 'var(--border-subtle)',
+          highlight: 'var(--border-highlight)',
+        },
+        accent: {
+          cyan: 'var(--primary-cyan)',
+          emerald: 'var(--primary-emerald)',
+          amber: 'var(--primary-amber)',
+          rose: 'var(--primary-rose)',
+          violet: 'var(--primary-violet)',
+        },
+        risk: {
+          low: 'var(--risk-low)',
+          medium: 'var(--risk-medium)',
+          high: 'var(--risk-high)',
+          critical: 'var(--risk-critical)',
+        },
+        text: {
+          primary: 'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted: 'var(--text-muted)',
+        },
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+      fontSize: {
+        '2xs': ['11px', { lineHeight: '14px' }],
+      },
     },
   },
   plugins: [],

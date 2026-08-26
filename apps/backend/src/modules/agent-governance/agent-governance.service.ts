@@ -802,6 +802,17 @@ export class AgentGovernanceService implements OnModuleInit {
 
   private containedCis: Set<string> = new Set();
   private masterKillSwitchActive: boolean = false;
+  private routerConfidenceThreshold: number = 95;
+
+  async getRouterConfig(): Promise<{ confidenceThreshold: number }> {
+    return { confidenceThreshold: this.routerConfidenceThreshold };
+  }
+
+  async setRouterConfig(confidenceThreshold: number): Promise<{ confidenceThreshold: number }> {
+    const clamped = Math.min(100, Math.max(0, Math.round(confidenceThreshold)));
+    this.routerConfidenceThreshold = clamped;
+    return { confidenceThreshold: clamped };
+  }
 
   async getContainmentStatus(): Promise<{ masterKillSwitch: boolean; containedCis: string[] }> {
     return {
