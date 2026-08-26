@@ -1,6 +1,45 @@
 import re
 from ..config import logger
 
+_LAST_CMD_BLOCK_RE = re.compile(
+    r'=== \[CMD:\s*(.*?)\]\s*===\s*STDOUT:\s*(.*?)STDERR:\s*(.*?)(?=(?:=== \[CMD:)|\Z)',
+    re.DOTALL,
+)
+_HARD_ERROR_MARKERS = (
+    "error", "traceback", "command not found", "permission denied",
+    "not found", "resourcenotfound", "cannot be completed", "denied",
+)
+
+
+def _last_command_unrecovered_error(exec_log):
+    """
+    Domain-agnostic safety net used only when no keyword-matched check above
+    already produced a live-verified answer (i.e. a genuinely novel request type).
+    Parses the '=== [CMD: ...] === STDOUT: ... STDERR: ...' blocks the ReAct
+    executor logs and checks whether the LAST command run ended in a hard
+    CLI/tool error. A multi-step run can have earlier steps succeed (e.g. creating
+    unrelated side resources) while the actual final/target step fails -- so only
+    the last executed command is treated as representative of the outcome.
+    Returns (unrecovered: bool, evidence: str).
+    """
+    blocks = _LAST_CMD_BLOCK_RE.findall(exec_log or "")
+    if not blocks:
+        return False, ""
+    last_cmd, last_stdout, last_stderr = blocks[-1]
+    stderr_lower = last_stderr.lower()
+    if any(marker in stderr_lower for marker in _HARD_ERROR_MARKERS):
+        return True, f"Last command `{last_cmd.strip()}` STDERR: {last_stderr.strip()[:300]}"
+    # Deliberately conservative: this does NOT require positive semantic evidence
+    # of success (that needs per-domain knowledge this catch-all doesn't have) --
+    # it only closes the "nothing happened at all" gap. A last command with empty
+    # STDOUT *and* empty STDERR isn't silent success, it's usually a command the
+    # remote host never actually ran (e.g. shell syntax it rejected before
+    # producing any output).
+    if not last_stdout.strip() and not last_stderr.strip():
+        return True, f"Last command `{last_cmd.strip()}` produced no output at all (STDOUT and STDERR both empty) — cannot confirm outcome."
+    return False, ""
+
+
 def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec_log, inc_number):
     """
     Domain-aware post-fix verification.
@@ -37,10 +76,18 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
             else:
                 evidence_lines.append(f"✅ Pod is in '{pod_phase}' state — scheduling resolved.")
         else:
-            evidence_lines.append("⚠️ Pod name could not be extracted from description — skipping Kubernetes phase verification.")
+            is_fixed = False
+            evidence_lines.append(
+                "❌ Could not identify a specific Kubernetes pod name from the incident description to verify — "
+                "refusing to assume success without live confirmation."
+            )
 
     # --- Linux User Account check ---
-    elif any(k in full_text for k in ["useradd", "linux user", "user account", "provision user", "create user", "userdel", "delete user", "offboard", "pamsudo", "sudoers", "permission"]):
+    # NOTE: "permission" was previously in this trigger list on its own, broad enough
+    # to misroute unrelated tickets (e.g. a file-share "permission denied" issue) into
+    # this branch ahead of a more appropriate one, since this is a first-match elif
+    # chain -- removed. The remaining anchors are specific enough on their own.
+    elif any(k in full_text for k in ["useradd", "linux user", "user account", "provision user", "create user", "userdel", "delete user", "offboard", "pamsudo", "sudoers"]):
         ignore_terms = {
             "bin", "bash", "sh", "etc", "sudoers", "root", "command", "systemctl", "restart", 
             "nexacore", "pamsudox", "puser", "user", "username", "sudo_command", "99-", "90-",
@@ -103,7 +150,11 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
                     else:
                         evidence_lines.append(f"✅ User '{u}' created and verified in OS.")
         else:
-            evidence_lines.append("ℹ️ User account and sudoers rules provisioned.")
+            is_fixed = False
+            evidence_lines.append(
+                "❌ Could not identify any target username(s) from the exec log/description to verify — "
+                "refusing to assume success without live confirmation."
+            )
 
     # --- Python venv check ---
     elif any(k in full_text for k in ["python virtual environment", "venv", "virtualenv", "python venv"]):
@@ -117,67 +168,153 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
                 is_fixed = False
                 evidence_lines.append(f"❌ Python venv at '{venv_path}' NOT found after creation.")
         else:
-            evidence_lines.append("⚠️ Venv path not extracted from exec log — skipping venv verification.")
+            is_fixed = False
+            evidence_lines.append(
+                "❌ Could not extract the venv path from the executed commands to verify — "
+                "refusing to assume success without live confirmation."
+            )
 
     # --- Service / Application check ---
     elif not any(k in full_text for k in ["pamsudo", "sudoers", "useradd", "userdel", "user account"]) and any(k in full_text for k in ["service down", "crash", "502", "bad gateway", "outage", "nexacore", "application down"]):
-        service_match = re.search(r"systemctl\s+(?:start|restart)\s+([\w\-\.]+)", exec_log)
+        # Previously only matched literal `systemctl start|restart <svc>`. If the
+        # agent restarted the service any other common way, `svc` was None, NO
+        # evidence line was ever added, and is_fixed silently stayed at its default
+        # True -- for the exact incident class ("service down"/"crash"/"outage")
+        # this gate exists to protect.
+        service_match = (
+            re.search(r"systemctl\s+(?:start|restart)\s+([\w\-\.]+)", exec_log)
+            or re.search(r"\bservice\s+([\w\-\.]+)\s+(?:start|restart)\b", exec_log)
+            or re.search(r"\bdocker\s+restart\s+([\w\-\.]+)", exec_log)
+            or re.search(r"\bpm2\s+restart\s+([\w\-\.]+)", exec_log)
+            or re.search(r"\bkubectl\s+rollout\s+restart\s+(?:deployment/|deploy/)?([\w\-\.]+)", exec_log)
+        )
         svc = service_match.group(1) if service_match else None
-        if svc:
-            ok, out = session.exec_command(f"systemctl is-active {svc} 2>&1")
-            active = clean_ssh_stdout(out).lower()
-            if active == "active":
-                evidence_lines.append(f"✅ Service '{svc}' is active after restart.")
+        if not svc:
+            is_fixed = False
+            evidence_lines.append(
+                "❌ Could not identify a specific service/workload name from the executed restart command to verify — "
+                "refusing to assume success without live confirmation."
+            )
+        else:
+            matched_form = service_match.group(0)
+            if "docker" in matched_form:
+                ok, out = session.exec_command(f"docker inspect -f '{{{{.State.Running}}}}' {svc} 2>&1")
+                healthy = "true" in clean_ssh_stdout(out).lower()
+            elif "pm2" in matched_form:
+                ok, out = session.exec_command("pm2 jlist 2>&1")
+                body = clean_ssh_stdout(out)
+                healthy = f'"name":"{svc}"' in body and '"status":"online"' in body
+            elif "kubectl" in matched_form:
+                ok, out = session.exec_command(f"kubectl rollout status deployment/{svc} --timeout=5s 2>&1")
+                healthy = "successfully rolled out" in clean_ssh_stdout(out).lower()
+            else:
+                ok, out = session.exec_command(f"systemctl is-active {svc} 2>&1")
+                healthy = clean_ssh_stdout(out).lower() == "active"
+            if healthy:
+                evidence_lines.append(f"✅ Service/workload '{svc}' is active/running after restart.")
             else:
                 is_fixed = False
-                evidence_lines.append(f"❌ Service '{svc}' is '{active}' — restart did not succeed.")
+                evidence_lines.append(f"❌ Service/workload '{svc}' verification failed after restart attempt.")
+    # --- Azure Web App / App Service check ---
+    # Must be checked before the generic Resource Group branch below: a ticket asking
+    # to provision a Web App "in an existing resource group" contains the words
+    # "resource group" too, and an unrelated side-resource (VNet, subnet, plan) can
+    # report its own "provisioningState": "Succeeded" in the log while the actual
+    # requested Web App never got created (e.g. blocked by quota) -- so the specific
+    # target resource must be confirmed live, not inferred from a log substring.
+    elif any(k in full_text for k in ["web app", "webapp", "app service", "appservice"]):
+        webapp_names = set(re.findall(r'az\s+webapp\s+create\s+.*?(?:-n|--name)\s+([^\s]+)', exec_log))
+        webapp_names |= set(re.findall(r'az\s+webapp\s+(?:show|config|deploy)\s+.*?(?:-n|--name)\s+([^\s]+)', exec_log))
+        if not webapp_names:
+            is_fixed = False
+            evidence_lines.append(
+                "❌ Could not identify a specific Azure Web App name from the executed commands to verify — "
+                "refusing to assume success without live confirmation."
+            )
+        else:
+            ok, out = session.exec_command("az webapp list --query '[].name' -o tsv 2>&1")
+            existing_webapps = clean_ssh_stdout(out).splitlines()
+            missing = [wa for wa in webapp_names if wa not in existing_webapps]
+            if missing:
+                is_fixed = False
+                evidence_lines.append(
+                    f"❌ Azure Web App(s) {', '.join(missing)} NOT found via live 'az webapp list' — "
+                    f"provisioning did not complete (commands may have failed on quota/plan errors)."
+                )
+            else:
+                is_fixed = True
+                evidence_lines.append(f"✅ Verified Azure Web App(s) {', '.join(webapp_names)} live via 'az webapp list'.")
+
     # --- Azure Resource Group / Cloud Resources check ---
     elif any(k in full_text for k in ["resource group", "az group", "azure resource", "azure group"]):
-        rg_matches = re.findall(r'az\s+group\s+create\s+--name\s+([^\s]+)', exec_log)
-        succeeded_matches = re.findall(r'"provisioningState":\s*"Succeeded"', exec_log)
-        if rg_matches and len(succeeded_matches) >= len(rg_matches):
-            is_fixed = True
-            evidence_lines.append(f"✅ Created and verified {len(rg_matches)} Azure Resource Group(s) ({', '.join(rg_matches)}) with status 'Succeeded'.")
-        elif "provisioningState" in exec_log and "Succeeded" in exec_log:
-            is_fixed = True
-            evidence_lines.append("✅ Azure resource operations completed with status 'Succeeded'.")
+        rg_matches = set(re.findall(r'az\s+group\s+create\s+--name\s+([^\s]+)', exec_log))
+        if not rg_matches:
+            is_fixed = False
+            evidence_lines.append(
+                "❌ Could not identify a specific Azure Resource Group name from the executed commands to verify — "
+                "refusing to assume success without live confirmation."
+            )
         else:
             ok, out = session.exec_command("az group list --query '[].name' -o tsv 2>&1")
-            existing_rgs = clean_ssh_stdout(out)
-            found_count = sum(1 for rg in rg_matches if rg in existing_rgs) if rg_matches else 0
-            if found_count > 0 or "succeeded" in exec_log.lower():
-                is_fixed = True
-                evidence_lines.append(f"✅ Azure Resource Groups verified present in subscription ({existing_rgs[:100]}...).")
-            else:
+            existing_rgs = clean_ssh_stdout(out).splitlines()
+            missing = [rg for rg in rg_matches if rg not in existing_rgs]
+            if missing:
                 is_fixed = False
-                evidence_lines.append("❌ Azure Resource Group creation could not be verified in subscription.")
+                evidence_lines.append(f"❌ Azure Resource Group(s) {', '.join(missing)} NOT found live in subscription.")
+            else:
+                is_fixed = True
+                evidence_lines.append(f"✅ Verified {len(rg_matches)} Azure Resource Group(s) live via 'az group list': {', '.join(rg_matches)}.")
 
     # --- CPU / Memory Resource Utilization check ---
     elif any(k in full_text for k in ["cpu", "memory", "ram", "load average", "high load", "resource utilization", "performance"]):
         cpu_pct = 0.0
         mem_pct = 0.0
+        verification_failed = False
+        # ok_c/ok_m (whether the SSH command itself succeeded) were previously
+        # captured but never checked. A verification-command failure (kill-switch
+        # block, transient SSH error) made clean_ssh_stdout() return the error text,
+        # float() raised, was caught, and cpu_pct/mem_pct defaulted to 0.0 -- which
+        # then read as "healthy". A verification-infrastructure failure must not be
+        # silently converted into proof of health.
         try:
             ok_c, out_c = session.exec_command("top -bn1 | grep 'Cpu(s)' | awk '{print 100 - $8}'")
+            if not ok_c:
+                verification_failed = True
             cpu_body = clean_ssh_stdout(out_c)
             cpu_pct = float(cpu_body)
         except Exception:
+            verification_failed = True
             cpu_pct = 0.0
 
         try:
             ok_m, out_m = session.exec_command("free | awk 'NR==2{printf \"%.2f\", $3*100/$2 }'")
+            if not ok_m:
+                verification_failed = True
             mem_body = clean_ssh_stdout(out_m)
             mem_pct = float(mem_body)
         except Exception:
+            verification_failed = True
             mem_pct = 0.0
 
         evidence_lines.append(f"Post-remediation host resource status: CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}%")
-        if cpu_pct > 90.0 or mem_pct > 90.0:
+        if verification_failed:
+            is_fixed = False
+            evidence_lines.append("❌ Post-remediation resource verification command(s) failed to execute cleanly — refusing to assume success without a real reading.")
+        elif cpu_pct > 90.0 or mem_pct > 90.0:
             is_fixed = False
             evidence_lines.append(f"❌ Host resource utilization remains critical (CPU: {cpu_pct:.2f}%, Memory: {mem_pct:.2f}% > 90.0%). Executed KB0468210 diagnostic runbook — escalating to human engineer with log evidence.")
         else:
             evidence_lines.append(f"✅ Host resource utilization normalized (CPU: {cpu_pct:.2f}%, Memory: {mem_pct:.2f}% <= 90.0%).")
     else:
-        evidence_lines.append("ℹ️ No domain-specific post-remediation check applicable — trusting SSH execution result.")
+        unrecovered, err_evidence = _last_command_unrecovered_error(exec_log)
+        if unrecovered:
+            is_fixed = False
+            evidence_lines.append(
+                "❌ No domain-specific post-remediation check applicable, and the terminal execution log shows "
+                f"the most recently executed command ended in an unresolved error — refusing to assume success. {err_evidence}"
+            )
+        else:
+            evidence_lines.append("ℹ️ No domain-specific post-remediation check applicable — no unresolved errors detected in execution log; trusting SSH execution result.")
 
     evidence = " | ".join(evidence_lines)
     logger.info(f"🔬 Post-Remediation Guard [{inc_number}]: is_fixed={is_fixed} | {evidence}")

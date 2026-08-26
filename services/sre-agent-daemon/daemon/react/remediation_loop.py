@@ -65,10 +65,22 @@ def run_dynamic_react_loop(
 
     full_exec_log = ""
     is_success = True
-    
+
     max_turns = max(35, len(guide_commands) * 5)
     turn = 0
-    
+
+    def _validate_or_block(cmd):
+        """Shared with the primary tool-calling path's inline check at ~line 101 --
+        both deterministic fallback loops below used to execute guide_commands
+        directly with NO safety validation at all, unlike the LLM tool-calling path.
+        Every command that reaches session.exec_command, on any path, must go
+        through this first."""
+        is_allowed, unauth_bins = is_allowed_command_adaptation(cmd, guide_commands, is_human_authorized=is_human_authorized)
+        if not is_allowed:
+            logger.critical(f"🛡️ SOP / ENTERPRISE SAFETY BLOCK (fallback path): Blocked command '{cmd}' as forbidden/unauthorized: {unauth_bins}")
+            post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Enterprise Security Guard", "FAILED", f"Security Block (fallback): {cmd}")
+        return is_allowed, unauth_bins
+
     session = session_factory(ip, user, password)
     try:
         while turn < max_turns:
@@ -131,6 +143,13 @@ def run_dynamic_react_loop(
                                     full_exec_log += f"\n=== SERVER UNREACHABLE ALERT ===\nServer {ip} failed SSH reachability check. Exited ReAct loop.\n"
                                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Server {ip} unreachable via SSH.")
                                     return False, full_exec_log
+                                elif "EXECUTION BLOCKED" in out_log and "Kill Switch" in out_log:
+                                    # Any other ok=False mid-run was previously absorbed silently, letting the
+                                    # loop continue and potentially still end in is_success=True later even
+                                    # though the kill switch stopped a command from actually running.
+                                    logger.warning(f"🛑 Kill switch blocked mid-execution for {number}. Aborting ReAct loop.")
+                                    post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Kill switch blocked execution: {cmd}")
+                                    return False, full_exec_log
                 else:
                     raw_summary = msg.content or ""
                     clean_summary = clean_thinking_text(raw_summary)
@@ -152,15 +171,28 @@ def run_dynamic_react_loop(
                         else:
                             # Deterministic fallback: Execute the approved guide commands directly on the host!
                             logger.info(f"⚡ Model returned prose without tool calls — deterministically executing {len(guide_commands)} approved SOP commands directly via SSH...")
+                            any_cmd_failed = False
                             for cmd in guide_commands:
+                                is_allowed, unauth_bins = _validate_or_block(cmd)
+                                if not is_allowed:
+                                    full_exec_log += f"\n=== [CMD: {cmd}] ===\nSTDOUT:\nSTDERR:\nSECURITY ERROR: blocked by enterprise safety guard ({unauth_bins}).\n"
+                                    any_cmd_failed = True
+                                    continue
                                 post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Dynamic SSH Execution", "RUNNING", f"Executing approved SOP: {cmd}")
                                 ok, out_log = session.exec_command(cmd)
                                 full_exec_log += out_log
-                            
+                                if not ok:
+                                    any_cmd_failed = True
+                                    if "SERVER_UNREACHABLE" in out_log:
+                                        logger.warning(f"🚨 Server {ip} unreachable during fallback execution for {number}.")
+                                        post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Server {ip} unreachable via SSH.")
+                                        return False, full_exec_log
+
                             clean_summary = f"Directly executed approved SOP commands:\n" + "\n".join([f"- `{c}`" for c in guide_commands])
                             full_exec_log += f"\n=== FINAL AGENT SUMMARY ===\n{clean_summary}\n"
-                            post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Dynamic SSH Execution", "SUCCESS", clean_summary)
-                            is_success = True
+                            post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Dynamic SSH Execution",
+                                                  "FAILED" if any_cmd_failed else "SUCCESS", clean_summary)
+                            is_success = not any_cmd_failed
                             break
 
                     if turn <= 3 and (not clean_summary or is_hallucination_text or len(clean_summary) < 15):
@@ -182,13 +214,22 @@ def run_dynamic_react_loop(
                 # If error occurred but we have approved commands and haven't executed them, execute directly
                 if guide_commands and len(guide_commands) > 0 and len(full_exec_log.strip()) == 0:
                     logger.info(f"⚡ Exception in ReAct loop — executing approved SOP commands directly as safety fallback: {guide_commands}")
+                    any_cmd_failed = False
                     for cmd in guide_commands:
+                        is_allowed, unauth_bins = _validate_or_block(cmd)
+                        if not is_allowed:
+                            full_exec_log += f"\n=== [CMD: {cmd}] ===\nSTDOUT:\nSTDERR:\nSECURITY ERROR: blocked by enterprise safety guard ({unauth_bins}).\n"
+                            any_cmd_failed = True
+                            continue
                         try:
                             ok, out_log = session.exec_command(cmd)
                             full_exec_log += out_log
+                            if not ok:
+                                any_cmd_failed = True
                         except Exception as exec_err:
                             full_exec_log += f"\nCommand execution error for {cmd}: {exec_err}\n"
-                    is_success = True
+                            any_cmd_failed = True
+                    is_success = not any_cmd_failed
                     break
 
                 full_exec_log += f"\n=== ERROR ===\n{str(e)}\n"

@@ -5,7 +5,7 @@ import urllib.request
 import requests
 import paramiko
 
-from ..config import logger, ITSM_BASE_URL
+from ..config import logger, ITSM_BASE_URL, ITSM_PROVIDER
 from ..session_state import default_session_state
 from ..llm import invoke_llm_with_fallback as default_invoke_llm
 from ..rag.vector_db import vector_db as default_vector_db
@@ -175,7 +175,7 @@ def _solve_in_progress_incident_internal(
     rejected_appr = next((a for a in approvals if a.get("incidentId") == inc_id and a.get("status") == "REJECTED"), None)
     if rejected_appr:
         logger.warning(f"❌ Execution rejected: Approval request ({rejected_appr.get('id')}) for [{number}] was REJECTED by human operator.")
-        post_timeline_update(inc_id, number, short_desc, ci_name or "Target Host", "FAILED", "🔐 Human-in-the-Loop Gate", "FAILED", f"SOP execution rejected: {rejected_appr.get('rejectionReason', 'Rejected by operator')}")
+        post_timeline_update(inc_id, number, short_desc, ci_name or "Target Host", "REJECTED", "🛡️ Human-in-the-Loop Gate (Rejected)", "FAILED", f"SOP execution was REJECTED by human operator. Reason: {rejected_appr.get('rejectionReason', 'Rejected by operator')}")
         reject_note = (
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"🤖 Unix Auto-Resolver Agent: REMEDIATION REJECTED BY HUMAN OPERATOR\n"
@@ -309,12 +309,24 @@ def _solve_in_progress_incident_internal(
                 decision_log.append(f"Memory={mem_pct:.2f}% <= 90% → No Memory action")
             
             if not commands_to_run:
-                logger.info(f"✅ AUTO-RESOLVE: Both CPU ({cpu_pct:.2f}%) and Memory ({mem_pct:.2f}%) below 90% — Auto-resolving ticket")
-                post_timeline_update(inc_id, number, short_desc, ci_name, "SUCCESS", "📊 Autonomous Threshold Check", "SUCCESS", f"AUTO-RESOLVED: CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}% (both < 90%)")
-                add_work_note(token, inc_id, f"🤖 AUTO-RESOLVED: Resource utilization within normal thresholds (CPU: {cpu_pct:.2f}%, Memory: {mem_pct:.2f}%). No action required.", author="🤖 Unix Auto-Resolver Agent")
-                update_incident_status(token, inc_id, "RESOLVED", session_state=state)
-                state.mark_resolved(inc_id)
-                return
+                # Previously resolved the ticket immediately here -- zero SOP
+                # matching, zero LLM is_healthy evaluation, zero
+                # verify_post_remediation_status call. Triggered by loose whole-word
+                # keyword matching on ticket text (cpu/memory/ram/oom/heap/swap/
+                # "high load"/etc.), so a ticket like "increase memory limit for app
+                # config" would false-positive close on a single momentary
+                # utilization sample without the requested action ever happening.
+                # Falling through into the standard SOP pipeline below instead means
+                # this now goes through the same LLM evaluation + post-remediation
+                # guard as every other incident before being marked resolved --
+                # strictly more scrutiny, not less; the only user-visible change is
+                # slightly higher latency for what were previously instant closes.
+                logger.info(f"✅ Resource check within threshold (CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}%) — proceeding through standard verification pipeline instead of auto-resolving directly.")
+                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "📊 Autonomous Threshold Check", "SUCCESS", f"CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}% (both < 90%) — running standard verification before resolving.")
+                is_resource_alert_exceeded = True
+                sop_commands = ["uptime", "free -m", "ps aux --sort=-%cpu | head -n 10"]
+                decision_summary = f"CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}% within threshold"
+                logger.info(f"📋 Autonomous Decision: {decision_summary} — Matched Master System Performance Runbook")
             else:
                 is_resource_alert_exceeded = True
                 sop_commands = commands_to_run + ["uptime", "free -m", "ps aux --sort=-%cpu | head -n 10"]
@@ -481,7 +493,7 @@ def _solve_in_progress_incident_internal(
                     state.lock_session(inc_id)
                     return
                 elif status == "REJECTED":
-                    post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "🔐 Human-in-the-Loop Gate", "FAILED", f"SOP execution rejected: {my_approval.get('rejectionReason')}")
+                    post_timeline_update(inc_id, number, short_desc, ci_name, "REJECTED", "🛡️ Human-in-the-Loop Gate (Rejected)", "FAILED", f"SOP execution was REJECTED by human operator. Reason: {my_approval.get('rejectionReason', 'Rejected by operator')}")
                     logger.warning(f"❌ Execution rejected: Approval request for [{number}] was REJECTED by human operator.")
                     reject_note = (
                         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -576,8 +588,15 @@ def _solve_in_progress_incident_internal(
             post_timeline_update(inc_id, number, short_desc, ci_name, "ESCALATED", "📡 Host Reachability Check", "FAILED", f"Server {ip} unreachable via SSH. Exited ReAct loop & escalated to {team_member}.")
             add_work_note(token, inc_id, unreachable_note)
             update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
+            # lock_session() alone is sufficient to keep this ticket out of dispatch
+            # (poller.py's gate requires `not state.is_locked(inc_id)`); mark_resolved()
+            # was removed here -- it also sets is_resolved()=True, which permanently
+            # blocks the re-activation path poller.py already has for exactly this
+            # scenario (a human fixes the root cause and approves a corrected SOP for
+            # the same ticket), since that path is itself gated on `not is_resolved()`.
+            # An ON_HOLD/escalated ticket is not resolved; conflating the two made
+            # escalated tickets un-re-dispatchable even after a valid fresh approval.
             state.lock_session(inc_id)
-            state.mark_resolved(inc_id)
             return
 
         post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Dynamic SSH execution failed: {exec_log[:200]}")
@@ -687,8 +706,11 @@ Respond ONLY in valid JSON format:
         )
         add_work_note(token, inc_id, escalation_note)
         update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
+        # See the SERVER_UNREACHABLE path above: lock_session() (not mark_resolved())
+        # is the correct call here -- this ticket is escalated, not resolved, and
+        # mark_resolved() would permanently block the fresh-approval re-activation
+        # path poller.py already provides for it.
         state.lock_session(inc_id)
-        state.mark_resolved(inc_id)
         logger.info(f"🔒 Incident [{number}] is now ESCALATED — locked from re-processing this session.")
         return
 
@@ -730,8 +752,9 @@ Respond ONLY in valid JSON format:
         )
         add_work_note(token, inc_id, escalation_note)
         update_incident_status(token, inc_id, "ON_HOLD", assigned_to=team_member, session_state=state)
+        # See the SERVER_UNREACHABLE path above for why lock_session() (not
+        # mark_resolved()) is correct here too.
         state.lock_session(inc_id)
-        state.mark_resolved(inc_id)
         logger.info(f"🔒 Incident [{number}] is now ESCALATED (post-remediation guard) — locked from re-processing.")
         return
 
@@ -802,6 +825,11 @@ Respond ONLY in valid JSON format:
                     f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 )
                 add_work_note(token, inc_id, persist_note, author="🧠 AI Knowledge Synthesizer")
+            elif ITSM_PROVIDER == "SERVICENOW":
+                # Deliberate no-op (save_new_kb_article_to_storage returns None by
+                # design in SERVICENOW mode -- write-back is deferred, see its
+                # docstring), not a failure. Don't log/escalate it as one.
+                logger.info(f"ℹ️ Skipped KB persistence for [{number}] — ServiceNow-mode KB write-back is deferred, not an error.")
             else:
                 logger.error(f"❌ Persistence FAILED for synthesized SOP on [{number}] — no KB article was created. Escalation may be needed.")
                 add_work_note(token, inc_id,
@@ -809,4 +837,9 @@ Respond ONLY in valid JSON format:
                     f"Escalate so a human-authored SOP is created for future occurrences.",
                     author="🧠 AI Knowledge Synthesizer")
 
-    state.mark_resolved(inc_id)
+        # Moved inside this `if`: previously ran unconditionally after the block,
+        # so a failed PATCH to the ITSM backend (network blip, 4xx/5xx) still
+        # permanently locked a ticket that was actually left untouched (still
+        # IN_PROGRESS) in the real system -- same "stuck forever" failure mode as
+        # the escalation paths above, triggered by a transient API failure instead.
+        state.mark_resolved(inc_id)

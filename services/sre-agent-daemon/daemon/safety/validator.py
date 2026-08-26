@@ -44,7 +44,15 @@ def extract_invoked_binaries(cmd_str: str, _depth: int = 0) -> set[str]:
     # Split by &&, ||, ;, \n, and pipe | while respecting quotes using shlex
     try:
         lexer = shlex.shlex(cleaned, posix=True, punctuation_chars="|&;\n()")
-        lexer.wordchars += ":._-+=/"
+        # '@' must stay a wordchar so `user@host` tokenizes as one token, not
+        # `user`, `@`, `host` -- _extract_ssh_payload_binaries() below assumes the
+        # ssh target is a single token and drops exactly one token to reach the
+        # remote payload. Splitting it into three left '@' misidentified as the
+        # payload's leading command and the real nested command (e.g. `useradd`)
+        # never inspected, both hiding a smuggled destructive command from the
+        # catastrophic/allowlist checks and wrongly rejecting legitimate approved
+        # `ssh user@host "..."` SOP steps as unauthorized.
+        lexer.wordchars += ":._-+=/@"
         lex_tokens = list(lexer)
     except Exception:
         lex_tokens = cleaned.split()
@@ -161,20 +169,39 @@ def _extract_ssh_payload_binaries(remainder: list[str], _depth: int = 0) -> set[
 
 CATASTROPHIC_DESTRUCTIVE_PATTERNS = [
     # System Power State / Shutdown / Reboot / Halting
+    # NOTE: shutdown/poweroff/reboot/halt/mkfs are deliberately NOT matched here via
+    # plain re.search — that made `journalctl -u systemd-halt.service` or `grep -i
+    # shutdown /var/log/syslog` false-positive as catastrophic. They're checked by
+    # _first_token_catastrophic_check() below instead, which only flags them when
+    # actually invoked as a clause's leading command.
     (r"\binit\s+[06]\b", "System Halt / Reboot init transition"),
     (r"\btelinit\s+[06]\b", "System Halt / Reboot telinit transition"),
-    (r"\b(shutdown|poweroff|reboot|halt)\b", "Host Power State Termination / Reboot command"),
     (r"\bsystemctl\s+(poweroff|reboot|halt|rescue|emergency)\b", "Systemd System-Level Power/Rescue state change"),
-    
+
     # Destructive Filesystem Deletion / Wiping
+    # NOTE: `rm -rf`/`chmod -R 777` catastrophic scope (flag-splitting like `-r -f` or
+    # `--recursive --force`, and descendant paths like `/etc/nginx`) is handled by
+    # _first_token_catastrophic_check() below — these regexes only catch the
+    # contiguous-flag, exact-top-level-dir case as a cheap first pass.
     (r"\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+(?:/|/\*|/bin|/sbin|/boot|/etc|/lib|/lib64|/usr|/var|/root|/home)(?:\s|$)", "Root/System Directory Recursive Erasure (rm -rf)"),
     (r"\brm\s+-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*\s+--no-preserve-root\b", "Unconstrained Root Filesystem Erasure"),
-    (r"\bmkfs(?:\.[a-zA-Z0-9_-]+)?\b", "Filesystem Formatting (mkfs)"),
     (r"\b(wipefs|fdisk|parted|gdisk|sfdisk)\b", "Disk Partition Table Manipulation / Wiping"),
     (r"\bdd\s+.*(?:of=/dev/(?:sd[a-zA-Z0-9]+|nvme[a-zA-Z0-9]+|vd[a-zA-Z0-9]+|hd[a-zA-Z0-9]+|mmcblk[a-zA-Z0-9]+|null|zero|mem|kmem|port))\b", "Raw Block Device Bit-Level Overwrite (dd)"),
-    
+
+    # Download-and-Execute Remote Code Execution
+    (r"\b(curl|wget)\b[^|;&\n]*\|\s*(sudo\s+)?(bash|sh|zsh|dash|ksh)\b", "Download-and-Execute Remote Code Execution Pattern (curl/wget | shell)"),
+
+    # Kubernetes / Container Workload Destruction
+    (r"\bkubectl\s+delete\b(?!.*--dry-run)", "Kubernetes Resource Deletion (kubectl delete)"),
+    (r"\bkubectl\s+drain\b", "Kubernetes Node Drain (workload eviction)"),
+    (r"\bkubectl\s+scale\b[^\n]*--replicas[=\s]+0\b", "Kubernetes Deployment Scale-to-Zero"),
+    (r"\bdocker\s+rm\s+(?:-[a-zA-Z]*f[a-zA-Z]*|--force)\b", "Docker Forced Container Removal"),
+    (r"\bdocker\s+system\s+prune\b", "Docker System-Wide Prune (mass resource deletion)"),
+    (r"\bdocker\s+volume\s+prune\b", "Docker Volume Prune (data loss)"),
+
     # Fork bombs & System Freezes
     (r":\(\)\s*\{\s*:\|:&\s*\};:", "Bash Fork Bomb DoS exploit"),
+    (r"\b(\w+)\s*\(\)\s*\{\s*\1(?:\s*\|\s*\1)+\s*&\s*\};\s*\1\b", "Bash Fork Bomb DoS exploit (renamed function)"),
     
     # Raw Block Device & Kernel Stream redirection
     (r">\s*/dev/(?:sda|sdb|sdc|sdd|nvme[0-9]+|vda|vdb|kmem|mem|port)\b", "Raw Disk/Memory Device Stream Overwrite"),
@@ -194,8 +221,10 @@ CATASTROPHIC_DESTRUCTIVE_PATTERNS = [
 
     # Privilege Escalation & Identity Store Tampering
     (r">\s*/etc/(?:passwd|shadow|gshadow|sudoers(?!\.d/|/))\b", "Direct Critical Credential/Sudoers File Overwrite"),
+    # NOTE: `chmod -R 777/000` flag-splitting (`--recursive`) and descendant-path
+    # scope is handled by _first_token_catastrophic_check() below, same as rm -rf.
     (r"\bchmod\s+-[a-zA-Z]*R\s+(?:777|000)(?:\s+(?:/|\S+))", "Broad Recursive Root/System Permission Alteration (chmod -R 777/000)"),
-    (r"\bchmod\s+[uag]*\+s\s+/(?:bin|sbin|usr/bin)/(?:bash|sh|zsh|dash|python\d*|perl|ruby|find|vim|nano|curl|wget)\b", "Arbitrary SUID Shell/Interpreter Binary Privilege Escalation"),
+    (r"\bchmod\s+[uag]*\+s\s+/(?:bin|sbin|usr/bin)/(?:bash|sh|zsh|dash|python\d*|perl|ruby|find|vim|nano|curl|wget|env|awk|less|more|tar|gdb)\b", "Arbitrary SUID Shell/Interpreter Binary Privilege Escalation"),
     (r"\b(insmod|rmmod|modprobe\s+-r)\b", "Direct Kernel Module Insertion/Removal"),
 
     # Critical Log Erasure & Defense Cover-up
@@ -216,6 +245,94 @@ CATASTROPHIC_DESTRUCTIVE_PATTERNS = [
     (r"\baz\s+lock\s+delete\b", "Azure Resource Protection Lock Stripping (az lock delete)"),
 ]
 
+_PROTECTED_TOP_DIRS = {"bin", "sbin", "boot", "etc", "lib", "lib64", "usr", "var", "root", "home"}
+_POWER_STATE_BINS = {"shutdown", "poweroff", "reboot", "halt"}
+
+
+def _split_clauses(cleaned: str) -> list[list[str]]:
+    """Same clause-splitting strategy as extract_invoked_binaries: break on &&/||/;/\\n/|
+    while respecting quotes, so each clause can be inspected as its own command."""
+    try:
+        lexer = shlex.shlex(cleaned, posix=True, punctuation_chars="|&;\n()")
+        lexer.wordchars += ":._-+=/*"
+        tokens = list(lexer)
+    except Exception:
+        tokens = cleaned.split()
+    clauses, current = [], []
+    for tok in tokens:
+        if tok in ["&&", "||", ";", "\n", "|", "&", "(", ")"]:
+            if current:
+                clauses.append(current)
+                current = []
+        else:
+            current.append(tok)
+    if current:
+        clauses.append(current)
+    return clauses
+
+
+def _first_token_catastrophic_check(cleaned: str) -> tuple[bool, str]:
+    """
+    Token-aware checks that a single contiguous-flag regex can't express correctly:
+
+    - `rm`/`chmod` catastrophic scope: the regexes above only match a single
+      contiguous flag cluster (`-rf`) and an exact top-level directory (`/etc`),
+      so `rm -r -f /`, `rm --recursive --force /`, and `rm -rf /etc/nginx` (a
+      protected dir's descendant) all silently pass. This checks flags in any
+      form/order and any path under a protected top-level directory.
+    - `shutdown`/`poweroff`/`reboot`/`halt`: matched via `\\b(...)\\b` above, these
+      false-positive on `journalctl -u systemd-halt.service` or `grep -i shutdown
+      /var/log/syslog`. Only flag them when actually invoked as a clause's leading
+      command.
+    """
+    for clause in _split_clauses(cleaned):
+        if not clause:
+            continue
+        base = clause[0].strip("'\"").split("/")[-1].lower()
+        args = clause[1:]
+
+        if base in _POWER_STATE_BINS:
+            return True, "Host Power State Termination / Reboot command"
+        if base == "mkfs" or base.startswith("mkfs."):
+            return True, "Filesystem Formatting (mkfs)"
+
+        if base not in ("rm", "chmod"):
+            continue
+
+        def _flag_present(names_short, char):
+            for a in args:
+                if a in names_short:
+                    return True
+                if a.startswith("-") and not a.startswith("--") and char in a[1:].lower():
+                    return True
+            return False
+
+        if base == "rm":
+            has_recursive = _flag_present({"-r", "-R", "--recursive"}, "r")
+            has_force = _flag_present({"-f", "--force"}, "f")
+            if not (has_recursive and has_force):
+                continue
+        else:  # chmod
+            has_recursive = _flag_present({"-R", "--recursive"}, "r")
+            is_broad = any(a in ("777", "000") for a in args)
+            if not (has_recursive and is_broad):
+                continue
+
+        for a in args:
+            path = a.strip("'\"")
+            if path.startswith("-"):
+                continue
+            if path in ("/", "--no-preserve-root"):
+                action = "Recursive Erasure" if base == "rm" else "Permission Alteration"
+                return True, f"Root/System Directory {action} ({base} on '/')"
+            if path.startswith("/"):
+                segs = [s for s in path.split("/") if s]
+                if segs and segs[0].lower() in _PROTECTED_TOP_DIRS:
+                    action = "Recursive Erasure" if base == "rm" else "Permission Alteration"
+                    return True, f"Protected Directory {action} ({base} on '{path}')"
+    return False, ""
+
+
 def check_catastrophic_destructive_command(cmd_str: str) -> tuple[bool, str]:
     """
     Evaluates a shell command against hard-coded catastrophic safety patterns.
@@ -229,6 +346,9 @@ def check_catastrophic_destructive_command(cmd_str: str) -> tuple[bool, str]:
     for pattern, reason in CATASTROPHIC_DESTRUCTIVE_PATTERNS:
         if re.search(pattern, cleaned, re.IGNORECASE):
             return True, reason
+    is_cat, reason = _first_token_catastrophic_check(cleaned)
+    if is_cat:
+        return True, reason
     return False, ""
 
 def is_allowed_command_adaptation(c_str: str, approved: list[str], is_human_authorized: bool = False) -> tuple[bool, set[str]]:
@@ -248,11 +368,18 @@ def is_allowed_command_adaptation(c_str: str, approved: list[str], is_human_auth
         if not is_human_authorized:
             return False, {f"FORBIDDEN_DESTRUCTIVE_COMMAND_REQUIRES_HUMAN_APPROVAL ({cat_reason})"}
         
-        # If human authorized, verify that the invoked binary/command was explicitly present in approved commands
+        # If human authorized, require the executed command to match an approved
+        # command's literal text (whitespace-normalized) exactly. A binary-subset
+        # check was used here previously, but that authorized ANY command sharing
+        # invoked binaries with an approved one regardless of arguments -- e.g. an
+        # approved `rm -rf /var/log/app/*.log` would also authorize `rm -rf /`
+        # (both reduce to invoked-binary-set {rm}). Destructive commands are exactly
+        # the class where "adapt loosely" must not apply: if the agent needs a
+        # different destructive command than what a human actually approved, it must
+        # be re-submitted for approval, not silently authorized by binary overlap.
         c_clean = " ".join(c_str.strip().strip("'\"").split())
         matched_in_approved = any(
-            c_clean == " ".join(ac.strip().strip("'\"").split()) or 
-            extract_invoked_binaries(c_clean).issubset(extract_invoked_binaries(ac))
+            c_clean == " ".join(ac.strip().strip("'\"").split())
             for ac in approved
         )
         if not matched_in_approved:

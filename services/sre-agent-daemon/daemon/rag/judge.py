@@ -78,11 +78,20 @@ def verify_rag_match_intent_with_llm(short_desc, desc, sop_number, sop_title, so
     sop_tokens = set(re.findall(r'[a-zA-Z0-9_\-]+', _sop_text_low))
     meaningful_overlap = [t for t in ticket_tokens if t in sop_tokens and len(t) > 3 and t not in {"with", "that", "this", "from", "have", "using", "please", "into"}]
 
-    # Domain specific essential keyword anchors
-    domain_anchors = ["tag", "tags", "useradd", "usermod", "passwd", "kubectl", "systemctl", "restart", "azure", "az", "group", "pod", "node", "db2", "mount", "pv", "pvc"]
+    # Domain specific essential keyword anchors. This is the sole active gate during
+    # an LLM provider outage for most real candidates (idx>0 or score<0.90, i.e.
+    # anything that reaches this fallback at all) -- "restart", "group", "node", and
+    # "mount" were previously included but are generic ops vocabulary with near-zero
+    # discriminative power (e.g. a "restart the wrong service" ticket sharing only
+    # "restart" with an unrelated SOP would approve). Removed; the remaining anchors
+    # are all domain-specific enough to actually mean something when shared.
+    domain_anchors = ["tag", "tags", "useradd", "usermod", "passwd", "kubectl", "systemctl", "azure", "az", "pod", "db2", "pv", "pvc"]
     matched_anchors = [a for a in domain_anchors if a in ticket_tokens and a in sop_tokens]
 
-    if len(matched_anchors) >= 1 or len(meaningful_overlap) >= 3:
+    # Raised from >=3 to >=4: 3 shared 4+ character words between a ticket and any
+    # moderately verbose SOP title/commands is easy to hit by chance and isn't
+    # strong enough evidence to approve fail-open during an outage.
+    if len(matched_anchors) >= 1 or len(meaningful_overlap) >= 4:
         logger.info(f"⚖️ Active Judge Decision for [{sop_number}]: Approved via deterministic domain anchor match: {matched_anchors or meaningful_overlap[:4]}")
         return True, f"Judge Decision: Verified domain entity alignment ({', '.join(matched_anchors or meaningful_overlap[:3])})."
 

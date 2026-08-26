@@ -624,6 +624,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         resultData = await callApi(`/api/v1/knowledge/articles/${args?.articleId}`, 'GET');
         break;
 
+      // ServiceNow (Internal) -- proxies to the JWT-protected backend routes in
+      // apps/backend/src/modules/servicenow/servicenow-internal.controller.ts.
+      // Previously these 4 tools were declared above (ListTools handler) with no
+      // corresponding case here, so calling any of them fell through to
+      // `default: throw new Error('Unknown MCP Tool')`.
+      case 'servicenow_fetch_queue': {
+        const limit = args?.limit ? `?limit=${args.limit}` : '';
+        resultData = await callApi(`/api/v1/servicenow/queue${limit}`, 'GET');
+        break;
+      }
+      case 'servicenow_update_incident': {
+        const { sysId, ...body } = args as any;
+        resultData = await callApi(`/api/v1/servicenow/incidents/${sysId}`, 'PATCH', body);
+        break;
+      }
+      case 'servicenow_add_work_note': {
+        const { sysId, workNote, author } = args as any;
+        resultData = await callApi(`/api/v1/servicenow/incidents/${sysId}/work-notes`, 'POST', { workNote, author });
+        break;
+      }
+      case 'servicenow_get_ci_details': {
+        const { ciName } = args as any;
+        resultData = await callApi(`/api/v1/servicenow/cmdb/${encodeURIComponent(ciName)}`, 'GET');
+        break;
+      }
+
       default:
         throw new Error(`Unknown MCP Tool: ${name}`);
     }

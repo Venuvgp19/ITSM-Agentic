@@ -4,6 +4,7 @@ from ..config import logger
 from ..llm import invoke_llm_with_fallback as default_invoke_llm
 from ..ssh.session import PersistentSSHSession
 from ..session_state import session_state as default_session_state
+from ..safety.validator import check_catastrophic_destructive_command
 
 def run_read_only_diagnostic_react_loop(
     ip, user, password, short_desc, desc, number, ci_name,
@@ -74,13 +75,28 @@ def run_read_only_diagnostic_react_loop(
     max_turns = 3
     turn = 0
 
+    # This loop's contract is stricter than "not catastrophic" -- it's "read-only,
+    # period," so mutating-but-not-catastrophic commands (systemctl restart, kubectl
+    # delete a single pod, docker restart) must still be blocked even though they'd
+    # pass check_catastrophic_destructive_command. This list stays intentionally
+    # broader/more restrictive than validator.py's blacklist for that reason; the
+    # canonical catastrophic check below is an additional net, not a replacement,
+    # since it alone previously left kubectl delete/exec, docker rm/stop, az delete,
+    # SQL DROP, and crontab -r unblocked here despite the system prompt above
+    # explicitly claiming "ABSOLUTELY NO kubectl delete".
     forbidden_patterns = [
         r"\brm\b", r"\buserdel\b", r"\buseradd\b", r"\busermod\b", r"\bgroupdel\b",
-        r"\bsystemctl\s+(restart|stop|disable|mask)", r"\bservice\s+\w+\s+(restart|stop)",
+        r"\bsystemctl\s+(restart|start|stop|disable|mask|enable)", r"\bservice\s+\w+\s+(restart|start|stop)",
         r"\bkill\b", r"\bpkill\b", r"\bkillall\b", r"\breboot\b", r"\bshutdown\b",
         r"\bchmod\b", r"\bchown\b", r"\bchgrp\b", r"\btruncate\b", r"\bdd\b",
         r"\biptables\s+-F", r"\bufw\s+disable", r"\bsed\s+-i",
-        r">\s*/(?!dev/null)", r">\s*[a-zA-Z0-9_\.]"
+        r">\s*/(?!dev/null)", r">\s*[a-zA-Z0-9_\.]",
+        r"\bkubectl\s+(delete|scale|exec|apply|patch|drain|cordon|edit|replace|rollout\s+restart)\b",
+        r"\bdocker\s+(rm|stop|kill|restart|pause)\b",
+        r"\bpodman\s+(rm|stop|kill|restart|pause)\b",
+        r"\baz\s+\S+\s+delete\b", r"\baz\s+\S+\s+deallocate\b",
+        r"\bDROP\s+(TABLE|DATABASE)\b", r"\bTRUNCATE\s+TABLE\b", r"\bDELETE\s+FROM\b",
+        r"\bcrontab\s+-r\b", r"\bmv\b", r"\bcp\s+(?!.*-n\b)",
     ]
 
     session = session_factory(ip, user, password)
@@ -115,10 +131,12 @@ def run_read_only_diagnostic_react_loop(
                             except:
                                 cmd_to_run = ""
                             
-                            is_forbidden = any(re.search(pat, cmd_to_run, re.IGNORECASE) for pat in forbidden_patterns)
+                            is_cat, cat_reason = check_catastrophic_destructive_command(cmd_to_run)
+                            is_forbidden = is_cat or any(re.search(pat, cmd_to_run, re.IGNORECASE) for pat in forbidden_patterns)
                             if is_forbidden:
-                                logger.warning(f"🛡️ READ-ONLY SAFETY BLOCK: Blocked mutating command '{cmd_to_run}' during Diagnostic Loop.")
-                                output_text = f"SECURITY ERROR: Command '{cmd_to_run}' blocked by Read-Only Diagnostic Guard. Only non-destructive diagnostic commands are allowed."
+                                block_reason = cat_reason or "mutating command not permitted in read-only diagnostics"
+                                logger.warning(f"🛡️ READ-ONLY SAFETY BLOCK: Blocked mutating command '{cmd_to_run}' during Diagnostic Loop ({block_reason}).")
+                                output_text = f"SECURITY ERROR: Command '{cmd_to_run}' blocked by Read-Only Diagnostic Guard ({block_reason}). Only non-destructive diagnostic commands are allowed."
                             else:
                                 logger.info(f"🛠️ Executing Read-Only Diagnostic Command: '{cmd_to_run}'")
                                 ok, output_text = session.exec_command(cmd_to_run)

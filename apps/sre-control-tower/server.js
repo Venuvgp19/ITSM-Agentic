@@ -409,7 +409,7 @@ app.post('/api/v1/agent/approvals/:id/reject', async (req, res) => {
     if (result.rowCount === 0) return res.status(404).json({ error: `Approval ${id} not found.` });
 
     const row = result.rows[0];
-    const reason = req.body.rejectionReason || 'Rejected by human operator policy.';
+    const reason = req.body.rejectionReason || req.body.reason || 'Rejected by human operator policy.';
     const rejector = req.body.rejectorName || 'System Admin';
 
     await pool.query(`
@@ -430,8 +430,8 @@ app.post('/api/v1/agent/approvals/:id/reject', async (req, res) => {
       row.summary || row.incident_title || 'Rejected Approval Request',
       row.agent_id || 'agent-control-tower',
       '🛡️ HITL Governance',
-      row.model || 'nvidia/nemotron-3.5-lightning-30b-a3b',
-      row.target_ci || 'Worker 1',
+      row.model || 'gemini-3.1-pro-preview',
+      row.target_ci || 'WorkerNode1HL',
       row.department || 'Governance',
       row.risk_level || 'HIGH',
       'REJECTED',
@@ -439,9 +439,55 @@ app.post('/api/v1/agent/approvals/:id/reject', async (req, res) => {
       0,
       rejector,
       `REJECTED: ${reason}`,
-      `Approval request was rejected by human operator with reason: ${reason}`,
+      `Approval request was rejected by human operator (${rejector}) with reason: ${reason}`,
       'Rejected by human operator policy.'
     ]);
+
+    // Synchronize sre_timeline table immediately for this incident
+    if (row.incident_id) {
+      try {
+        const tlRes = await pool.query(
+          `SELECT * FROM sre_timeline WHERE UPPER(incident_number) = $1 OR UPPER(id) = $1`,
+          [row.incident_id.toUpperCase()]
+        );
+        const rejectStep = {
+          id: `step-reject-${Date.now()}`,
+          name: '🛡️ Human-in-the-Loop Gate (Rejected)',
+          status: 'FAILED',
+          timestamp: new Date().toLocaleTimeString(),
+          details: `SOP Remediation was REJECTED by human operator (${rejector}). Reason: ${reason}`
+        };
+
+        if (tlRes.rowCount > 0) {
+          const tlRow = tlRes.rows[0];
+          let tlSteps = Array.isArray(tlRow.steps) ? tlRow.steps : [];
+          const gateStepIdx = tlSteps.findIndex(s => s.name && (s.name.includes('Human-in-the-Loop') || s.name.includes('HITL') || s.name.includes('Human Gate')));
+          if (gateStepIdx >= 0) {
+            tlSteps[gateStepIdx] = rejectStep;
+          } else {
+            tlSteps.push(rejectStep);
+          }
+          await pool.query(
+            `UPDATE sre_timeline SET status = 'REJECTED', end_time = NOW(), steps = $1 WHERE id = $2`,
+            [JSON.stringify(tlSteps), tlRow.id]
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO sre_timeline (id, incident_number, incident_title, target_ci, status, start_time, end_time, steps)
+             VALUES ($1, $2, $3, $4, 'REJECTED', NOW(), NOW(), $5)`,
+            [
+              `TL-${row.incident_id}`,
+              row.incident_id,
+              row.summary || row.incident_title || 'ITSM Incident Remediation',
+              row.target_ci || 'WorkerNode1HL',
+              JSON.stringify([rejectStep])
+            ]
+          );
+        }
+      } catch (tlErr) {
+        console.warn(`Failed to sync sre_timeline on rejection: ${tlErr.message}`);
+      }
+    }
 
     const reFetched = await pool.query(`SELECT * FROM sre_approvals WHERE id = $1`, [row.id]);
     const r = reFetched.rows[0];
@@ -680,16 +726,62 @@ app.post('/api/v1/agent/config', async (req, res) => {
 app.get('/api/v1/agent/timeline', async (req, res) => {
   try {
     const result = await pool.query(`SELECT * FROM sre_timeline ORDER BY start_time DESC LIMIT 50`);
-    const mapped = result.rows.map(row => ({
-      id: row.id,
-      incidentNumber: row.incident_number,
-      incidentTitle: row.incident_title,
-      targetCi: row.target_ci,
-      status: row.status,
-      startTime: row.start_time ? row.start_time.toISOString() : new Date().toISOString(),
-      endTime: row.end_time ? row.end_time.toISOString() : null,
-      steps: row.steps || []
-    }));
+    
+    // Cross-reference approvals table to ensure accurate status reflection
+    const approvalsRes = await pool.query(`SELECT incident_id, status, rejection_reason, approved_by FROM sre_approvals`);
+    const approvalsMap = new Map();
+    for (const a of approvalsRes.rows) {
+      if (a.incident_id) {
+        approvalsMap.set(a.incident_id.toUpperCase(), a);
+      }
+    }
+
+    const mapped = result.rows.map(row => {
+      const incKey = (row.incident_number || row.id || '').toUpperCase();
+      const appr = approvalsMap.get(incKey);
+      
+      let status = row.status;
+      let steps = Array.isArray(row.steps) ? [...row.steps] : [];
+
+      if (appr && appr.status === 'REJECTED') {
+        status = 'REJECTED';
+        const rejectMsg = `SOP Remediation was REJECTED by human operator. Reason: ${appr.rejection_reason || 'Rejected by operator policy.'}`;
+        let hitlFound = false;
+        steps = steps.map(s => {
+          if (s.name && (s.name.includes('Human-in-the-Loop') || s.name.includes('HITL') || s.name.includes('Human Gate'))) {
+            hitlFound = true;
+            return {
+              ...s,
+              name: '🛡️ Human-in-the-Loop Gate (Rejected)',
+              status: 'FAILED',
+              details: rejectMsg
+            };
+          }
+          return s;
+        });
+
+        if (!hitlFound) {
+          steps.push({
+            id: `step-reject-${Date.now()}`,
+            name: '🛡️ Human-in-the-Loop Gate (Rejected)',
+            status: 'FAILED',
+            timestamp: row.end_time ? new Date(row.end_time).toLocaleTimeString() : new Date().toLocaleTimeString(),
+            details: rejectMsg
+          });
+        }
+      }
+
+      return {
+        id: row.id,
+        incidentNumber: row.incident_number,
+        incidentTitle: row.incident_title,
+        targetCi: row.target_ci,
+        status: status,
+        startTime: row.start_time ? row.start_time.toISOString() : new Date().toISOString(),
+        endTime: row.end_time ? row.end_time.toISOString() : null,
+        steps: steps
+      };
+    });
     res.json(mapped);
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -16,6 +16,7 @@ class SessionStateManager:
         self._processed_new_incidents = set()
         self._processed_in_progress_incidents = set()
         self._unspecified_ci_incidents = set()
+        self._posted_sn_work_notes = set()
         self._host_execution_locks = defaultdict(threading.Lock)
         self._token_usage = {
             "calls": [],
@@ -35,6 +36,20 @@ class SessionStateManager:
     def clear_unspecified_ci(self, inc_id: str):
         with self._lock:
             self._unspecified_ci_incidents.discard(inc_id)
+
+    # --- ServiceNow work-note dedup (in-memory, not restart-safe) ---
+    # ServiceNow's work notes live in the append-only sys_journal_field table, not
+    # on the incident record itself, making a per-post existing-note check an
+    # awkward extra Table API round-trip. This in-memory set is the pragmatic
+    # substitute used by itsm/servicenow_client.py's add_work_note() -- unlike
+    # LOCAL_NESTJS mode's DB-backed dedup, this does not survive a daemon restart.
+    def has_posted_sn_work_note(self, dedup_key) -> bool:
+        with self._lock:
+            return dedup_key in self._posted_sn_work_notes
+
+    def mark_posted_sn_work_note(self, dedup_key):
+        with self._lock:
+            self._posted_sn_work_notes.add(dedup_key)
 
     # --- Incident Lifecycle & Execution Session Locking ---
     def is_locked(self, inc_id: str) -> bool:

@@ -136,7 +136,22 @@ def search_hybrid_kb(dense_query_text: str, lexical_tokens: list[str], kb_articl
     MAX_RRF = (0.6 / 60.0) + (0.4 / 60.0)
 
     hybrid_results = []
-    all_kb_dict = {art.get("number"): art for art in kb_articles}
+    # Build from scoped_articles (department-filtered), not the full kb_articles --
+    # BM25 candidates are already scoped_articles-only above, so scoring every
+    # off-department KB here too was wasted work (they score ~0 and never rank
+    # given current constants, but it's a latent risk if those are ever retuned).
+    # dense_hits_map can still legitimately contain off-department numbers: when the
+    # department-filtered ChromaDB query returns 0 hits, vector_db.search_kb() falls
+    # back to an unconstrained query (see vector_db.py's search_kb, ~line 182-188) --
+    # those numbers must stay resolvable here or that intentional fallback path would
+    # silently lose its results, so backfill from the full kb_articles for exactly
+    # the numbers dense search actually returned.
+    all_kb_dict = {art.get("number"): art for art in scoped_articles}
+    for num in dense_hits_map:
+        if num not in all_kb_dict:
+            fallback_art = next((art for art in kb_articles if art.get("number") == num), None)
+            if fallback_art:
+                all_kb_dict[num] = fallback_art
     all_numbers = set(list(dense_hits_map.keys()) + list(all_kb_dict.keys()))
 
     for num in all_numbers:
@@ -186,7 +201,20 @@ def sanitize_kb_title(title: str) -> str:
 
 def search_kb_without_embeddings(short_desc, desc, kb_articles):
     """
-    Direct RAG matching algorithm without external embedding APIs.
+    Direct RAG matching algorithm without external embedding APIs. Used only when
+    the primary hybrid search (dense + BM25) returns zero results -- e.g. ChromaDB
+    unavailable/empty. Every match here is a broad substring/keyword intent guess,
+    not a similarity score, so every returned candidate is tagged
+    "source": "keyword_fallback" and capped below 0.90: synthesizer.py's
+    `requires_judge` gate treats a single top candidate (idx==0) scoring >= 0.90 as
+    confident enough to skip the LLM RAG Judge entirely, which previously let these
+    hardcoded 0.975-0.99 "confidences" slide through unscrutinized on exactly the
+    ChromaDB-unavailable path where scrutiny matters most -- any ticket mentioning
+    "8080" or "web app" would auto-select the NexaCore recovery SOP at 0.99
+    confidence with zero LLM review. Capping the score plus the source tag
+    (belt-and-suspenders in case
+    the requires_judge formula changes later) forces every match from this function
+    through the judge before being trusted.
     """
     full_text = f"{short_desc} {desc}".lower()
     
@@ -208,12 +236,13 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
             user_kb = kb_articles[0]
             
         if user_kb:
-            logger.info(f"🎯 Embedding-Free Intent Match: User Account Creation detected -> Matched Master User Creation SOP [{user_kb.get('number')}] '{user_kb.get('title')}' (Score: 0.9800)")
+            logger.info(f"🎯 Embedding-Free Intent Match: User Account Creation detected -> Matched Master User Creation SOP [{user_kb.get('number')}] '{user_kb.get('title')}' (Score: 0.6500, keyword_fallback)")
             return [{
                 "number": user_kb.get("number"),
                 "title": user_kb.get("title"),
-                "score": 0.9800,
-                "article": user_kb
+                "score": 0.6500,
+                "article": user_kb,
+                "source": "keyword_fallback"
             }]
 
     # 1b. Intent Detection for User Deletion / Offboarding
@@ -228,8 +257,8 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
         if not delete_kb:
             delete_kb = next((a for a in kb_articles if "deletion" in a.get("title", "").lower() or "offboard" in a.get("title", "").lower()), None)
         if delete_kb:
-            logger.info(f"🎯 Embedding-Free Intent Match: User Deletion detected -> Matched SOP [{delete_kb.get('number')}] '{delete_kb.get('title')}' (Score: 0.9750)")
-            return [{"number": delete_kb.get("number"), "title": delete_kb.get("title"), "score": 0.9750, "article": delete_kb}]
+            logger.info(f"🎯 Embedding-Free Intent Match: User Deletion detected -> Matched SOP [{delete_kb.get('number')}] '{delete_kb.get('title')}' (Score: 0.6500, keyword_fallback)")
+            return [{"number": delete_kb.get("number"), "title": delete_kb.get("title"), "score": 0.6500, "article": delete_kb, "source": "keyword_fallback"}]
 
     # 1c. Intent Detection for Password Reset
     password_reset_patterns = [
@@ -242,8 +271,8 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
         if not pwd_kb:
             pwd_kb = next((a for a in kb_articles if "password" in a.get("title", "").lower() and "reset" in a.get("title", "").lower()), None)
         if pwd_kb:
-            logger.info(f"🎯 Embedding-Free Intent Match: Password Reset detected -> Matched SOP [{pwd_kb.get('number')}] '{pwd_kb.get('title')}' (Score: 0.9750)")
-            return [{"number": pwd_kb.get("number"), "title": pwd_kb.get("title"), "score": 0.9750, "article": pwd_kb}]
+            logger.info(f"🎯 Embedding-Free Intent Match: Password Reset detected -> Matched SOP [{pwd_kb.get('number')}] '{pwd_kb.get('title')}' (Score: 0.6500, keyword_fallback)")
+            return [{"number": pwd_kb.get("number"), "title": pwd_kb.get("title"), "score": 0.6500, "article": pwd_kb, "source": "keyword_fallback"}]
 
     # 1d. Intent Detection for Account Lock/Unlock
     lock_patterns = [
@@ -257,8 +286,8 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
         if not lock_kb:
             lock_kb = next((a for a in kb_articles if "lock" in a.get("title", "").lower() and "unlock" in a.get("title", "").lower()), None)
         if lock_kb:
-            logger.info(f"🎯 Embedding-Free Intent Match: Account Lock/Unlock detected -> Matched SOP [{lock_kb.get('number')}] '{lock_kb.get('title')}' (Score: 0.9750)")
-            return [{"number": lock_kb.get("number"), "title": lock_kb.get("title"), "score": 0.9750, "article": lock_kb}]
+            logger.info(f"🎯 Embedding-Free Intent Match: Account Lock/Unlock detected -> Matched SOP [{lock_kb.get('number')}] '{lock_kb.get('title')}' (Score: 0.6500, keyword_fallback)")
+            return [{"number": lock_kb.get("number"), "title": lock_kb.get("title"), "score": 0.6500, "article": lock_kb, "source": "keyword_fallback"}]
 
     # 1e. Intent Detection for User Modification (shell, groups, etc.)
     modify_patterns = [
@@ -272,8 +301,8 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
         if not modify_kb:
             modify_kb = next((a for a in kb_articles if "modification" in a.get("title", "").lower() or "modify" in a.get("title", "").lower()), None)
         if modify_kb:
-            logger.info(f"🎯 Embedding-Free Intent Match: User Modification detected -> Matched SOP [{modify_kb.get('number')}] '{modify_kb.get('title')}' (Score: 0.9750)")
-            return [{"number": modify_kb.get("number"), "title": modify_kb.get("title"), "score": 0.9750, "article": modify_kb}]
+            logger.info(f"🎯 Embedding-Free Intent Match: User Modification detected -> Matched SOP [{modify_kb.get('number')}] '{modify_kb.get('title')}' (Score: 0.6500, keyword_fallback)")
+            return [{"number": modify_kb.get("number"), "title": modify_kb.get("title"), "score": 0.6500, "article": modify_kb, "source": "keyword_fallback"}]
 
     # 1f. Intent Detection for User Creation + Specific Directory Access
     dir_access_patterns = [
@@ -285,8 +314,8 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     if is_dir_access and is_user_creation:
         user_kb = find_kb_by_capability(kb_articles, "linux.user.create")
         if user_kb:
-            logger.info(f"🎯 Embedding-Free Intent Match: User Creation + Directory Access detected -> Matched SOP [{user_kb.get('number')}] '{user_kb.get('title')}' (Score: 0.9850) [ACL MODE]")
-            return [{"number": user_kb.get("number"), "title": user_kb.get("title"), "score": 0.9850, "article": user_kb, "acl_mode": True}]
+            logger.info(f"🎯 Embedding-Free Intent Match: User Creation + Directory Access detected -> Matched SOP [{user_kb.get('number')}] '{user_kb.get('title')}' (Score: 0.6500, keyword_fallback) [ACL MODE]")
+            return [{"number": user_kb.get("number"), "title": user_kb.get("title"), "score": 0.6500, "article": user_kb, "acl_mode": True, "source": "keyword_fallback"}]
 
     # 2. Intent Detection for NexaCore Application / Port 8080 Issues
     nexacore_patterns = [
@@ -310,12 +339,13 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
             except Exception:
                 pass
         if nexacore_kb:
-            logger.info(f"🎯 Embedding-Free Intent Match: NexaCore/App-Down detected → Matched Master Recovery SOP [{nexacore_kb.get('number')}] '{nexacore_kb.get('title')}' (Score: 0.9900)")
+            logger.info(f"🎯 Embedding-Free Intent Match: NexaCore/App-Down detected → Matched Master Recovery SOP [{nexacore_kb.get('number')}] '{nexacore_kb.get('title')}' (Score: 0.6500, keyword_fallback)")
             return [{
                 "number": nexacore_kb.get("number"),
                 "title": nexacore_kb.get("title"),
-                "score": 0.9900,
-                "article": nexacore_kb
+                "score": 0.6500,
+                "article": nexacore_kb,
+                "source": "keyword_fallback"
             }]
 
     # 3. General Technical Keyword Overlap Matching
@@ -348,12 +378,13 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
                 pass
 
         if triage_sop:
-            logger.info(f"🎯 Embedding-Free Intent Match: CPU/Memory Pressure Alert detected → Matched Triage SOP [{triage_sop.get('number')}] '{triage_sop.get('title')}' (Score: 0.9900)")
+            logger.info(f"🎯 Embedding-Free Intent Match: CPU/Memory Pressure Alert detected → Matched Triage SOP [{triage_sop.get('number')}] '{triage_sop.get('title')}' (Score: 0.6500, keyword_fallback)")
             return [{
                 "number": triage_sop.get("number"),
                 "title":  triage_sop.get("title"),
-                "score":  0.9900,
-                "article": triage_sop
+                "score":  0.6500,
+                "article": triage_sop,
+                "source": "keyword_fallback"
             }]
 
     for art in kb_articles:
@@ -382,13 +413,18 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
             best_match = art
             
     if best_match and best_score >= 0.35:
-        mapped_score = max(0.78, min(0.98, best_score))
-        logger.info(f"🔎 Embedding-Free Keyword Match: [{best_match.get('number')}] - '{best_match.get('title')}' (Score: {mapped_score:.4f})")
+        # Capped below the requires_judge 0.90 threshold, same reasoning as every
+        # other return path in this function -- this is a Jaccard/keyword-overlap
+        # guess, not a real similarity score, so it must always pass through the
+        # LLM RAG Judge rather than being trusted directly.
+        mapped_score = max(0.50, min(0.65, best_score))
+        logger.info(f"🔎 Embedding-Free Keyword Match: [{best_match.get('number')}] - '{best_match.get('title')}' (Score: {mapped_score:.4f}, keyword_fallback)")
         return [{
             "number": best_match.get("number"),
             "title": best_match.get("title"),
             "score": mapped_score,
-            "article": best_match
+            "article": best_match,
+            "source": "keyword_fallback"
         }]
         
     return []

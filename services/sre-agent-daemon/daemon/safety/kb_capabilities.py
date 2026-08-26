@@ -15,8 +15,16 @@ through `get_capability_tags()` / `article_has_capability()` /
 literal string.
 """
 import json
+import logging
 import os
 import threading
+
+# stdlib logging only, not `from ..config import logger` -- this module is
+# deliberately import-free of the `daemon` package (see module docstring / the
+# importlib.util.spec_from_file_location loader in scripts/database/tag_kb_capabilities.py)
+# so it can be loaded standalone without triggering daemon/__init__.py's eager
+# ChromaDB/Postgres connections. A relative import here would break that.
+logger = logging.getLogger("kb_capabilities")
 
 _REGISTRY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rule_registry.json")
 _lock = threading.Lock()
@@ -61,6 +69,20 @@ def infer_capability_tags(article: dict, registry: dict = None) -> list[str]:
         if title_none and any(k in title for k in title_none):
             continue
         tags.append(tag)
+    if not tags:
+        # Silent before: a KB article whose title doesn't match a registered
+        # keyword phrase (e.g. "Revoke Access" instead of "offboarding"/
+        # "deprovisioning"/"deletion"/"remove user account") skipped ALL safety-rule
+        # enforcement for its SOP steps -- the {username} placeholder gate and the
+        # unrequested-sudo-stripping rule in rules.py -- with zero indication that
+        # classification had failed, making the gap invisible until something went
+        # wrong downstream. Pure observability change; enforcement behavior for
+        # tagged articles is unaffected.
+        logger.warning(
+            f"⚠️ No capability tags inferred for KB article "
+            f"'{article.get('number', '?')}' ('{article.get('title', '')}') -- "
+            f"safety rules (placeholder gate, sudo stripping) will NOT be enforced for this article's SOP steps."
+        )
     return tags
 
 

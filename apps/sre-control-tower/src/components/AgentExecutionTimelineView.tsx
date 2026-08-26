@@ -25,7 +25,7 @@ import {
 interface TimelineStep {
   id: string;
   name: string;
-  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'REJECTED';
   timestamp: string;
   details?: string;
 }
@@ -35,7 +35,7 @@ interface AgentExecution {
   incidentNumber: string;
   incidentTitle: string;
   targetCi: string;
-  status: 'RUNNING' | 'SUCCESS' | 'FAILED' | 'ESCALATED' | 'PENDING_APPROVAL';
+  status: 'RUNNING' | 'SUCCESS' | 'FAILED' | 'ESCALATED' | 'PENDING_APPROVAL' | 'REJECTED';
   startTime: string;
   endTime?: string;
   steps: TimelineStep[];
@@ -128,6 +128,12 @@ export function AgentExecutionTimelineView() {
             <CheckCircle2 className="w-3 h-3 text-emerald-400" /> RESOLVED
           </span>
         );
+      case 'REJECTED':
+        return (
+          <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-950/90 text-rose-300 border border-rose-500/60 shadow-sm shadow-rose-950/50 animate-pulse">
+            <XCircle className="w-3 h-3 text-rose-400" /> REJECTED
+          </span>
+        );
       case 'FAILED':
         return (
           <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-950/80 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-950/40">
@@ -165,9 +171,10 @@ export function AgentExecutionTimelineView() {
           </div>
         );
       case 'FAILED':
+      case 'REJECTED':
         return (
           <div className="w-7 h-7 rounded-xl bg-rose-950 border border-rose-500 flex items-center justify-center text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.3)]">
-            <AlertCircle className="w-3.5 h-3.5" />
+            <XCircle className="w-3.5 h-3.5" />
           </div>
         );
       case 'PENDING':
@@ -192,6 +199,7 @@ export function AgentExecutionTimelineView() {
         statusFilter === 'ALL' ||
         (statusFilter === 'RUNNING' && ex.status === 'RUNNING') ||
         (statusFilter === 'RESOLVED' && ex.status === 'SUCCESS') ||
+        (statusFilter === 'REJECTED' && (ex.status === 'REJECTED' || ex.status === 'FAILED')) ||
         (statusFilter === 'ESCALATED' && ex.status === 'ESCALATED') ||
         (statusFilter === 'HITL' && ex.status === 'PENDING_APPROVAL');
 
@@ -269,13 +277,15 @@ export function AgentExecutionTimelineView() {
             </div>
 
             <div className="flex flex-wrap gap-1">
-              {['ALL', 'RUNNING', 'RESOLVED', 'ESCALATED', 'HITL'].map((tab) => (
+              {['ALL', 'RUNNING', 'RESOLVED', 'REJECTED', 'ESCALATED', 'HITL'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setStatusFilter(tab)}
                   className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition cursor-pointer ${
                     statusFilter === tab
-                      ? 'bg-cyan-600 text-white shadow-sm'
+                      ? tab === 'REJECTED'
+                        ? 'bg-rose-600 text-white shadow-sm'
+                        : 'bg-cyan-600 text-white shadow-sm'
                       : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
                   }`}
                 >
@@ -367,14 +377,26 @@ export function AgentExecutionTimelineView() {
                         {getStepStatusIcon(step.status)}
                       </div>
 
-                      <div className="flex-1 lobe-glass rounded-xl p-3.5 border border-slate-800/80 space-y-2">
+                      <div className={`flex-1 lobe-glass rounded-xl p-3.5 border space-y-2 ${
+                        step.status === 'FAILED' || step.status === 'REJECTED' || (step.details && step.details.toLowerCase().includes('reject'))
+                          ? 'border-rose-500/50 bg-rose-950/20'
+                          : 'border-slate-800/80'
+                      }`}>
                         <div className="flex items-center justify-between gap-2">
-                          <div className="font-bold text-xs text-slate-200">{step.name}</div>
+                          <div className={`font-bold text-xs ${
+                            step.status === 'FAILED' || step.status === 'REJECTED' || (step.details && step.details.toLowerCase().includes('reject'))
+                              ? 'text-rose-300'
+                              : 'text-slate-200'
+                          }`}>{step.name}</div>
                           <span className="text-[10px] font-mono text-slate-500">{step.timestamp}</span>
                         </div>
 
                         {step.details && (
-                          <div className="bg-[#05070c] border border-slate-800/90 rounded-lg p-2.5 font-mono text-xs text-emerald-300 overflow-x-auto leading-relaxed">
+                          <div className={`border rounded-lg p-2.5 font-mono text-xs overflow-x-auto leading-relaxed ${
+                            step.status === 'FAILED' || step.status === 'REJECTED' || (step.details && step.details.toLowerCase().includes('reject'))
+                              ? 'bg-rose-950/60 border-rose-800 text-rose-200 shadow-sm shadow-rose-950/40'
+                              : 'bg-[#05070c] border-slate-800/90 text-emerald-300'
+                          }`}>
                             <code>{step.details}</code>
                           </div>
                         )}

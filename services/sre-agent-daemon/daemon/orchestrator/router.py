@@ -237,6 +237,24 @@ class ControlTowerAIRouter:
         trace = classification.get("thinkingTrace", "")
         prec_count = classification.get("historicalPrecedentsCount", 0)
 
+        # `confidence_threshold` was computed into the audit record's `autoAssigned`
+        # field but never actually gated anything below -- department/priority/state
+        # were PATCHed unconditionally regardless of confidence, so a 10%-confidence
+        # classification was applied identically to a 99%-confidence one. `department`
+        # feeds directly into evaluate_and_get_sop()'s department-scoped RAG search
+        # (hybrid_search.py), so a low-confidence misroute can search the wrong
+        # department's KB subset. Actually re-scoping the search on low confidence
+        # would need a schema change on the ITSM backend to carry a confidence flag
+        # through to the incident record (out of scope here); at minimum, make a
+        # low-confidence classification loudly visible in ops instead of silently
+        # indistinguishable from a confident one.
+        if conf < self.confidence_threshold:
+            logger.warning(
+                f"⚠️ [Agentic AI Router] LOW-CONFIDENCE classification for [{num}]: "
+                f"{conf}% < {self.confidence_threshold}% threshold -- routed to '{dept}' "
+                f"on a low-confidence guess. Reasoning: {reasoning}"
+            )
+
         from ..config import ITSM_BASE_URL
         import requests
 

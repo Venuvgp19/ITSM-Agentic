@@ -153,11 +153,29 @@ class PersistentSSHSession:
             self.ssh = None
 
 def execute_ssh_sop(ip, user, password, commands):
+    """
+    WARNING: this function performs NO catastrophic-command or SOP-authorization
+    checking beyond the single try/except guard below -- it has no call sites in
+    this codebase today (verified by repo-wide grep), but is exported publicly
+    from ssh/__init__.py and daemon/__init__.py as a normal API. Do not call this
+    with unvalidated commands: use daemon.react.remediation_loop.run_dynamic_react_loop
+    for any command list that hasn't already passed
+    daemon.safety.validator.is_allowed_command_adaptation. The check_catastrophic_
+    destructive_command guard here is defense-in-depth for a future caller that
+    skips that step, not a substitute for it -- it has no concept of human
+    authorization or an approved-commands allowlist.
+    """
+    from ..safety.validator import check_catastrophic_destructive_command
     session = PersistentSSHSession(ip, user, password)
     execution_log = ""
     is_success = True
     try:
         for cmd in commands:
+            is_cat, cat_reason = check_catastrophic_destructive_command(cmd)
+            if is_cat:
+                execution_log += f"BLOCKED (catastrophic command guard): {cmd} -- {cat_reason}\n"
+                is_success = False
+                break
             ok, out_log = session.exec_command(cmd)
             execution_log += out_log
             if not ok:

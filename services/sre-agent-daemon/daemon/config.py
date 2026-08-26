@@ -132,9 +132,14 @@ TOKEN_USAGE_SESSION = default_session_state.token_usage_dict
 ITSM_PROVIDER = os.getenv("ITSM_PROVIDER", "LOCAL_NESTJS").upper()  # LOCAL_NESTJS or SERVICENOW
 ITSM_BASE_URL = os.getenv("ITSM_BASE_URL", "http://localhost:4000/api/v1")
 GOVERNANCE_BASE_URL = os.getenv("GOVERNANCE_BASE_URL", "http://localhost:5173/api/v1/agent")
-SN_INSTANCE_URL = os.getenv("SN_INSTANCE_URL", "https://dev00000.service-now.com")
-SN_USERNAME = os.getenv("SN_USERNAME", "admin")
-SN_PASSWORD = os.getenv("SN_PASSWORD", "password")
+# Empty-string defaults (not a fake placeholder instance/credentials) so
+# ServiceNowClient._is_configured() fails closed when ITSM_PROVIDER=SERVICENOW is
+# selected without real SN_* values set, instead of silently attempting real HTTP
+# calls against a nonexistent host. These three are required env vars for
+# SERVICENOW mode -- verified as the only consumer of these three constants.
+SN_INSTANCE_URL = os.getenv("SN_INSTANCE_URL", "")
+SN_USERNAME = os.getenv("SN_USERNAME", "")
+SN_PASSWORD = os.getenv("SN_PASSWORD", "")
 GENAI_LAB_URL = os.getenv("GENAI_LAB_URL", "https://genailab.tcs.in/v1")
 GENAI_API_KEY = os.getenv("GENAI_API_KEY", "sk-0mLmGnF9P0tbG_jlZVYDoA")
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "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")

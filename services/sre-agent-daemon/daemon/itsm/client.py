@@ -14,6 +14,33 @@ from ..llm import get_embedding, build_kb_embed_text
 from ..rag.vector_db import ChromaVectorDB, vector_db as default_vector_db
 from ..rag.hybrid_search import sanitize_kb_title
 
+_BOILERPLATE_TITLE_RE = re.compile(
+    r'^(master sop:|reusable investigative standard operating procedure:|sop:)\s*',
+    re.IGNORECASE
+)
+
+
+def _strip_title_boilerplate(title: str) -> str:
+    """Repeatedly strips leading boilerplate phrases -- synthesized titles are
+    routinely stacked, e.g. "Master SOP: Reusable Investigative Standard Operating
+    Procedure: Standard Operating Procedure: <topic>", and `^...$`-anchored
+    re.sub() only matches at position 0 once per call, so a single non-looping sub()
+    would leave the second/third prefix in place."""
+    prev = None
+    current = title
+    while current != prev:
+        prev = current
+        current = _BOILERPLATE_TITLE_RE.sub('', current).strip()
+    return current
+
+
+def _steps_tokens(steps) -> set:
+    """Tokenizes a resolutionSteps list (or string) into a word set for dedup
+    comparison in save_new_kb_article_to_storage()."""
+    text = " ".join(steps) if isinstance(steps, list) else str(steps or "")
+    return set(t for t in re.findall(r'[a-z0-9]+', text.lower()) if len(t) > 3)
+
+
 DEPARTMENT_TEAM_MEMBERS = {
     "Unix": "Sarah Chen (Unix Team Lead)",
     "Network Ops": "Alex Rivera (Network Lead)",
@@ -54,6 +81,9 @@ def fetch_incident_queue(token):
     return []
 
 def fetch_kb_articles(token):
+    if ITSM_PROVIDER == "SERVICENOW":
+        return servicenow_client.fetch_kb_articles()
+
     headers = {"Authorization": f"Bearer {token}"}
     try:
         res = requests.get(f"{ITSM_BASE_URL}/knowledge/articles", headers=headers, timeout=5)
@@ -63,9 +93,9 @@ def fetch_kb_articles(token):
         logger.error(f"Error fetching KB articles: {e}")
     return []
 
-def add_work_note(token, incident_id, note_text, author="🤖 Unix Auto-Resolver Agent"):
+def add_work_note(token, incident_id, note_text, author="🤖 Unix Auto-Resolver Agent", session_state=None):
     if ITSM_PROVIDER == "SERVICENOW":
-        return servicenow_client.add_work_note(incident_id, note_text, author=author)
+        return servicenow_client.add_work_note(incident_id, note_text, author=author, session_state=session_state)
 
     headers = {"Authorization": f"Bearer {token}"}
     try:
@@ -95,6 +125,16 @@ def fetch_agent_approvals(token=None):
     Must request status=ALL: the endpoint defaults to PENDING-only when no status
     query param is given, which would hide APPROVED/REJECTED records the poller
     needs to detect a human decision and resume/abort execution.
+
+    INTENTIONALLY not ITSM_PROVIDER-aware: this and submit_agent_approval() always
+    route to GOVERNANCE_BASE_URL (the Control Tower) regardless of provider. The
+    HITL approval gate is this platform's own autonomy-governance concept, not an
+    ITSM record type ServiceNow natively models -- ServiceNow's nearest analogs
+    (sysapproval_approver / Flow Designer approvals) are tied to Change Request
+    records and would require the daemon to also create/manage SN Change Requests,
+    a scope increase with no functional benefit since the Control Tower UI is the
+    operator's actual approval surface in both modes. Same reasoning applies to
+    every function in itsm/dashboard.py (timeline/execution telemetry).
     """
     try:
         res = requests.get(f"{GOVERNANCE_BASE_URL}/approvals", params={"status": "ALL"}, timeout=5)
@@ -134,12 +174,18 @@ def update_incident_status(token, incident_id, state, resolution_code=None, reso
         res = requests.patch(f"{ITSM_BASE_URL}/incidents/{incident_id}/state", headers=headers, json=payload, timeout=5)
         if res.status_code not in [200, 201]:
             res = requests.patch(f"{ITSM_BASE_URL}/incidents/{incident_id}", headers=headers, json=payload, timeout=5)
-        
-        if state == "RESOLVED":
+
+        success = res.status_code in [200, 201]
+        # Only lock the incident as resolved once the PATCH actually succeeded --
+        # previously this fired unconditionally, so a failed PATCH (network blip,
+        # 4xx/5xx from the backend) still permanently marked the ticket resolved
+        # locally even though the real incident was left untouched (e.g. still
+        # IN_PROGRESS), locking it out of all future processing for no reason.
+        if state == "RESOLVED" and success:
             state_mgr.mark_resolved(incident_id)
             logger.info(f"🔒 Incident [{incident_id}] state saved as RESOLVED in PostgreSQL DB — locked from re-processing.")
-            
-        return res.status_code in [200, 201]
+
+        return success
     except Exception as e:
         logger.error(f"Failed to update status for {incident_id}: {e}")
         return False
@@ -148,64 +194,119 @@ def save_new_kb_article_to_storage(new_article_data, vdb=None):
     """
     Persists a dynamically generated SOP Knowledge Base Article directly into the Single Master Database via NestJS API.
     Only called AFTER the Resolver Agent successfully resolves the incident!
+
+    ServiceNow-mode write-back is deliberately deferred (not implemented): SN
+    requires a valid kb_knowledge_base reference to create a KB record, and its
+    kb_knowledge.text field is free-form HTML rather than this platform's
+    structured {symptoms, rootCause, resolutionSteps} shape -- see
+    servicenow_client.fetch_kb_articles()'s docstring for the read-side of this
+    same tradeoff. Synthesized SOPs in SERVICENOW mode still get generated and
+    used to resolve the current incident; they just don't persist back into
+    ServiceNow's KB table for future RAG matching yet.
     """
+    if ITSM_PROVIDER == "SERVICENOW":
+        logger.info(
+            f"ℹ️ ServiceNow-mode KB write-back is deferred (not implemented) -- synthesized SOP "
+            f"'{new_article_data.get('title', '')}' resolved this incident but was not persisted to a KB."
+        )
+        return None
+
     active_vdb = vdb or default_vector_db
     try:
         target_title = str(new_article_data.get("title", "")).strip().lower()
-        target_tokens = set(t for t in target_title.split() if len(t) > 3)
-        
+        # Strip shared boilerplate ("Master SOP: Reusable Investigative Standard
+        # Operating Procedure: ...") before tokenizing -- every synthesized title
+        # carries this prefix, which pads the overlap denominator and let two
+        # incidents about the SAME underlying task, phrased differently by the LLM
+        # (e.g. "Restart Nexacore Service" vs "Recover Nexacore Application After
+        # Crash"), fall under the 0.85 threshold and each get persisted as their own
+        # KB row instead of merging -- this is the direct cause of the near-duplicate
+        # "Master SOP" bloat observed in the KB (KB0000045, KB0000035, etc.).
+        target_title_core = _strip_title_boilerplate(target_title)
+        target_tokens = set(t for t in target_title_core.split() if len(t) > 3)
+        target_steps_tokens = _steps_tokens(new_article_data.get("resolutionSteps", []))
+
         if target_title:
             try:
                 existing_kbs = requests.get(f"{ITSM_BASE_URL}/knowledge/articles", timeout=5).json()
                 for kb in existing_kbs:
                     existing_title = str(kb.get("title", "")).strip().lower()
-                    
+
                     # 1. Exact Title Match
                     if existing_title == target_title:
                         logger.info(f"ℹ️ KB Article '{kb.get('number')}' already exists with identical title '{kb.get('title')}'. Skipping duplicate creation.")
                         return kb
-                    
-                    # 2. Fuzzy Token Overlap Check (>85% similarity)
-                    existing_tokens = set(t for t in existing_title.split() if len(t) > 3)
+
+                    # 2. Fuzzy Token Overlap Check: title-core similarity alone (>=0.85,
+                    # same bar as before but on the boilerplate-stripped title), OR a
+                    # weaker title match (>=0.60) corroborated by resolution-steps overlap
+                    # (>=0.60) -- catches "same task, different phrasing" since the actual
+                    # commands (systemctl restart nexacore, curl check on 8080, ...) overlap
+                    # heavily even when the LLM-generated titles don't.
+                    existing_title_core = _strip_title_boilerplate(existing_title)
+                    existing_tokens = set(t for t in existing_title_core.split() if len(t) > 3)
+                    title_similarity = 0.0
                     if target_tokens and existing_tokens:
                         overlap = len(target_tokens.intersection(existing_tokens))
-                        similarity = overlap / max(len(target_tokens), len(existing_tokens))
-                        if similarity >= 0.85:
-                            logger.info(f"ℹ️ KB Article '{kb.get('number')}' ('{kb.get('title')}') is a near-duplicate (similarity: {similarity:.2f}). Merging steps into existing KB...")
-                            existing_steps = kb.get("resolutionSteps", [])
-                            new_steps = new_article_data.get("resolutionSteps", [])
-                            merged_steps = list(dict.fromkeys(existing_steps + new_steps))
+                        title_similarity = overlap / max(len(target_tokens), len(existing_tokens))
 
-                            existing_symptoms = kb.get("symptoms", [])
-                            new_symptoms = new_article_data.get("symptoms", [])
-                            merged_symptoms = list(dict.fromkeys(existing_symptoms + new_symptoms))
-                            
-                            try:
-                                patch_res = requests.patch(
-                                    f"{ITSM_BASE_URL}/knowledge/articles/{kb.get('number')}",
-                                    json={"resolutionSteps": merged_steps, "symptoms": merged_symptoms},
-                                    timeout=5
-                                )
-                                if patch_res.status_code == 200:
-                                    logger.info(f"✅ Successfully merged new resolution steps and enriched symptoms into {kb.get('number')}")
-                                    updated_kb = patch_res.json()
-                                    try:
-                                        content_to_embed = build_kb_embed_text(
-                                            title=kb.get('title', ''),
-                                            summary=kb.get('summary', ''),
-                                            symptoms=merged_symptoms,
-                                            root_cause=kb.get('rootCause', '')
-                                        )
-                                        emb = get_embedding(content_to_embed, input_type="passage")
-                                        if emb and active_vdb:
-                                            active_vdb.add_kb_embedding(kb.get('number'), kb.get('number'), kb.get('title'), emb)
-                                            logger.info(f"⚡ Re-indexed vector embeddings for {kb.get('number')} in ChromaDB with enriched RAG coverage.")
-                                    except Exception as vec_err:
-                                        logger.warning(f"Failed to re-index vector embedding: {vec_err}")
-                                    return updated_kb
-                            except Exception as patch_err:
-                                logger.warning(f"Could not patch existing KB {kb.get('number')}: {patch_err}")
-                            return kb
+                    steps_similarity = 0.0
+                    existing_steps_tokens = _steps_tokens(kb.get("resolutionSteps", []))
+                    if target_steps_tokens and existing_steps_tokens:
+                        steps_overlap = len(target_steps_tokens.intersection(existing_steps_tokens))
+                        steps_similarity = steps_overlap / max(len(target_steps_tokens), len(existing_steps_tokens))
+
+                    # Title wording is free-form LLM prose and an unreliable signal on
+                    # its own ("Restart Nexacore Service" vs "Recover Nexacore
+                    # Application After Crash" -- title_similarity ~0.2 despite being
+                    # the same underlying task); resolutionSteps are concrete commands
+                    # and a far stronger duplicate signal, so a strong steps match alone
+                    # is sufficient, with a softer combined threshold for the case where
+                    # neither signal alone clears the bar but both partially agree.
+                    is_duplicate = (
+                        title_similarity >= 0.85
+                        or steps_similarity >= 0.70
+                        or (title_similarity >= 0.40 and steps_similarity >= 0.50)
+                    )
+                    if is_duplicate:
+                        logger.info(
+                            f"ℹ️ KB Article '{kb.get('number')}' ('{kb.get('title')}') is a near-duplicate "
+                            f"(title_sim={title_similarity:.2f}, steps_sim={steps_similarity:.2f}). Merging steps into existing KB..."
+                        )
+                        existing_steps = kb.get("resolutionSteps", [])
+                        new_steps = new_article_data.get("resolutionSteps", [])
+                        merged_steps = list(dict.fromkeys(existing_steps + new_steps))
+
+                        existing_symptoms = kb.get("symptoms", [])
+                        new_symptoms = new_article_data.get("symptoms", [])
+                        merged_symptoms = list(dict.fromkeys(existing_symptoms + new_symptoms))
+
+                        try:
+                            patch_res = requests.patch(
+                                f"{ITSM_BASE_URL}/knowledge/articles/{kb.get('number')}",
+                                json={"resolutionSteps": merged_steps, "symptoms": merged_symptoms},
+                                timeout=5
+                            )
+                            if patch_res.status_code == 200:
+                                logger.info(f"✅ Successfully merged new resolution steps and enriched symptoms into {kb.get('number')}")
+                                updated_kb = patch_res.json()
+                                try:
+                                    content_to_embed = build_kb_embed_text(
+                                        title=kb.get('title', ''),
+                                        summary=kb.get('summary', ''),
+                                        symptoms=merged_symptoms,
+                                        root_cause=kb.get('rootCause', '')
+                                    )
+                                    emb = get_embedding(content_to_embed, input_type="passage")
+                                    if emb and active_vdb:
+                                        active_vdb.add_kb_embedding(kb.get('number'), kb.get('number'), kb.get('title'), emb)
+                                        logger.info(f"⚡ Re-indexed vector embeddings for {kb.get('number')} in ChromaDB with enriched RAG coverage.")
+                                except Exception as vec_err:
+                                    logger.warning(f"Failed to re-index vector embedding: {vec_err}")
+                                return updated_kb
+                        except Exception as patch_err:
+                            logger.warning(f"Could not patch existing KB {kb.get('number')}: {patch_err}")
+                        return kb
             except Exception as check_err:
                 logger.warning(f"Error checking existing KBs for deduplication: {check_err}")
 
@@ -305,6 +406,25 @@ def fetch_ci_inventory():
     return inventory
 
 
+def _fetch_ci_inventory_from_servicenow():
+    """
+    ServiceNow-provider counterpart to fetch_ci_inventory(): enriches (not
+    replaces) CI_CREDENTIALS entries with live ip/os metadata from ServiceNow's
+    CMDB, keyed by the same CI names already present locally. Unlike
+    fetch_ci_inventory()'s NestJS CMDB (which can itself carry sshUser/sshPassword
+    in attributesJson and so contribute wholly new entries), ServiceNow's CMDB
+    never carries SSH credentials -- there's no complete-entry case here, so this
+    only ever overrides ip/os on names CI_CREDENTIALS already knows the
+    user/password for, rather than adding new incomplete (creds-less) entries.
+    """
+    enriched = {}
+    for name, local_info in CI_CREDENTIALS.items():
+        sn_info = servicenow_client.fetch_ci_details(name)
+        if sn_info and sn_info.get("ip"):
+            enriched[name] = {**local_info, "ip": sn_info["ip"], "os": sn_info.get("os") or local_info.get("os")}
+    return enriched
+
+
 def resolve_ci_credentials(incident):
     if not incident or not isinstance(incident, dict):
         return None, None
@@ -313,7 +433,10 @@ def resolve_ci_credentials(incident):
     # fallback -- see fetch_ci_inventory(). Falls back to CI_CREDENTIALS alone
     # if the backend/CMDB is unreachable, so a fresh checkout with no DB
     # access yet still resolves the well-known dev hosts.
-    ci_inventory = {**CI_CREDENTIALS, **fetch_ci_inventory()}
+    if ITSM_PROVIDER == "SERVICENOW":
+        ci_inventory = {**CI_CREDENTIALS, **_fetch_ci_inventory_from_servicenow()}
+    else:
+        ci_inventory = {**CI_CREDENTIALS, **fetch_ci_inventory()}
 
     # 1. Collect all possible CI candidate values from incident fields
     raw_candidates = [

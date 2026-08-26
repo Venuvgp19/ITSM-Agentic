@@ -1,4 +1,5 @@
 import re
+import shlex
 from ..config import logger
 from .kb_capabilities import load_registry, get_capability_tags
 
@@ -14,11 +15,18 @@ def _action_replace_sudoers_with_acl(commands: list, full_text: str, params: dic
     new_commands = []
     for c in commands:
         if "sudoers" in c.lower() or "visudo" in c.lower():
-            dir_match = re.search(r'(?:to|on|for)\s+(/\S+)', full_text)
+            # `full_text` is short_desc+desc from the incident ticket -- ticket-
+            # submitter-controlled if the ITSM system allows self-service submission.
+            # The path/username captures below are restricted to a safe charset
+            # (no `\S+`) so a metacharacter in the ticket text can't be captured into
+            # the match at all, and shlex.quote is applied as defense-in-depth on top
+            # of that restriction before splicing into the command string that later
+            # executes verbatim over SSH.
+            dir_match = re.search(r'(?:to|on|for)\s+(/[a-zA-Z0-9_\-/.]+)', full_text)
             target_dir = dir_match.group(1) if dir_match else "/etc"
             u_match = re.search(r'\buser\s+([a-zA-Z0-9_-]+)', full_text)
             u_extracted = u_match.group(1) if u_match else "user"
-            acl_cmd = f'setfacl -R -m u:{u_extracted}:rwx {target_dir} 2>&1 && echo ACL_SET_OK || echo ACL_SET_FAILED'
+            acl_cmd = f'setfacl -R -m u:{shlex.quote(u_extracted)}:rwx {shlex.quote(target_dir)} 2>&1 && echo ACL_SET_OK || echo ACL_SET_FAILED'
             new_commands.append(acl_cmd)
             logger.info(f"🔒 Safety Rule: Directory access requested, not full sudo. Replacing sudoers with ACL command for {target_dir}.")
         else:

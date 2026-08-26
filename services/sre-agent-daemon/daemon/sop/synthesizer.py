@@ -137,8 +137,16 @@ def evaluate_and_get_sop(
 
             next_cand_score = rag_results[idx + 1].get("score", 0.0) if idx + 1 < len(rag_results) else 0.0
             score_margin = cand_score - next_cand_score
-            # Strict Validation: ALWAYS invoke LLM Judge if falling back (idx > 0), score < 0.90, score margin < 0.10, or specialized domains
-            requires_judge = (idx > 0) or (cand_score < 0.90) or (score_margin < 0.10) or _ticket_is_k8s or _ticket_is_db2
+            # Strict Validation: ALWAYS invoke LLM Judge if falling back (idx > 0), score < 0.90,
+            # score margin < 0.10, specialized domains, or the candidate came from the
+            # embedding-free keyword-intent fallback (hybrid_search.py's
+            # search_kb_without_embeddings, only used when the primary dense+BM25 search
+            # returns zero results -- e.g. ChromaDB unavailable). That path's "confidences"
+            # are broad substring guesses, not similarity scores; hybrid_search.py already
+            # caps them below 0.90 so they'd trip the score check above too, but checking the
+            # source tag directly here means this stays correct even if that threshold ever
+            # changes independently of this one.
+            requires_judge = (idx > 0) or (cand_score < 0.90) or (score_margin < 0.10) or _ticket_is_k8s or _ticket_is_db2 or candidate.get("source") == "keyword_fallback"
             if requires_judge:
                 _cand_cmds = cand_art.get("resolutionSteps", cand_art.get("steps", cand_art.get("commands", [])))
                 _judge_approved, _judge_reason = verify_rag_match_intent_with_llm(

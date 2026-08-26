@@ -1,9 +1,15 @@
 """
 Shared last-resort cleanup for LLM-hallucinated sudoers.d NOPASSWD command specs.
 
-Previously duplicated verbatim (including a literal-hostname stopword list)
-in both daemon/safety/rules.py and daemon/sop/synthesizer.py's deterministic
-fallback extractor. Both call sites now use this single implementation.
+`clean_sudo_command_spec` is the one actually wired in today, at
+daemon/safety/rules.py and daemon/sop/synthesizer.py's deterministic fallback
+extractor. `sanitize_sudoers_command` below is NOT currently called from either
+(or anywhere else in the daemon) -- it's kept for callers that want the full
+"parse a sudoers.d write command, sanitize its NOPASSWD spec, reassemble" flow
+in one call rather than doing the parsing/reassembly themselves. If you wire it
+in, keep using shlex.quote() on both captured groups as this file already
+does -- the raw regex-captured username/spec are ticket/LLM-derived text, not
+trusted, and get spliced into a command that runs verbatim over SSH.
 
 This is a NET, not the fix. The actual fix is instructing the SOP
 parameterization LLM prompt to emit only a literal command path for the
@@ -13,6 +19,7 @@ this stopword list, strengthen that prompt instruction rather than extending
 the list -- see rule_registry.json's `sudoers_sanitizer._readme`.
 """
 import re
+import shlex
 from .kb_capabilities import load_registry
 
 
@@ -46,9 +53,16 @@ def sanitize_sudoers_command(cmd: str, registry: dict = None) -> str:
     if not match:
         return cmd
     u_name = match.group(1)
+    if not re.match(r'^[a-zA-Z0-9_-]+$', u_name):
+        # Captured username contains something outside a safe sudoers-file-name
+        # charset (the source regex's `[^"'\s]+` is permissive) -- refuse rather
+        # than splice an unvalidated value into a command that runs over SSH.
+        return 'echo "GATE_ERROR: sudoers username failed safety validation." && exit 1'
     raw_spec = match.group(2).strip()
     clean_spec = re.split(r'[\.\;\n,]', raw_spec)[0].strip()
     final_spec = clean_sudo_command_spec(clean_spec, registry)
     if not final_spec:
         final_spec = "ALL"
-    return f'echo "{u_name} ALL=(ALL) NOPASSWD: {final_spec}" > "/etc/sudoers.d/99-{u_name}" && chmod 440 "/etc/sudoers.d/99-{u_name}"'
+    sudoers_file = shlex.quote(f"/etc/sudoers.d/99-{u_name}")
+    entry = shlex.quote(f"{u_name} ALL=(ALL) NOPASSWD: {final_spec}")
+    return f'echo {entry} > {sudoers_file} && chmod 440 {sudoers_file}'
