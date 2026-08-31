@@ -38,7 +38,7 @@ export class KnowledgeService {
     private readonly configService: ConfigService
   ) {
     this.liteLlmBaseUrl = this.configService?.get<string>('LITELLM_BASE_URL') || 'https://genailab.tcs.in/v1';
-    this.liteLlmApiKey = 'sk-taPdt4_aNdzmFCX3nP0GiA';
+    this.liteLlmApiKey = this.configService?.get<string>('LITELLM_API_KEY') || '';
     this.llamaModel = this.configService?.get<string>('LITELLM_LLAMA_MODEL') || 'azure/genailab-maas-gpt-4.1-mini';
   }
 

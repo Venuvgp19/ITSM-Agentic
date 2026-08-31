@@ -1,0 +1,145 @@
+{
+  "name": "ITSM-Agentic: Periodic CPU & Memory Incident Generator (WorkerNode1HL & Control Plane)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "1e7a4b08-8e62-4211-9a7c-0e7d77b81201",
+      "name": "Schedule Trigger (Every 5 Mins)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// WorkerNode1HL only -- control plane scenarios removed per request:\nconst incidentList = [\n  {\n    text: \"CPU Utilization on Workernode1HL is 100%\",\n    targetCi: \"WorkerNode1HL\",\n    priority: \"P4\",\n    impact: \"TEAM\",\n    urgency: \"LOW\"\n  },\n  {\n    text: \"Memory utilization on Workernode1HL is 100%\",\n    targetCi: \"WorkerNode1HL\",\n    priority: \"P4\",\n    impact: \"TEAM\",\n    urgency: \"LOW\"\n  }\n];\n\n// Rotate sequentially every execution based on timestamp interval\nconst index = Math.floor(Date.now() / (5 * 60 * 1000)) % incidentList.length;\nconst selected = incidentList[index];\n\nreturn [{\n  json: {\n    shortDescription: selected.text,\n    description: selected.text,\n    configurationItem: selected.targetCi,\n    priority: selected.priority,\n    impact: selected.impact,\n    urgency: selected.urgency,\n    callerName: \"n8n Telemetry Engine\",\n    generatedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "3b29c5a1-7d31-419b-a62e-9d2a4f6e8902",
+      "name": "Build Incident Payload (P3 & P4 Scenarios)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:4000/api/v1/incidents",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "shortDescription",
+              "value": "={{ $json.shortDescription }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $json.description }}"
+            },
+            {
+              "name": "configurationItem",
+              "value": "={{ $json.configurationItem }}"
+            },
+            {
+              "name": "priority",
+              "value": "={{ $json.priority }}"
+            },
+            {
+              "name": "impact",
+              "value": "={{ $json.impact }}"
+            },
+            {
+              "name": "urgency",
+              "value": "={{ $json.urgency }}"
+            },
+            {
+              "name": "caller",
+              "value": "={{ $json.callerName }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "5f81a7d2-1c49-4820-b3e5-0e9b11c34a03",
+      "name": "Create Incident (ITSM Backend API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nconst body = res.body || res;\n\nreturn [{\n  json: {\n    status: 'SUCCESS',\n    incidentNumber: body.number || body.id,\n    title: body.shortDescription,\n    configurationItem: body.configurationItem || body.configurationItemName,\n    priority: body.priority,\n    state: body.state,\n    createdAt: body.createdAt || new Date().toISOString(),\n    message: `[n8n] Successfully created ${body.priority} incident ${body.number || body.id}: \"${body.shortDescription}\" on ${body.configurationItem || body.configurationItemName}`\n  }\n}];"
+      },
+      "id": "7a94f3b8-6e12-4931-8f5b-1c8a22d45c04",
+      "name": "Format Incident Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Every 5 Mins)": {
+      "main": [
+        [
+          {
+            "node": "Build Incident Payload (P3 & P4 Scenarios)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Incident Payload (P3 & P4 Scenarios)": {
+      "main": [
+        [
+          {
+            "node": "Create Incident (ITSM Backend API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Incident (ITSM Backend API)": {
+      "main": [
+        [
+          {
+            "node": "Format Incident Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

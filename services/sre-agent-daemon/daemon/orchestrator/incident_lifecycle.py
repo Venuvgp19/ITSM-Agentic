@@ -309,24 +309,48 @@ def _solve_in_progress_incident_internal(
                 decision_log.append(f"Memory={mem_pct:.2f}% <= 90% → No Memory action")
             
             if not commands_to_run:
-                # Previously resolved the ticket immediately here -- zero SOP
-                # matching, zero LLM is_healthy evaluation, zero
-                # verify_post_remediation_status call. Triggered by loose whole-word
-                # keyword matching on ticket text (cpu/memory/ram/oom/heap/swap/
-                # "high load"/etc.), so a ticket like "increase memory limit for app
-                # config" would false-positive close on a single momentary
-                # utilization sample without the requested action ever happening.
-                # Falling through into the standard SOP pipeline below instead means
-                # this now goes through the same LLM evaluation + post-remediation
-                # guard as every other incident before being marked resolved --
-                # strictly more scrutiny, not less; the only user-visible change is
-                # slightly higher latency for what were previously instant closes.
-                logger.info(f"✅ Resource check within threshold (CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}%) — proceeding through standard verification pipeline instead of auto-resolving directly.")
-                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "📊 Autonomous Threshold Check", "SUCCESS", f"CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}% (both < 90%) — running standard verification before resolving.")
-                is_resource_alert_exceeded = True
-                sop_commands = ["uptime", "free -m", "ps aux --sort=-%cpu | head -n 10"]
-                decision_summary = f"CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}% within threshold"
-                logger.info(f"📋 Autonomous Decision: {decision_summary} — Matched Master System Performance Runbook")
+                # Reverted back to an immediate resolve: this branch only reaches
+                # here when is_cpu_alert/is_mem_alert already matched (the ticket
+                # text genuinely reads as a CPU/memory alert) AND the live-measured
+                # utilization just captured above is <= 90% for every metric that
+                # applies -- not a single momentary sample taken in isolation, and
+                # not a loose match on unrelated tickets (is_user_mgmt_ticket and
+                # the whole-word keyword gate above already filter those out). At
+                # that point there is nothing left to remediate, so paying for a
+                # full LLM SOP-matching + execution + post-remediation-guard pass
+                # only to reach the same "no action needed" conclusion adds latency
+                # and token cost without adding real scrutiny. A ticket whose text
+                # merely mentions "memory" without being a utilization alert (e.g.
+                # "increase memory limit for app config") never reaches this branch,
+                # since is_mem_alert requires a genuine alert-shaped phrase.
+                decision_summary = f"CPU={cpu_pct:.2f}%, Memory={mem_pct:.2f}% within threshold (<= 90%)"
+                logger.info(f"✅ Resource check within threshold ({decision_summary}) — resolving directly, no SOP needed.")
+                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "📊 Autonomous Threshold Check", "SUCCESS", f"{decision_summary} — no remediation required.")
+                res_code = "Server - Kernel & OS Patch"
+                res_notes = (
+                    f"Autonomous Threshold Check completed by Gemini 3.1 Pro Preview Agent.\n"
+                    f"Host: {ci_name} ({ip})\n"
+                    f"Result: {decision_summary}. No remediation action required.\n"
+                    f"Ticket auto-resolved directly from the live utilization sample; no SOP was applied."
+                )
+                add_work_note(token, inc_id,
+                    f"📊 Autonomous Threshold Check — {decision_summary}. No remediation required; resolving ticket directly.")
+                if update_incident_status(token, inc_id, "RESOLVED", res_code, res_notes, session_state=state):
+                    logger.info(f"🎉 Successfully RESOLVED IN_PROGRESS Incident [{number}] via direct threshold check (no SOP)!")
+                    post_timeline_update(inc_id, number, short_desc, ci_name, "SUCCESS", "Incident Remediation Resolved", "SUCCESS", f"{decision_summary}. Host confirmed within normal range and incident closed in PostgreSQL.")
+                    post_history_entry_to_dashboard(
+                        inc_id, short_desc, ci_name, ["top -bn1", "free"], decision_summary,
+                        f"CPU/Memory utilization within threshold: {decision_summary}",
+                        "KB0468210",
+                        status="AUTO_EXECUTED",
+                        human_approver="Autonomous Policy (Threshold Check)"
+                    )
+                    state.mark_resolved(inc_id)
+                    return
+                else:
+                    logger.error(f"❌ Failed to PATCH [{number}] to RESOLVED after threshold check — falling through to standard SOP pipeline instead of leaving it stuck.")
+                    is_resource_alert_exceeded = True
+                    sop_commands = ["uptime", "free -m", "ps aux --sort=-%cpu | head -n 10"]
             else:
                 is_resource_alert_exceeded = True
                 sop_commands = commands_to_run + ["uptime", "free -m", "ps aux --sort=-%cpu | head -n 10"]

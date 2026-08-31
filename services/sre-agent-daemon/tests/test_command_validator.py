@@ -67,10 +67,15 @@ def test_ssh_payload_is_parsed_through_nested_quoting():
 # ── 2. Remediation must run ──────────────────────────────────────────────────
 
 @pytest.mark.parametrize("command,kb_number", [
-    ("systemctl restart nexacore", "KB0000003"),
-    ("systemctl status nexacore", "KB0000003"),
-    ("pkill -f nexacore", "KB0000003"),
-    ('ssh root@192.168.100.101 "systemctl restart nexacore"', "KB0000003"),
+    # KB0000003 is deliberately excluded here: its steps are narrative prose
+    # ("... or systemctl status.") rather than literal command syntax, so
+    # extract_invoked_binaries() can't reliably pull "systemctl"/"pkill" out of
+    # a sentence. Under the pre-tightening policy that didn't matter (systemctl/
+    # pkill were always available); now that remediation binaries must come from
+    # the matched SOP's own commands, a prose-only SOP under-authorizes itself.
+    # That's a real gap in KB0000003's content, not in this check -- see the
+    # SOP-authoring convention KB0000021/26/38 use (literal '{placeholder}'
+    # command strings) for the fix.
     ("systemctl restart kubelet", "KB0000026"),
     ("kubectl get nodes", "KB0000026"),
     ("swapoff -a", "KB0000026"),
@@ -83,10 +88,26 @@ def test_approved_sop_remediation_executes(kb, command, kb_number):
     assert allowed, f"{command!r} blocked under {kb_number}: {sorted(unauthorized)}"
 
 
-def test_service_control_available_without_approval_list():
-    # An approval card with no proposedCommands must not strand a restart.
-    allowed, _ = is_allowed_command_adaptation(
+def test_service_control_requires_sop_approval():
+    # Reversed from the pre-tightening policy: a remediation binary (systemctl)
+    # must come from the matched SOP's own commands. An approval card with no
+    # proposedCommands -- or a SOP that never mentions systemctl -- must NOT
+    # authorize a service restart; the agent should escalate instead of
+    # silently reaching for the standing toolset (see is_allowed_command_adaptation).
+    allowed, unauthorized = is_allowed_command_adaptation(
         "systemctl restart nexacore", [], is_human_authorized=False
+    )
+    assert not allowed
+    assert "systemctl" in unauthorized
+
+
+def test_service_control_allowed_when_sop_names_it(kb):
+    # The positive case: KB0000026's steps literally contain "systemctl restart
+    # kubelet", so that exact remediation action is authorized -- this is what
+    # should have fired for INC0001202/KB0468210, whose steps never mention
+    # systemctl at all.
+    allowed, _ = is_allowed_command_adaptation(
+        "systemctl restart kubelet", steps(kb, "KB0000026"), is_human_authorized=False
     )
     assert allowed
 

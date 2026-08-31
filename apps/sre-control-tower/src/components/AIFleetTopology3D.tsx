@@ -103,6 +103,31 @@ interface TopoNode {
 
 const HEAT_DECAY_MS = 5 * 60 * 1000; // 5 minutes -- matches "recent activity" window
 
+// Small color/canvas helpers for the glossy-sphere node rendering below.
+function clamp255(v: number) {
+  return Math.max(0, Math.min(255, v));
+}
+function shade(hex: string, amount: number): string {
+  const h = hex.replace('#', '');
+  const num = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+  const r = clamp255(((num >> 16) & 0xff) + amount * 255);
+  const g = clamp255(((num >> 8) & 0xff) + amount * 255);
+  const b = clamp255((num & 0xff) + amount * 255);
+  return `rgb(${r | 0}, ${g | 0}, ${b | 0})`;
+}
+const lighten = (hex: string, amount: number) => shade(hex, amount);
+const darken = (hex: string, amount: number) => shade(hex, -amount);
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
 function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
   const abx = bx - ax;
   const aby = by - ay;
@@ -256,18 +281,52 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
     return heat;
   }, [history, assets]);
 
-  // Starfield backdrop -- fixed screen-space points, generated once
+  // Starfield backdrop -- fixed screen-space points, generated once. Layered
+  // by depth (0=far/dim/slow-twinkle, 1=near/bright/fast-twinkle) so the void
+  // itself reads as a volume instead of flat wallpaper, plus a handful of
+  // warm-tinted stars breaking up the monochrome cyan palette.
   const stars = useMemo(() => {
-    const pts: Array<{ x: number; y: number; r: number; phase: number }> = [];
-    for (let i = 0; i < 160; i++) {
+    const pts: Array<{ x: number; y: number; r: number; phase: number; depth: number; hue: string }> = [];
+    const hues = ['199, 234, 255', '186, 230, 253', '221, 214, 254', '254, 240, 210'];
+    for (let i = 0; i < 220; i++) {
+      const depth = Math.random();
       pts.push({
         x: Math.random() * 900,
         y: Math.random() * 520,
-        r: Math.random() * 1.2 + 0.3,
+        r: 0.25 + depth * 1.3,
         phase: Math.random() * Math.PI * 2,
+        depth,
+        hue: hues[Math.random() < 0.85 ? (Math.random() < 0.7 ? 0 : 1) : (Math.random() < 0.5 ? 2 : 3)],
       });
     }
     return pts;
+  }, []);
+
+  // Nebula backdrop is expensive to regenerate but never changes shape, only
+  // needs to exist once per canvas size -- cached as an offscreen layer and
+  // stamped in every frame instead of rebuilding 4 radial gradients/frame.
+  const nebulaLayer = useMemo(() => {
+    const off = document.createElement('canvas');
+    off.width = 900;
+    off.height = 520;
+    const nctx = off.getContext('2d');
+    if (!nctx) return off;
+    nctx.fillStyle = '#040711';
+    nctx.fillRect(0, 0, 900, 520);
+    const blooms: Array<[number, number, number, string]> = [
+      [180, 150, 340, 'rgba(99, 102, 241, 0.16)'],
+      [740, 400, 300, 'rgba(56, 189, 248, 0.13)'],
+      [520, 480, 260, 'rgba(217, 70, 239, 0.09)'],
+      [420, 60, 280, 'rgba(45, 212, 191, 0.10)'],
+    ];
+    blooms.forEach(([bx, by, br, color]) => {
+      const g = nctx.createRadialGradient(bx, by, 0, bx, by, br);
+      g.addColorStop(0, color);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      nctx.fillStyle = g;
+      nctx.fillRect(0, 0, 900, 520);
+    });
+    return off;
   }, []);
 
   useEffect(() => {
@@ -287,13 +346,23 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
       const cy = canvas.height / 2;
       const elapsed = (Date.now() - startTime) / 1000;
 
-      // Starfield
+      // Nebula void backdrop (cached offscreen layer, just stamped here)
+      ctx.drawImage(nebulaLayer, 0, 0, canvas.width, canvas.height);
+
+      // Starfield -- depth-layered parallax drift + twinkle, warm accents
       stars.forEach((s) => {
-        const alpha = 0.25 + 0.55 * Math.abs(Math.sin(elapsed * 0.4 + s.phase));
+        const alpha = (0.15 + s.depth * 0.55) * (0.55 + 0.45 * Math.abs(Math.sin(elapsed * (0.3 + s.depth * 0.5) + s.phase)));
+        const drift = (elapsed * (2 + s.depth * 6)) % 900;
+        const sx = (s.x + drift) % 900;
         ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, 2 * Math.PI);
-        ctx.fillStyle = `rgba(199, 234, 255, ${alpha.toFixed(2)})`;
+        ctx.arc(sx, s.y, s.r, 0, 2 * Math.PI);
+        ctx.fillStyle = `rgba(${s.hue}, ${alpha.toFixed(2)})`;
+        if (s.depth > 0.75) {
+          ctx.shadowColor = `rgba(${s.hue}, 0.9)`;
+          ctx.shadowBlur = 4;
+        }
         ctx.fill();
+        ctx.shadowBlur = 0;
       });
 
       // Camera easing: fly-to on click, gentle auto-rotate otherwise
@@ -335,7 +404,26 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
       const projById: Record<string, (typeof projected)[number]> = {};
       projected.forEach((p) => (projById[p.n.id] = p));
 
-      // Edges with a traveling pulse; brighter/faster where recent activity was seen
+      // Orbital guide rings -- faint traced circles at each shell radius so the
+      // "solar system" structure reads immediately instead of being implied by
+      // node scatter alone. Sampled as screen-space points through the same
+      // camera project() used for nodes, so they tilt/rotate in sync.
+      [170, 300].forEach((shellRadius) => {
+        ctx.beginPath();
+        for (let i = 0; i <= 72; i++) {
+          const a = (i / 72) * Math.PI * 2;
+          const p = project(Math.cos(a) * shellRadius, 0, Math.sin(a) * shellRadius);
+          if (i === 0) ctx.moveTo(p.sx, p.sy);
+          else ctx.lineTo(p.sx, p.sy);
+        }
+        ctx.strokeStyle = 'rgba(99, 179, 237, 0.08)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+
+      // Edges rendered as gently-bowed gradient beams (A-color -> B-color) with
+      // a multi-dot comet tail instead of a flat line + single pulse dot --
+      // reads as energy flowing through the fleet rather than static wiring.
       ALL_EDGES.forEach((edge, idx) => {
         const a = projById[edge.from];
         const b = projById[edge.to];
@@ -347,34 +435,58 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         const heat = Math.max(heatById[edge.from] || 0, heatById[edge.to] || 0);
         const isHoveredEdge = tooltip && tooltip.text === edge.label;
 
+        // Slight perpendicular bow through the midpoint -- straight lines from
+        // a rotating camera read as flat wireframe; a curve reads as depth.
+        const mx = (a.sx + b.sx) / 2;
+        const my = (a.sy + b.sy) / 2;
+        const dx = b.sx - a.sx;
+        const dy = b.sy - a.sy;
+        const len = Math.hypot(dx, dy) || 1;
+        const bow = Math.sin(idx * 12.9) * Math.min(18, len * 0.08);
+        const ctrlX = mx + (-dy / len) * bow;
+        const ctrlY = my + (dx / len) * bow;
+
         ctx.beginPath();
         ctx.moveTo(a.sx, a.sy);
-        ctx.lineTo(b.sx, b.sy);
+        ctx.quadraticCurveTo(ctrlX, ctrlY, b.sx, b.sy);
         if (contained) {
           ctx.strokeStyle = 'rgba(244, 63, 94, 0.35)';
           ctx.setLineDash([4, 3]);
+          ctx.lineWidth = 1;
         } else {
-          const alpha = 0.18 + heat * 0.45 + (isHoveredEdge ? 0.35 : 0);
-          ctx.strokeStyle = `rgba(56, 189, 248, ${Math.min(0.95, alpha).toFixed(2)})`;
+          const alpha = 0.16 + heat * 0.45 + (isHoveredEdge ? 0.35 : 0);
+          const grad = ctx.createLinearGradient(a.sx, a.sy, b.sx, b.sy);
+          grad.addColorStop(0, `${a.n.color}${Math.round(Math.min(0.95, alpha) * 255).toString(16).padStart(2, '0')}`);
+          grad.addColorStop(1, `${b.n.color}${Math.round(Math.min(0.95, alpha) * 255).toString(16).padStart(2, '0')}`);
+          ctx.strokeStyle = grad;
           ctx.setLineDash([]);
+          ctx.lineWidth = isHoveredEdge ? 2.4 : 1.1;
         }
-        ctx.lineWidth = isHoveredEdge ? 2 : 1;
         ctx.stroke();
         ctx.setLineDash([]);
 
         if (!contained) {
           const speed = 0.15 + heat * 0.5;
-          const t = ((elapsed * speed + idx * 0.31) % 1 + 1) % 1;
-          const px = a.sx + (b.sx - a.sx) * t;
-          const py = a.sy + (b.sy - a.sy) * t;
           const dotColor = heat > 0.15 ? '#fbbf24' : '#67e8f9';
-          ctx.beginPath();
-          ctx.arc(px, py, 2 + heat * 1.5, 0, 2 * Math.PI);
-          ctx.fillStyle = dotColor;
-          ctx.shadowColor = dotColor;
-          ctx.shadowBlur = 8 + heat * 6;
-          ctx.fill();
-          ctx.shadowBlur = 0;
+          const tailLen = 4;
+          for (let k = 0; k < tailLen; k++) {
+            const t = ((elapsed * speed + idx * 0.31 - k * 0.035) % 1 + 1) % 1;
+            const mt = 1 - t;
+            const px = (1 - t) * (1 - t) * a.sx + 2 * (1 - t) * t * ctrlX + t * t * b.sx;
+            const py = mt * mt * a.sy + 2 * mt * t * ctrlY + t * t * b.sy;
+            const tailAlpha = (1 - k / tailLen) * (0.85 + heat * 0.15);
+            ctx.beginPath();
+            ctx.arc(px, py, Math.max(0.6, (2 + heat * 1.5) * (1 - k / (tailLen + 2))), 0, 2 * Math.PI);
+            ctx.fillStyle = dotColor;
+            ctx.globalAlpha = tailAlpha;
+            if (k === 0) {
+              ctx.shadowColor = dotColor;
+              ctx.shadowBlur = 9 + heat * 7;
+            }
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1;
+          }
         }
       });
 
@@ -382,21 +494,42 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
       projected.sort((a, b) => b.zDepth - a.zDepth);
 
       projected.forEach((p) => {
-        const { n, sx, sy, scale } = p;
+        const { n, sx, sy, scale, zDepth } = p;
         const isHovered = hoveredId === n.id;
         const isContained = n.status === 'CONTAINED';
         const heat = heatById[n.id] || 0;
         const baseColor = isContained ? '#f43f5e' : n.color;
+        // Atmospheric depth fog -- nodes on the far side of the rotation fade
+        // toward the void instead of staying full-strength, which is the main
+        // cue that sells actual 3D depth rather than a flat scatter of circles.
+        const fog = Math.max(0, Math.min(1, (zDepth + 300) / 620));
+        const fogDim = 1 - fog * 0.55;
 
         let baseRadius = n.kind === 'central' ? 14 : n.kind === 'ai_asset' ? 7 : 5.5;
         if (n.kind === 'central') baseRadius += Math.sin(elapsed * 1.6) * 2;
         const radius = Math.max(2, baseRadius * scale);
 
+        // Sonar-ping rings expanding outward from the central knowledge-base
+        // node -- reads as "the system's heartbeat" rather than a static dot.
+        if (n.kind === 'central') {
+          for (let ring = 0; ring < 3; ring++) {
+            const period = 2.6;
+            const t = ((elapsed + ring * (period / 3)) % period) / period;
+            const ringR = radius + t * 46;
+            const ringAlpha = (1 - t) * 0.35;
+            ctx.beginPath();
+            ctx.arc(sx, sy, ringR, 0, 2 * Math.PI);
+            ctx.strokeStyle = `rgba(56, 189, 248, ${ringAlpha.toFixed(2)})`;
+            ctx.lineWidth = 1.4;
+            ctx.stroke();
+          }
+        }
+
         // Soft atmosphere halo -- cheap "immersive glow" without trail buffers
         if (heat > 0.05 || n.kind === 'central' || isHovered) {
           const haloR = radius * (3 + heat * 2);
           const grad = ctx.createRadialGradient(sx, sy, radius * 0.5, sx, sy, haloR);
-          const haloAlpha = 0.28 * (n.kind === 'central' ? 1 : Math.max(heat, isHovered ? 0.5 : 0));
+          const haloAlpha = 0.28 * fogDim * (n.kind === 'central' ? 1 : Math.max(heat, isHovered ? 0.5 : 0));
           grad.addColorStop(0, `${baseColor}${Math.round(haloAlpha * 255).toString(16).padStart(2, '0')}`);
           grad.addColorStop(1, `${baseColor}00`);
           ctx.beginPath();
@@ -405,13 +538,35 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
           ctx.fill();
         }
 
+        // Glossy sphere body: radial shading from a lit edge into the base
+        // color instead of a flat fill, so each node reads as a small orb
+        // rather than a sticker.
+        const bodyGrad = ctx.createRadialGradient(
+          sx - radius * 0.35, sy - radius * 0.4, radius * 0.1,
+          sx, sy, radius * 1.15
+        );
+        bodyGrad.addColorStop(0, isHovered ? '#ffffff' : lighten(baseColor, 0.45));
+        bodyGrad.addColorStop(0.55, isHovered ? '#f1f5f9' : baseColor);
+        bodyGrad.addColorStop(1, darken(baseColor, 0.35));
         ctx.beginPath();
         ctx.arc(sx, sy, radius + (isHovered ? 2.5 : 0), 0, 2 * Math.PI);
-        ctx.fillStyle = isHovered ? '#ffffff' : baseColor;
+        ctx.globalAlpha = fogDim;
+        ctx.fillStyle = bodyGrad;
         ctx.shadowColor = baseColor;
-        ctx.shadowBlur = n.kind === 'central' ? 20 : isHovered ? 14 : 6 + heat * 8;
+        ctx.shadowBlur = n.kind === 'central' ? 22 : isHovered ? 16 : 6 + heat * 8;
         ctx.fill();
         ctx.shadowBlur = 0;
+
+        // Specular highlight -- a tiny bright fleck offset toward the "light
+        // source" is the single cheapest trick that makes a flat-shaded
+        // circle read as a lit 3D sphere instead of a paper cutout.
+        if (radius > 3) {
+          ctx.beginPath();
+          ctx.arc(sx - radius * 0.32, sy - radius * 0.38, Math.max(0.6, radius * 0.22), 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
 
         if (n.kind === 'central') {
           ctx.beginPath();
@@ -430,11 +585,30 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         }
 
         if (isHovered || n.kind === 'central') {
-          ctx.fillStyle = '#e2e8f0';
           ctx.font = n.kind === 'central' ? 'bold 11px sans-serif' : 'bold 10px sans-serif';
-          ctx.fillText(n.name, sx + radius + 6, sy + 4);
+          const textW = ctx.measureText(n.name).width;
+          const padX = 6, padY = 4;
+          const boxX = sx + radius + 4;
+          const boxY = sy - 9;
+          ctx.fillStyle = 'rgba(4, 8, 20, 0.72)';
+          ctx.strokeStyle = `${baseColor}55`;
+          ctx.lineWidth = 1;
+          roundRect(ctx, boxX, boxY, textW + padX * 2, 18, 5);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#e2e8f0';
+          ctx.fillText(n.name, boxX + padX, sy + 4);
         }
       });
+
+      // Vignette -- darkens the frame edges so the eye settles on the fleet
+      // instead of the canvas boundary, a cheap finishing touch on any
+      // canvas scene meant to feel like a viewport rather than a chart.
+      const vignette = ctx.createRadialGradient(cx, cy, Math.min(cx, cy) * 0.55, cx, cy, Math.max(cx, cy) * 1.05);
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0, 2, 10, 0.55)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       if (!isDragging.current && !focusId) setYaw(localYaw);
       if (!isDragging.current && !focusId) setPitch(localPitch);
@@ -443,7 +617,7 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
 
     render();
     return () => cancelAnimationFrame(animationId);
-  }, [nodes, nodeById, heatById, yaw, pitch, autoRotate, zoom, hoveredId, tooltip, focusId, onSelectAsset, stars]);
+  }, [nodes, nodeById, heatById, yaw, pitch, autoRotate, zoom, hoveredId, tooltip, focusId, onSelectAsset, stars, nebulaLayer]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;

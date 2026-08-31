@@ -35,6 +35,24 @@ interface KnowledgeArticle {
   createdAt: string;
 }
 
+// Small color/canvas helpers for the glossy-sphere node rendering below --
+// mirrors AIFleetTopology3D.tsx's local copies (kept per-file rather than a
+// shared module to avoid a new cross-component import for a few small pure
+// functions).
+function clamp255(v: number) {
+  return Math.max(0, Math.min(255, v));
+}
+function shade(hex: string, amount: number): string {
+  const h = hex.replace('#', '');
+  const num = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+  const r = clamp255(((num >> 16) & 0xff) + amount * 255);
+  const g = clamp255(((num >> 8) & 0xff) + amount * 255);
+  const b = clamp255((num & 0xff) + amount * 255);
+  return `rgb(${r | 0}, ${g | 0}, ${b | 0})`;
+}
+const lighten = (hex: string, amount: number) => shade(hex, amount);
+const darken = (hex: string, amount: number) => shade(hex, -amount);
+
 export function VectorSpace3D() {
   const [articles, setArticles] = useState<KnowledgeArticle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +110,49 @@ export function VectorSpace3D() {
   const isDragging = useRef(false);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const [hoveredNode, setHoveredNode] = useState<any | null>(null);
+
+  // Starfield + nebula backdrop, same treatment as AIFleetTopology3D -- an
+  // empty void behind scattered dots is what read as "childish"; a layered,
+  // lit backdrop is most of the fix before any node styling even changes.
+  const stars = useMemo(() => {
+    const pts: Array<{ x: number; y: number; r: number; phase: number; depth: number; hue: string }> = [];
+    const hues = ['199, 234, 255', '186, 230, 253', '221, 214, 254', '254, 240, 210'];
+    for (let i = 0; i < 160; i++) {
+      const depth = Math.random();
+      pts.push({
+        x: Math.random() * 680,
+        y: Math.random() * 380,
+        r: 0.25 + depth * 1.2,
+        phase: Math.random() * Math.PI * 2,
+        depth,
+        hue: hues[Math.random() < 0.85 ? (Math.random() < 0.7 ? 0 : 1) : (Math.random() < 0.5 ? 2 : 3)],
+      });
+    }
+    return pts;
+  }, []);
+
+  const nebulaLayer = useMemo(() => {
+    const off = document.createElement('canvas');
+    off.width = 680;
+    off.height = 380;
+    const nctx = off.getContext('2d');
+    if (!nctx) return off;
+    nctx.fillStyle = '#050812';
+    nctx.fillRect(0, 0, 680, 380);
+    const blooms: Array<[number, number, number, string]> = [
+      [140, 110, 260, 'rgba(129, 140, 248, 0.15)'],
+      [560, 300, 230, 'rgba(6, 182, 212, 0.13)'],
+      [400, 60, 200, 'rgba(217, 70, 239, 0.08)'],
+    ];
+    blooms.forEach(([bx, by, br, color]) => {
+      const g = nctx.createRadialGradient(bx, by, 0, bx, by, br);
+      g.addColorStop(0, color);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      nctx.fillStyle = g;
+      nctx.fillRect(0, 0, 680, 380);
+    });
+    return off;
+  }, []);
 
   const vectorPoints = useMemo(() => {
     return articles.map((art) => {
@@ -155,10 +216,23 @@ export function VectorSpace3D() {
     let localYaw = yaw;
     let localPitch = pitch;
 
+    const startTime = Date.now();
+
     const render = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const cx = canvas.width / 2;
       const cy = canvas.height / 2;
+      const elapsed = (Date.now() - startTime) / 1000;
+
+      // Nebula void backdrop + depth-layered twinkling starfield
+      ctx.drawImage(nebulaLayer, 0, 0, canvas.width, canvas.height);
+      stars.forEach((s) => {
+        const alpha = (0.12 + s.depth * 0.5) * (0.55 + 0.45 * Math.abs(Math.sin(elapsed * (0.3 + s.depth * 0.5) + s.phase)));
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, 2 * Math.PI);
+        ctx.fillStyle = `rgba(${s.hue}, ${alpha.toFixed(2)})`;
+        ctx.fill();
+      });
 
       // Auto-rotation increment
       if (autoRotate && !isDragging.current) {
@@ -170,8 +244,30 @@ export function VectorSpace3D() {
       const cosX = Math.cos(localPitch);
       const sinX = Math.sin(localPitch);
 
-      // Draw Grid Floor/Axes guides in 3D
+      // Draw Grid Floor/Axes guides in 3D -- soft glowing gradient fading
+      // from the origin outward instead of a flat, harsh white spoke, plus a
+      // faint equatorial ring so the space reads as a volume, not 3 crossed
+      // sticks.
       const axisLength = 130;
+      ctx.beginPath();
+      for (let i = 0; i <= 72; i++) {
+        const a = (i / 72) * Math.PI * 2;
+        const rx = Math.cos(a) * axisLength * 0.9;
+        const rz = Math.sin(a) * axisLength * 0.9;
+        const x1 = rx * cosY - rz * sinY;
+        const z1 = rx * sinY + rz * cosY;
+        const y2 = 0 * cosX - z1 * sinX;
+        const z2 = 0 * sinX + z1 * cosX;
+        const scale = (350 / (350 + z2)) * zoom;
+        const sx = cx + x1 * scale;
+        const sy = cy + y2 * scale;
+        if (i === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.strokeStyle = 'rgba(99, 179, 237, 0.10)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
       const drawAxis = (ax: number, ay: number, az: number, label: string) => {
         const x1 = ax * cosY - az * sinY;
         const z1 = ax * sinY + az * cosY;
@@ -183,17 +279,20 @@ export function VectorSpace3D() {
         const sx = cx + x1 * scale;
         const sy = cy + y2 * scale;
 
-        // Draw crisp white axis line
+        // Soft glowing axis line, fading from a bright origin core to a dim tip
+        const grad = ctx.createLinearGradient(cx, cy, sx, sy);
+        grad.addColorStop(0, 'rgba(148, 210, 255, 0.55)');
+        grad.addColorStop(1, 'rgba(148, 210, 255, 0.08)');
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.lineTo(sx, sy);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 1.2;
         ctx.stroke();
 
-        // Draw white axis label text
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 11px monospace';
+        // Muted axis label text -- legible without competing with node glow
+        ctx.fillStyle = 'rgba(226, 232, 240, 0.75)';
+        ctx.font = '10px monospace';
         ctx.fillText(label, sx + 5, sy + 4);
       };
 
@@ -229,8 +328,9 @@ export function VectorSpace3D() {
       // Painter's algorithm
       projected.sort((a, b) => b.zDepth - a.zDepth);
 
-      // Draw Similarity links between category-matched nodes
-      ctx.lineWidth = 0.5;
+      // Draw Similarity links between category-matched nodes -- glowing
+      // gradient beams blending each endpoint's own cluster color, instead
+      // of a flat near-invisible cyan hairline.
       for (let i = 0; i < projected.length; i++) {
         for (let j = i + 1; j < projected.length; j++) {
           const a = projected[i];
@@ -238,17 +338,23 @@ export function VectorSpace3D() {
           if (a.article.category === b.article.category) {
             const dist = Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
             if (dist < 80) {
+              const alpha = Math.max(0.02, 0.22 - dist / 400);
+              const grad = ctx.createLinearGradient(a.sx, a.sy, b.sx, b.sy);
+              grad.addColorStop(0, `${a.color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`);
+              grad.addColorStop(1, `${b.color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}`);
               ctx.beginPath();
               ctx.moveTo(a.sx, a.sy);
               ctx.lineTo(b.sx, b.sy);
-              ctx.strokeStyle = `rgba(6, 182, 212, ${Math.max(0.01, 0.08 - dist / 1000)})`; // Cyan similarity line
+              ctx.strokeStyle = grad;
+              ctx.lineWidth = 0.8;
               ctx.stroke();
             }
           }
         }
       }
 
-      // Draw Nodes
+      // Draw Nodes -- glossy shaded spheres (radial shade + specular fleck)
+      // with atmospheric depth fog, instead of flat-filled circles.
       projected.forEach((node) => {
         const radius = Math.max(2, 5.5 * node.scale);
         const matchesQuery =
@@ -258,33 +364,65 @@ export function VectorSpace3D() {
             node.article.category.toLowerCase().includes(searchQuery.toLowerCase()));
 
         const isHovered = hoveredNode && hoveredNode.article.id === node.article.id;
+        const fog = Math.max(0, Math.min(1, (node.zDepth + 160) / 320));
+        const fogDim = 1 - fog * 0.5;
+        const baseColor = isHovered ? '#ffffff' : matchesQuery ? '#f59e0b' : node.color;
+
+        // Soft halo behind highlighted/hovered nodes
+        if (isHovered || matchesQuery) {
+          const haloR = radius * 3.4;
+          const grad = ctx.createRadialGradient(node.sx, node.sy, radius * 0.5, node.sx, node.sy, haloR);
+          grad.addColorStop(0, `${baseColor}55`);
+          grad.addColorStop(1, `${baseColor}00`);
+          ctx.beginPath();
+          ctx.arc(node.sx, node.sy, haloR, 0, 2 * Math.PI);
+          ctx.fillStyle = grad;
+          ctx.fill();
+        }
+
+        const bodyGrad = ctx.createRadialGradient(
+          node.sx - radius * 0.35, node.sy - radius * 0.4, radius * 0.1,
+          node.sx, node.sy, radius * 1.15
+        );
+        bodyGrad.addColorStop(0, lighten(baseColor, 0.4));
+        bodyGrad.addColorStop(0.55, baseColor);
+        bodyGrad.addColorStop(1, darken(baseColor, 0.3));
 
         ctx.beginPath();
         ctx.arc(node.sx, node.sy, radius + (matchesQuery ? 2.5 : 0), 0, 2 * Math.PI);
-
-        if (isHovered) {
-          ctx.fillStyle = '#ffffff';
-          ctx.shadowColor = node.color;
-          ctx.shadowBlur = 15;
-        } else if (matchesQuery) {
-          ctx.fillStyle = '#f59e0b';
-          ctx.shadowColor = '#f59e0b';
-          ctx.shadowBlur = 10;
-        } else {
-          ctx.fillStyle = node.color;
-          ctx.shadowBlur = 0;
-        }
-
+        ctx.globalAlpha = fogDim;
+        ctx.fillStyle = bodyGrad;
+        ctx.shadowColor = baseColor;
+        ctx.shadowBlur = isHovered ? 14 : matchesQuery ? 10 : 3;
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Overlay node name label
+        if (radius > 2.5) {
+          ctx.beginPath();
+          ctx.arc(node.sx - radius * 0.32, node.sy - radius * 0.38, Math.max(0.5, radius * 0.22), 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        // Overlay node name label with a small legibility pill
         if (isHovered || matchesQuery) {
-          ctx.fillStyle = '#cbd5e1';
           ctx.font = 'bold 9px monospace';
-          ctx.fillText(node.article.number, node.sx + radius + 4, node.sy + 3);
+          const label = node.article.number;
+          const w = ctx.measureText(label).width;
+          ctx.fillStyle = 'rgba(4, 8, 20, 0.7)';
+          ctx.fillRect(node.sx + radius + 2, node.sy - 8, w + 8, 13);
+          ctx.fillStyle = '#e2e8f0';
+          ctx.fillText(label, node.sx + radius + 6, node.sy + 2);
         }
       });
+
+      // Vignette
+      const vignette = ctx.createRadialGradient(cx, cy, Math.min(cx, cy) * 0.55, cx, cy, Math.max(cx, cy) * 1.05);
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0, 2, 10, 0.5)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       if (!isDragging.current) {
         setYaw(localYaw);
@@ -298,7 +436,7 @@ export function VectorSpace3D() {
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [vectorPoints, yaw, pitch, autoRotate, zoom, searchQuery, hoveredNode]);
+  }, [vectorPoints, yaw, pitch, autoRotate, zoom, searchQuery, hoveredNode, stars, nebulaLayer]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     isDragging.current = true;

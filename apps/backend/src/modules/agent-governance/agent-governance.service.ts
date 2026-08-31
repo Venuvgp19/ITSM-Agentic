@@ -568,7 +568,7 @@ export class AgentGovernanceService implements OnModuleInit {
   private modelConfig: any = {
     environment: 'nvidia',
     baseUrl: 'https://integrate.api.nvidia.com/v1',
-    apiKey: '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',
+    apiKey: process.env.NVIDIA_API_KEY || '',
     routerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
     resolverModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
     synthesizerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',

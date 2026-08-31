@@ -34,7 +34,7 @@ export function ModelConfigView() {
   const [config, setConfig] = useState<ModelConfig>({
     environment: 'nvidia',
     baseUrl: 'https://integrate.api.nvidia.com/v1',
-    apiKey: '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',
+    apiKey: '',
     routerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
     resolverModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
     synthesizerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
@@ -68,7 +68,7 @@ export function ModelConfigView() {
     nvidia: {
       environment: 'nvidia' as const,
       baseUrl: 'https://integrate.api.nvidia.com/v1',
-      apiKey: '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',
+      apiKey: '',
       routerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
       resolverModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
       synthesizerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
@@ -82,7 +82,7 @@ export function ModelConfigView() {
     genai_lab: {
       environment: 'genai_lab' as const,
       baseUrl: 'https://genailab.tcs.in/v1',
-      apiKey: 'sk-0mLmGnF9P0tbG_jlZVYDoA',
+      apiKey: '',
       routerModel: 'azure/genailab-maas-gpt-4o-mini',
       resolverModel: 'genailab-maas-gpt-4o',
       synthesizerModel: 'gemini-3.1-pro-preview',
@@ -97,7 +97,7 @@ export function ModelConfigView() {
     production_azure: {
       environment: 'production_azure' as const,
       baseUrl: 'https://integrate.api.nvidia.com/v1',
-      apiKey: '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',
+      apiKey: '',
       routerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
       resolverModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
       synthesizerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',

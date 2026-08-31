@@ -181,8 +181,19 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
         # evidence line was ever added, and is_fixed silently stayed at its default
         # True -- for the exact incident class ("service down"/"crash"/"outage")
         # this gate exists to protect.
+        #
+        # `systemctl enable --now <svc>` (and the reversed `enable <svc> --now`)
+        # is a standard systemd idiom -- it starts the service immediately AND
+        # enables it on boot in one command (see KB0000039) -- and was missing
+        # here entirely, so this whole gate silently fell through to "could not
+        # identify a service name" for any SOP using it, even on a fully correct
+        # remediation. A bare `systemctl enable <svc>` (no --now) is deliberately
+        # NOT matched: it only affects boot-time behavior and does not start the
+        # service now, so it shouldn't be treated as evidence of a live restart.
         service_match = (
             re.search(r"systemctl\s+(?:start|restart)\s+([\w\-\.]+)", exec_log)
+            or re.search(r"systemctl\s+enable\s+--now\s+([\w\-\.]+)", exec_log)
+            or re.search(r"systemctl\s+enable\s+([\w\-\.]+)\s+--now\b", exec_log)
             or re.search(r"\bservice\s+([\w\-\.]+)\s+(?:start|restart)\b", exec_log)
             or re.search(r"\bdocker\s+restart\s+([\w\-\.]+)", exec_log)
             or re.search(r"\bpm2\s+restart\s+([\w\-\.]+)", exec_log)

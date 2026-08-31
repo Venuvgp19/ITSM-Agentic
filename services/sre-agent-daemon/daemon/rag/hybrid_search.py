@@ -133,7 +133,20 @@ def search_hybrid_kb(dense_query_text: str, lexical_tokens: list[str], kb_articl
         bm25_hits_map[num] = (norm_bm25, rank)
 
     # 3. Reciprocal Rank Fusion (RRF)
-    MAX_RRF = (0.6 / 60.0) + (0.4 / 60.0)
+    # k=60 is the standard constant from the original RRF paper, calibrated for
+    # fusing rankings over corpora of thousands of documents -- at this KB's
+    # actual scale (~34 articles, single-digit candidate counts per department
+    # after scoping), it over-dampens rank differences almost completely: rank 0
+    # vs rank 8 out of 9 only differs by 1/(60+0) vs 1/(60+8) ~= 12%, so RRF
+    # saturates near its max for nearly every candidate that appears in either
+    # ranked list at all, regardless of actual relevance -- verified empirically
+    # against live data: unrelated SOPs (printer spooler, AWS DB timeout) scored
+    # rrf_score 0.90-0.98 alongside a genuinely correct match's 1.00, propping
+    # their blended score up near the 0.42 match threshold on rank alone. k=10
+    # keeps the same fusion formula and normalization but lets rank actually
+    # discriminate at this corpus's real candidate-list size.
+    RRF_K = 10.0
+    MAX_RRF = (0.6 / RRF_K) + (0.4 / RRF_K)
 
     hybrid_results = []
     # Build from scoped_articles (department-filtered), not the full kb_articles --
@@ -162,7 +175,7 @@ def search_hybrid_kb(dense_query_text: str, lexical_tokens: list[str], kb_articl
         dense_score, dense_rank = dense_hits_map.get(num, (0.0, 999))
         norm_bm25, bm25_rank = bm25_hits_map.get(num, (0.0, 999))
 
-        rrf = (0.6 / (60.0 + dense_rank)) + (0.4 / (60.0 + bm25_rank))
+        rrf = (0.6 / (RRF_K + dense_rank)) + (0.4 / (RRF_K + bm25_rank))
         norm_rrf = min(1.0, rrf / MAX_RRF)
 
         # Weighted hybrid score: 55% dense semantic similarity + 45% normalized RRF

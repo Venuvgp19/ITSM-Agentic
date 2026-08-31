@@ -21,9 +21,14 @@ def verify_rag_match_intent_with_llm(short_desc, desc, sop_number, sop_title, so
             f"SOP COMMANDS:\n{json.dumps(sop_commands, indent=2)}\n\n"
             "DECISION RULES:\n"
             "- APPROVE if the SOP procedure/commands directly resolve the root cause shown in the incident (e.g. user creation + sudo for user creation tickets, az group tagging for resource tagging, kubectl rollout for deployment issues).\n"
+            "- APPROVE if the SOP first diagnoses the actual state of the named component (e.g. checks whether a service/process is running, its unit files, or its logs) before remediating, and the incident's symptom (e.g. 'application down', 'connection refused', 'service not responding') is consistent with what that diagnosis targets. Investigating before fixing is not evidence of irrelevance — reject on failure-mode grounds only when the underlying subsystem or domain itself doesn't match (e.g. a database SOP for an application-crash ticket), not merely because the SOP allows for more than one possible root cause within the right domain.\n"
             "- Note: SOPs are parameterized templates. Example usernames, group names, and host IPs are dynamically substituted during execution. Do NOT reject an SOP solely because of placeholder values if the operational commands match.\n"
             "- REJECT if the SOP addresses a fundamentally different failure mode (e.g. Kubelet crash vs pod NodeSelector mismatch, DB2 vs Linux OS user, or password reset vs user creation).\n"
             "- REJECT if the SOP is too generic and its commands would not help the specific issue described.\n\n"
+            "WORKED EXAMPLE (apply this same reasoning pattern, not this literal ticket):\n"
+            "Incident: 'OrderService application is down on host-42, connection refused on port 9090.'\n"
+            "Candidate SOP: 'Application Service Recovery - OrderService Down', commands: check the orderservice systemd unit status and unit files, daemon-reload, enable+start the service, wait, verify port 9090 is listening.\n"
+            "Correct verdict: APPROVE. 'Application is down' / 'connection refused' is exactly the symptom a not-running service produces, and the SOP's first move is to check the real unit status rather than blindly restart — that is the standard, correct diagnostic-first response. Do NOT reject this pattern just because the ticket text itself doesn't already contain the words 'service', 'unit', or 'port status' — the ticket describes the symptom; the SOP is what supplies the service-level diagnosis. Rejecting a SOP like this because it \"only\" checks-then-restarts, or because the ticket doesn't pre-name the mechanism, is the exact over-caution this judge must avoid.\n\n"
             "Respond in STRICT JSON only (no markdown, no preamble):\n"
             '{"approved": true|false, "reason": "<one sentence explanation>"}'
         )

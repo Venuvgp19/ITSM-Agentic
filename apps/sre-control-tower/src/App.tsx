@@ -186,7 +186,7 @@ export function App() {
         if (res.ok) {
           const data = await res.json();
           if (data && typeof data.masterKillSwitch === 'boolean') {
-            setIsKillSwitchTriggered(data.masterKillSwitch);
+            setIsKillSwitchTriggered((prev) => (prev === data.masterKillSwitch ? prev : data.masterKillSwitch));
           }
         }
       } catch (err) {

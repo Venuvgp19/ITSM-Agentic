@@ -396,19 +396,22 @@ def is_allowed_command_adaptation(c_str: str, approved: list[str], is_human_auth
             approved_bins.add(b)
     # Standard operational toolset the agent may always reach for.
     #
-    # This list stays deliberately broad — service control (systemctl/kill/kubectl)
-    # and routine file operations are exactly what a remediation SOP exists to
-    # perform, and many KB articles describe those steps in prose rather than as
-    # literal commands, so they contribute nothing to `approved_bins`. Narrowing
-    # this set does not make the agent safer; it makes it unable to remediate.
+    # Split in two: binaries here are pure read-only investigation (they cannot
+    # change host state), so they're always available regardless of which SOP
+    # matched — an agent that can't run `ps`/`free`/`journalctl` can't diagnose
+    # anything. State-changing / remediation binaries (systemctl, kubectl, rm,
+    # useradd, az, ...) are deliberately NOT here: per the system prompt's Rule 9
+    # ("STRICTLY PROHIBITED from introducing completely new command binaries
+    # absent from the approved SOP blueprint"), a remediation action must come
+    # from the matched SOP's own guide commands (-> approved_bins) — an agent
+    # investigating a diagnostic-only SOP (e.g. KB0468210) can find that kubelet
+    # is the culprit, but must escalate rather than silently restart it, since
+    # that SOP never authorized a service restart.
     #
-    # The real guardrail is CATASTROPHIC_DESTRUCTIVE_PATTERNS, which is evaluated
-    # first, against the raw command string, and blocks the dangerous *forms* of
-    # these same binaries (`rm -rf /`, `systemctl poweroff`, `systemctl mask auditd`,
-    # `chmod -R 777 /`, `az group delete`, ...) regardless of what is listed here.
-    # Anything it flags requires explicit human authorization AND a match against the
-    # approval card. Binary-level allowlisting is the coarse outer ring, not the thing
-    # standing between the agent and a destroyed host.
+    # CATASTROPHIC_DESTRUCTIVE_PATTERNS is still evaluated first, against the raw
+    # command string, and separately blocks dangerous *forms* even of an
+    # SOP-approved binary (`rm -rf /`, `systemctl poweroff`, `az group delete`,
+    # ...) regardless of approval — that check is unaffected by this split.
     #
     # The nested-command wrappers (bash/sh/xargs/find/timeout/ssh/...) are safe to
     # include because extract_invoked_binaries() now recurses into what they invoke,
@@ -419,14 +422,18 @@ def is_allowed_command_adaptation(c_str: str, approved: list[str], is_human_auth
         "id", "ss", "ps", "top", "free", "journalctl", "curl", "test",
         "grep", "awk", "sed", "tail", "head", "cat", "echo", "printf", "true",
         "false", "which", "command", "sleep", "cut", "tr", "wc", "sort",
-        "uniq", "uptime", "hostname", "pkill", "pgrep", "kill", "killall", "kubectl",
-        "systemctl", "service", "rm", "cp", "mv", "ln", "touch", "chmod", "chown", "mkdir", "seq", "az",
-        "find", "getent", "df", "du", "uname", "netstat", "ip", "tar", "gzip", "gunzip", "rsync",
-        "useradd", "userdel", "usermod", "chpasswd", "chage", "visudo", "passwd", "gpasswd", "crontab",
-        "loginctl", "who", "w", "nc", "ping", "nslookup", "dig",
+        "uniq", "uptime", "hostname", "pgrep",
+        "getent", "df", "du", "uname", "netstat",
+        "who", "w", "ping", "nslookup", "dig",
         "ssh", "bash", "sh", "dash", "zsh", "ksh", "env", "xargs",
-        "nice", "ionice", "timeout", "nohup", "watch", "setsid", "stdbuf"
+        "nice", "ionice", "timeout", "nohup", "watch", "setsid", "stdbuf", "seq", "find"
     }
+    # Everything below changes host/cluster/cloud state and is therefore only
+    # allowed when the matched SOP's own commands invoke it (contributing to
+    # approved_bins above) — it is intentionally absent from diagnostic_bins:
+    # kubectl, systemctl, service, rm, cp, mv, ln, touch, chmod, chown, mkdir, az,
+    # useradd, userdel, usermod, chpasswd, chage, visudo, passwd, gpasswd, crontab,
+    # loginctl, pkill, kill, killall, nc, ip, tar, gzip, gunzip, rsync.
     allowed_bins = approved_bins.union(diagnostic_bins)
     invoked_bins = extract_invoked_binaries(c_str)
     unauthorized = invoked_bins - allowed_bins
