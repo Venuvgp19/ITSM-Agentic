@@ -178,11 +178,12 @@ def search_hybrid_kb(dense_query_text: str, lexical_tokens: list[str], kb_articl
         rrf = (0.6 / (RRF_K + dense_rank)) + (0.4 / (RRF_K + bm25_rank))
         norm_rrf = min(1.0, rrf / MAX_RRF)
 
-        # Weighted hybrid score: 55% dense semantic similarity + 45% normalized RRF
-        if dense_score > 0:
-            blended_score = round(0.55 * dense_score + 0.45 * norm_rrf, 4)
-        else:
-            blended_score = round(0.50 * norm_bm25 + 0.50 * norm_rrf, 4)
+        # Weighted hybrid score:
+        # Incorporate both dense semantic similarity and BM25 lexical relevance into the RRF fusion.
+        # If BM25 demonstrates strong lexical match (norm_bm25), prevent low dense distance scores
+        # from artificially suppressing genuine matches below the RAG similarity threshold.
+        lexical_or_dense = max(dense_score, norm_bm25) if dense_score > 0 else norm_bm25
+        blended_score = round(0.50 * lexical_or_dense + 0.50 * norm_rrf, 4)
 
         hybrid_results.append({
             "number": num,

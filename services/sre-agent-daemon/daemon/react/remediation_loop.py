@@ -101,7 +101,19 @@ def run_dynamic_react_loop(
                 )
                 if not msg:
                     raise Exception("All fallback models failed to return a valid response.")
-                messages.append(msg)
+                # Normalize to a plain dict before re-appending to `messages` --
+                # this list gets fed straight back into the next turn's
+                # client.chat.completions.create() call, and the fail-safe
+                # MockMessage (llm.py) is a bare class with no serialization
+                # support, unlike real ChatCompletionMessage objects. Appending
+                # it raw poisons every subsequent turn with a JSON-serialization
+                # error on every model/attempt, masking whatever the real
+                # failure was.
+                messages.append({
+                    "role": "assistant",
+                    "content": msg.content,
+                    **({"tool_calls": [tc.model_dump() if hasattr(tc, "model_dump") else tc for tc in msg.tool_calls]} if getattr(msg, "tool_calls", None) else {})
+                })
                 
                 if msg.tool_calls:
                     for tc in msg.tool_calls:

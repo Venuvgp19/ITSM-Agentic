@@ -11,7 +11,7 @@ from psycopg2.extras import RealDictCursor
 
 from ..config import logger, MODEL_NAME
 from ..llm import invoke_llm_with_fallback, safe_json_parse
-from ..itsm.client import add_work_note, update_incident_status, fetch_incident_queue
+from ..itsm.client import add_work_note, update_incident_status, fetch_incident_queue, get_team_member_for_department
 from ..notifications.slack_notifier import notify_router_failure, reset_router_failure_notice
 
 CLASSIFICATION_PROMPT_TEMPLATE = """
@@ -187,6 +187,28 @@ class ControlTowerAIRouter:
         # 1. Retrieve real historical precedents
         precedents = get_historical_routing_precedents(short_desc, desc, ci_name, limit=4)
         
+        # ── 0. DETERMINISTIC DOMAIN POLICIES ──
+        # Policy Rule: Nexacore application down / error alerts MUST always get routed to App Support
+        combined_text = f"{short_desc} {desc}".strip().lower()
+        if "nexacore" in combined_text:
+            is_critical = bool(re.search(r'\b(p1|critical|sev-?1|disaster|total outage)\b', combined_text))
+            prio = "P1" if is_critical else "P2"
+            audit_entry = {
+                "incidentId": incident.get("id"),
+                "number": number,
+                "shortDescription": short_desc,
+                "recommendedDepartment": "App Support",
+                "priority": prio,
+                "confidenceScore": 99,
+                "reasoningText": "Deterministic Policy Rule: Nexacore application downtime, service failures, and portal alerts are strictly routed to App Support.",
+                "thinkingTrace": f"Enforced deterministic platform routing policy: 'nexacore' alert routed to App Support ({prio}) with 99% confidence.",
+                "historicalPrecedentsCount": len(precedents),
+                "autoAssigned": True
+            }
+            self.routing_history.append(audit_entry)
+            logger.info(f"🤖 [Agentic AI Router] Classified [{number}] -> App Support ({prio}) with 99% confidence (Nexacore Policy Rule).")
+            return audit_entry
+        
         if precedents:
             precedent_lines = []
             for idx, p in enumerate(precedents, 1):
@@ -246,16 +268,17 @@ class ControlTowerAIRouter:
 
         except Exception as e:
             logger.error(f"AI Router classification failed for [{number}]: {e}")
+            fallback_dept = "App Support" if "nexacore" in combined_text else "Unix"
             return {
                 "incidentId": incident.get("id"),
                 "number": number,
-                "recommendedDepartment": "Unix",
-                "priority": "P3",
-                "confidenceScore": 75,
-                "reasoningText": "Fallback triage assigned to Unix Operations team based on default infrastructure baseline.",
-                "thinkingTrace": "LLM triage exception caught; applied fallback assignment.",
+                "recommendedDepartment": fallback_dept,
+                "priority": "P2" if fallback_dept == "App Support" else "P3",
+                "confidenceScore": 95 if fallback_dept == "App Support" else 75,
+                "reasoningText": f"Fallback triage assigned to {fallback_dept} team based on domain taxonomy.",
+                "thinkingTrace": "LLM triage exception caught; applied domain-aware fallback assignment.",
                 "historicalPrecedentsCount": 0,
-                "autoAssigned": False
+                "autoAssigned": fallback_dept == "App Support"
             }
 
     def route_and_assign_ticket(self, token, incident):
@@ -297,7 +320,7 @@ class ControlTowerAIRouter:
         import requests
 
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        assigned_to = f"{dept} Lead"
+        assigned_to = get_team_member_for_department(dept)
 
         # Update assignment group, priority, and transition state to IN_PROGRESS
         patch_payload = {

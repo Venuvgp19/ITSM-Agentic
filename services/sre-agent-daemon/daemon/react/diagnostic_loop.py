@@ -119,8 +119,15 @@ def run_read_only_diagnostic_react_loop(
                 
                 if not msg:
                     break
-                    
-                messages.append(msg)
+
+                # Normalize to a plain dict before re-appending to `messages` --
+                # see remediation_loop.py for why (fail-safe MockMessage isn't
+                # JSON-serializable and would poison every subsequent turn).
+                messages.append({
+                    "role": "assistant",
+                    "content": msg.content,
+                    **({"tool_calls": [tc.model_dump() if hasattr(tc, "model_dump") else tc for tc in msg.tool_calls]} if getattr(msg, "tool_calls", None) else {})
+                })
 
                 if msg.tool_calls:
                     for tc in msg.tool_calls:

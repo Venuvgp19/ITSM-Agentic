@@ -54857,7 +54857,9 @@
           "[DELETE - APP SERVICE PLAN] az appservice plan delete --name {app_service_plan_name} --resource-group {resource_group} --yes",
           "[VERIFY] az webapp show --resource-group {resource_group} --name {web_app_name} -o json 2>/dev/null || echo 'Web App {web_app_name} successfully removed'"
         ],
-        "capabilityTags": null,
+        "capabilityTags": [
+          "linux.user.delete"
+        ],
         "workNotesAnalyzedCount": 1,
         "sourceIncidentIds": [],
         "author": "\ud83e\udd16 Gemini 3.1 Pro Knowledge Synthesis Agent",

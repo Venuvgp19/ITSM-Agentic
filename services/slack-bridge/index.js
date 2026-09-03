@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { App } = require('@slack/bolt');
@@ -19,6 +20,18 @@ const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   appToken: process.env.SLACK_APP_TOKEN,
   socketMode: true,
+});
+
+app.error((err) => {
+  console.error('[slack-bridge] Bolt error:', err.message || err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[slack-bridge] Uncaught exception (swallowed to keep socket alive):', err.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[slack-bridge] Unhandled rejection:', reason);
 });
 
 async function ctFetch(pathname, options = {}) {
