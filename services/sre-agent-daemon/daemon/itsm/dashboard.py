@@ -81,6 +81,27 @@ def post_history_entry_to_dashboard(incident_id, incident_title, ci_name, comman
     except Exception as e:
         logger.warning(f"Could not post history trace to dashboard: {e}")
 
+def post_token_usage_to_dashboard(call_record):
+    """
+    Persists one LLM call's token usage so the Cost Dashboard has real
+    historical spend data. Previously this only lived in the in-process
+    SessionStateManager (session_state.py's record_token_call), which is lost
+    on every daemon restart -- fire-and-forget POST here, same pattern as the
+    other dashboard.py helpers, so a slow/down control tower never blocks or
+    fails an LLM call over a bookkeeping side-effect.
+    """
+    try:
+        payload = {
+            "label": call_record.get("label"),
+            "model": call_record.get("model"),
+            "promptTokens": call_record.get("prompt_tokens", 0),
+            "completionTokens": call_record.get("completion_tokens", 0),
+            "totalTokens": call_record.get("total_tokens", 0),
+        }
+        requests.post(f"{GOVERNANCE_BASE_URL}/token-usage", json=payload, timeout=3)
+    except Exception as e:
+        logger.warning(f"Could not post token usage to dashboard: {e}")
+
 def post_timeline_update(incident_id, incident_number, incident_title, ci_name, status, step_name=None, step_status=None, step_details=None):
     try:
         payload = {

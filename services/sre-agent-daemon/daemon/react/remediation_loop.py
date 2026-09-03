@@ -113,11 +113,24 @@ def run_dynamic_react_loop(
                             is_allowed, unauth_bins = is_allowed_command_adaptation(cmd, guide_commands, is_human_authorized=is_human_authorized)
                             if not is_allowed:
                                 logger.critical(f"🛡️ SOP / ENTERPRISE SAFETY BLOCK: Blocked command '{cmd}' as forbidden/unauthorized: {unauth_bins}")
+                                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Enterprise Security Guard", "FAILED", f"Security Block: {cmd}")
+                                if not is_human_authorized and not any("DESTRUCTIVE_COMMAND" in b for b in unauth_bins):
+                                    # Not a catastrophic-pattern block (those stay hard-blocked
+                                    # regardless) -- just a binary the auto-approved SOP text
+                                    # didn't resolve to. Rather than tell the LLM "forbidden" and
+                                    # let it burn the remaining ~30 turns re-phrasing the same
+                                    # blocked binary (observed live: 25 turns, ~$1.30, zero
+                                    # progress), stop immediately and hand off to the orchestrator
+                                    # to request one HITL approval for this incident/binary.
+                                    full_exec_log += (
+                                        f"\n=== UNAUTHORIZED_BINARY_NEEDS_APPROVAL ===\n"
+                                        f"Command: {cmd}\nBinaries: {sorted(unauth_bins)}\n"
+                                    )
+                                    return False, full_exec_log
                                 error_msg = (
                                     f"SECURITY ERROR: Command '{cmd}' is prohibited by enterprise safety guard ({unauth_bins}). "
                                     f"Destructive/unauthorized operations are strictly forbidden."
                                 )
-                                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Enterprise Security Guard", "FAILED", f"Security Block: {cmd}")
                                 messages.append({
                                     "role": "tool",
                                     "tool_call_id": tc.id,

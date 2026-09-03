@@ -1,5 +1,6 @@
 // src/hooks/useLiveITSMData.ts
 import { useState, useEffect } from 'react';
+import { formatTime } from '../utils/datetime';
 
 export interface Incident {
   id: string;
@@ -69,7 +70,7 @@ export const useLiveITSMData = () => {
       if (Array.isArray(incData)) setIncidents(incData);
       if (Array.isArray(probData)) setProblems(probData);
       if (statsData) setAgentStats(statsData);
-      setLastRefreshed(new Date().toLocaleTimeString());
+      setLastRefreshed(formatTime(new Date()));
     } catch (e) {
       console.error('Failed to load ITSM data:', e);
     } finally {

@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Search
 } from 'lucide-react';
+import { formatShortTime } from '../utils/datetime';
 
 // Friendly rotating status phrases shown while the assistant is actively
 // querying agentic_sre_db / itsm_db. Picked at random each time a new
@@ -106,7 +107,7 @@ export const SREControlTowerChat: React.FC = () => {
       role: 'assistant',
       content:
         '👋 **Hello! I am the SRE Control Tower Assistant.**\n\nI answer your operational questions using live queries against **agentic_sre_db** (approvals, audit history, timelines, containment) and **itsm_db** (incidents, CIs, knowledge articles).\n\n*How can I assist your investigation today?*',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: formatShortTime(new Date())
     }
   ]);
 
@@ -261,7 +262,7 @@ export const SREControlTowerChat: React.FC = () => {
       id: `user-${Date.now()}`,
       role: 'user',
       content: query,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: formatShortTime(new Date())
     };
 
     const assistantMsgId = `assistant-${Date.now()}`;
@@ -270,7 +271,7 @@ export const SREControlTowerChat: React.FC = () => {
       role: 'assistant',
       content: '',
       toolTraces: [],
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: formatShortTime(new Date())
     };
 
     const updatedMessages = [...messages, userMessage, initialAssistantMessage];
@@ -415,7 +416,7 @@ export const SREControlTowerChat: React.FC = () => {
         role: 'assistant',
         content:
           '👋 **Session Cleared.**\n\nI am ready for fresh operational queries against **agentic_sre_db** and **itsm_db**.',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: formatShortTime(new Date())
       }
     ]);
   };

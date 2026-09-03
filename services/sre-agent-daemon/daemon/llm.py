@@ -213,6 +213,13 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                         "total_tokens":      tt,
                     }
                     state.record_token_call(call_record)
+                    # Deferred import: daemon.itsm's package __init__ pulls in
+                    # itsm.client, which imports from this module (llm.py) --
+                    # a top-level import here would be a circular import at
+                    # module-load time. Safe to import at call time since both
+                    # modules are fully initialized by then.
+                    from .itsm.dashboard import post_token_usage_to_dashboard
+                    post_token_usage_to_dashboard(call_record)
                     logger.info(
                         f"📊 Token Usage [{call_label}] model={model} "
                         f"prompt={pt:,} completion={ct:,} total={tt:,} "

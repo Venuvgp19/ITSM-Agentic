@@ -623,6 +623,61 @@ def _solve_in_progress_incident_internal(
             state.lock_session(inc_id)
             return
 
+        if "UNAUTHORIZED_BINARY_NEEDS_APPROVAL" in exec_log and not state.has_submitted_approval(inc_id):
+            # The matched SOP [kb_num] is RAG-relevant and non-destructive (it
+            # already cleared the is_new_use_case/is_destructive_sop gate above),
+            # but the live ReAct loop needed a binary the auto-approved SOP text
+            # didn't resolve to (see remediation_loop.py's
+            # UNAUTHORIZED_BINARY_NEEDS_APPROVAL handling). Rather than hard-fail
+            # a legitimate remediation or silently widen the auto-approved binary
+            # set, route it through the same HITL approval card used for
+            # destructive/new SOPs -- "RAG-matched SOP + human sign-off" instead
+            # of "RAG-matched SOP alone".
+            blocked_cmd_m = re.search(r'Command:\s*(.+)', exec_log)
+            blocked_bins_m = re.search(r'Binaries:\s*(.+)', exec_log)
+            blocked_cmd = blocked_cmd_m.group(1).strip() if blocked_cmd_m else "(unknown)"
+            blocked_bins = blocked_bins_m.group(1).strip() if blocked_bins_m else "(unknown)"
+
+            approval_payload = {
+                "incidentId": inc_id,
+                "incidentTitle": f"[BINARY AUTHORIZATION REQUIRED] {short_desc}",
+                "agentId": "agent-unix-resolver-01",
+                "agentName": "🤖 Unix Auto-Resolver Agent",
+                "model": "nvidia/nemotron-3-super-120b-a12b",
+                "targetCi": f"{ci_name} ({ip})",
+                "department": incident.get("department", "DevOps Team"),
+                "riskLevel": "HIGH",
+                "confidenceScore": 85.0,
+                "summary": f"Matched SOP [{kb_num}] '{kb_title}' is relevant, but the live execution needed binaries {blocked_bins} that the SOP's stored commands didn't explicitly authorize. Human sign-off required to proceed.",
+                "proposedCommands": sop_commands,
+                "aiReasoning": f"RAG-matched SOP [{kb_num}] scored above threshold and is not flagged destructive, but command adaptation attempted:\n`{blocked_cmd}`\nwhich uses binaries {blocked_bins} not present in the SOP's auto-approved command set. Blocking outright would strand a legitimate remediation; auto-allowing would bypass the binary allowlist entirely. Requesting explicit operator approval instead.",
+                "safetyChecks": [{"check": f"Binary authorization: {blocked_bins}", "passed": False}],
+                "kbArticleReference": kb_num or "KB_NEW",
+                "kbTitle": kb_title or short_desc,
+            }
+            logger.info(f"📝 Submitting binary-authorization approval request for SOP on ticket [{number}] (blocked: {blocked_bins})...")
+            submitted_ok = submit_agent_approval(token, approval_payload)
+            if not submitted_ok:
+                logger.warning(f"⚠️ Binary-authorization approval submission failed for [{number}] — will retry on next poll cycle.")
+                return
+            state.mark_submitted_approval(inc_id)
+            post_timeline_update(inc_id, number, short_desc, ci_name, "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", f"Command needs binary authorization ({blocked_bins}) — requires human operator approval in Control Tower.")
+            binary_note = (
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ BINARY AUTHORIZATION REQUIRED — MANDATORY HUMAN APPROVAL\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔍 SOP Match: [{kb_num}] '{kb_title}'\n"
+                f"🚧 Blocked Command: `{blocked_cmd}`\n"
+                f"🚧 Unauthorized Binaries: {blocked_bins}\n"
+                f"📝 Action: Routed to Agent Control Tower (http://localhost:5173) for mandatory human operator review.\n"
+                f"State: Incident placed ON_HOLD. Execution blocked until an operator reviews & approves.\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+            add_work_note(token, inc_id, binary_note, author="🛡️ ITSM High-Risk Safety Guard")
+            update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
+            state.lock_session(inc_id)
+            return
+
         post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Dynamic SSH execution failed: {exec_log[:200]}")
     else:
         post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Dynamic SSH Execution", "SUCCESS", "Dynamic SOP commands executed successfully.")

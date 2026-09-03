@@ -36,7 +36,8 @@ import {
   KeyRound,
   ArrowRight,
   Scale,
-  Power
+  Power,
+  DollarSign
 } from 'lucide-react';
 import { AIControlTowerOverview } from './components/AIControlTowerOverview';
 import { AIAssetInventoryView } from './components/AIAssetInventoryView';
@@ -46,6 +47,7 @@ import { PendingApprovalsView, AgentApproval } from './components/PendingApprova
 import { HistoricalActivityView, AgentHistoryEntry } from './components/HistoricalActivityView';
 import { GovernanceAnalyticsView } from './components/GovernanceAnalyticsView';
 import { ModelConfigView } from './components/ModelConfigView';
+import { CostDashboardView } from './components/CostDashboardView';
 import { VectorSpace3D } from './components/VectorSpace3D';
 import { IncidentAnalysisView } from './components/IncidentAnalysisView';
 import { ProblemAnalysisView } from './components/ProblemAnalysisView';
@@ -53,6 +55,7 @@ import { AgentExecutionTimelineView } from './components/AgentExecutionTimelineV
 import { AIRoutingOverview } from './components/AIRoutingOverview';
 import { SREControlTowerChat } from './components/SREControlTowerChat';
 import { Button, Badge } from './components/ui';
+import { formatTime } from './utils/datetime';
 
 type TabId =
   | 'overview'
@@ -63,6 +66,7 @@ type TabId =
   | 'analysis'
   | 'problems'
   | 'value'
+  | 'cost'
   | 'risk'
   | 'history'
   | 'vector'
@@ -161,7 +165,7 @@ export function App() {
       if (histRes && histRes.ok) setHistory(await histRes.json());
       if (statsRes && statsRes.ok) setStats(await statsRes.json());
 
-      setLastRefreshed(new Date().toLocaleTimeString());
+      setLastRefreshed(formatTime(new Date()));
     } catch (err) {
       console.error('Error fetching SRE dashboard telemetry:', err);
     } finally {
@@ -312,6 +316,11 @@ export function App() {
           id: 'value',
           label: 'Value & Business ROI',
           icon: TrendingUp,
+        },
+        {
+          id: 'cost',
+          label: 'AI Ops Cost Dashboard',
+          icon: DollarSign,
         },
         {
           id: 'risk',
@@ -686,6 +695,8 @@ export function App() {
           {activeTab === 'problems' && <ProblemAnalysisView />}
 
           {activeTab === 'value' && <ValueAndROIView />}
+
+          {activeTab === 'cost' && <CostDashboardView />}
 
           {activeTab === 'risk' && <RiskAndComplianceView onKillSwitchChange={setIsKillSwitchTriggered} />}
 

@@ -28,6 +28,7 @@ import {
   Search,
   ExternalLink
 } from 'lucide-react';
+import { formatDate, formatDateTime, formatTime } from '../utils/datetime';
 
 export interface Incident {
   id: string;
@@ -145,7 +146,7 @@ export function IncidentAnalysisView() {
 
       if (Array.isArray(incData)) setIncidents(incData);
       if (Array.isArray(probData)) setProblems(probData);
-      setLastRefreshed(new Date().toLocaleTimeString());
+      setLastRefreshed(formatTime(new Date()));
     } catch (e) {
       console.error('Failed to fetch enterprise incident telemetry:', e);
     } finally {
@@ -212,8 +213,8 @@ export function IncidentAnalysisView() {
     const maxD = new Date(dates[dates.length - 1]);
     const days = Math.max(1, Math.round((maxD.getTime() - minD.getTime()) / (24 * 3600 * 1000)));
     return {
-      start: minD.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      end: maxD.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      start: formatDate(minD, { month: 'short', day: 'numeric', year: 'numeric' }),
+      end: formatDate(maxD, { month: 'short', day: 'numeric', year: 'numeric' }),
       days
     };
   }, [filteredIncidents]);
@@ -508,7 +509,7 @@ export function IncidentAnalysisView() {
             </div>
           </div>
           <p className="text-xs text-slate-400 font-mono">
-            Generated: {new Date().toLocaleString()} | {totalCount} database incidents | {periodsData.length} period(s) | Audience: SRE & Engineering Leadership
+            Generated: {formatDateTime(new Date())} | {totalCount} database incidents | {periodsData.length} period(s) | Audience: SRE & Engineering Leadership
           </p>
         </div>
 
@@ -979,7 +980,7 @@ export function IncidentAnalysisView() {
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-slate-400 font-mono">
-                      {inc.openedAt ? new Date(inc.openedAt).toLocaleString() : new Date(inc.createdAt).toLocaleString()}
+                      {formatDateTime(inc.openedAt || inc.createdAt)}
                     </td>
                   </tr>
                 ))}

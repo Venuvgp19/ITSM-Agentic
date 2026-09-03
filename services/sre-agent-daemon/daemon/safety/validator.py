@@ -27,6 +27,17 @@ def extract_invoked_binaries(cmd_str: str, _depth: int = 0) -> set[str]:
     """
     if not cmd_str or _depth > _MAX_NEST_DEPTH:
         return set()
+    # Strip a leading step-type annotation tag (e.g. "[VERIFY] az group show ...",
+    # "[CREATE - RESOURCE GROUP, only if ...] az group create ...") that some KB
+    # articles prefix onto resolutionSteps. Without this, the bracket tag's own
+    # text becomes the clause's first token, gets treated as the invoked binary
+    # (e.g. "verify", "create"), and the scan loop below breaks immediately after
+    # it -- so the real command later in the same string (e.g. `az group show
+    # ...`) is never reached, and every legitimate use of that binary from an
+    # otherwise-approved SOP step gets rejected as unauthorized.
+    cmd_str = re.sub(r'^\s*\[[^\]]*\]\s*', '', cmd_str)
+    if not cmd_str:
+        return set()
     shell_control_keywords = {
         "for", "in", "do", "done", "while", "until", "if", "then", "else", "elif",
         "fi", "case", "esac", "select", "{", "}", "(", ")", "!", "&&", "||", ";", "|"
@@ -437,4 +448,13 @@ def is_allowed_command_adaptation(c_str: str, approved: list[str], is_human_auth
     allowed_bins = approved_bins.union(diagnostic_bins)
     invoked_bins = extract_invoked_binaries(c_str)
     unauthorized = invoked_bins - allowed_bins
+    if unauthorized and is_human_authorized:
+        # A human operator has already reviewed and signed off on this incident's
+        # remediation via the HITL approval card (see incident_lifecycle.py's
+        # UNAUTHORIZED_BINARY_NEEDS_APPROVAL handling) -- that sign-off extends to
+        # binaries the auto-approved SOP text didn't literally resolve to, the same
+        # way it already does for catastrophic commands above. Only reachable here
+        # for the non-catastrophic case; catastrophic patterns still require an
+        # exact text match against `approved` even when human-authorized.
+        return True, set()
     return (len(unauthorized) == 0), unauthorized

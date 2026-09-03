@@ -23,6 +23,7 @@ import {
   Activity,
   Timer
 } from 'lucide-react';
+import { formatDateTime } from '../utils/datetime';
 
 export interface RouterAgentOutput {
   ticketId: string;
@@ -421,7 +422,7 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                         <div className="text-left lg:text-right">
                           <div className="text-[11px] text-slate-400 font-mono flex items-center lg:justify-end gap-1.5">
                             <Clock className="w-3 h-3 text-slate-500" />
-                            {new Date(item.executedAt).toLocaleString()}
+                            {formatDateTime(item.executedAt)}
                           </div>
                           <div className="text-xs font-bold text-slate-400 mt-0.5">
                             Duration: <span className="text-emerald-400 font-mono">{item.durationMs}ms</span>

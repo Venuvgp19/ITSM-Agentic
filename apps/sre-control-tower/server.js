@@ -111,6 +111,20 @@ async function initDatabase() {
         id VARCHAR(64) PRIMARY KEY,
         config_data JSONB
       );
+
+      CREATE TABLE IF NOT EXISTS sre_token_usage (
+        id BIGSERIAL PRIMARY KEY,
+        label VARCHAR(255),
+        model VARCHAR(255),
+        incident_number VARCHAR(64),
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+        recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_token_usage_recorded_at ON sre_token_usage (recorded_at);
+      CREATE INDEX IF NOT EXISTS idx_token_usage_incident ON sre_token_usage (incident_number);
     `);
 
     // Ensure default config exists
@@ -857,6 +871,105 @@ app.post('/api/v1/agent/timeline', async (req, res) => {
       startTime: r.start_time.toISOString(),
       endTime: r.end_time ? r.end_time.toISOString() : null,
       steps: r.steps || []
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// LLM token usage / cost tracking -- previously only lived in-memory inside
+// the daemon's SessionStateManager (daemon/session_state.py), so every daemon
+// restart (which happened repeatedly in practice) silently lost all historical
+// spend data. This persists each call so a cost dashboard can show real
+// day-over-day / model / incident spend instead of only "since last restart".
+const TOKEN_COST_PER_MILLION_USD = 8.00; // matches session_state.py's existing estimate
+
+app.post('/api/v1/agent/token-usage', async (req, res) => {
+  try {
+    const { label, model, incidentNumber, promptTokens, completionTokens, totalTokens } = req.body;
+    const pt = Number(promptTokens) || 0;
+    const ct = Number(completionTokens) || 0;
+    const tt = Number(totalTokens) || (pt + ct);
+    const costUsd = (tt / 1_000_000) * TOKEN_COST_PER_MILLION_USD;
+
+    // The daemon's call_label embeds the incident number inconsistently
+    // (e.g. "SOP Synthesis [INC0001205]", "AI-Router-Triage-INC0001205") or
+    // not at all (KB-scoped calls like "LLM RAG Judge [KB0000039]") -- extract
+    // it server-side from either the explicit field or the label itself so
+    // per-incident cost rollups work regardless of which call site posted it.
+    const incMatch = (incidentNumber || label || '').match(/INC\d+/);
+    const incNumber = incMatch ? incMatch[0] : (incidentNumber || null);
+
+    await pool.query(`
+      INSERT INTO sre_token_usage (label, model, incident_number, prompt_tokens, completion_tokens, total_tokens, cost_usd)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [label || null, model || null, incNumber, pt, ct, tt, costUsd]);
+
+    res.json({ success: true, costUsd });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/v1/agent/token-usage/summary', async (req, res) => {
+  try {
+    const [totalsRes, byDayRes, byModelRes, topIncidentsRes] = await Promise.all([
+      pool.query(`
+        SELECT
+          COALESCE(SUM(cost_usd), 0) AS all_time_usd,
+          COALESCE(SUM(cost_usd) FILTER (WHERE recorded_at >= NOW() - INTERVAL '1 day'), 0) AS today_usd,
+          COALESCE(SUM(cost_usd) FILTER (WHERE recorded_at >= NOW() - INTERVAL '7 days'), 0) AS week_usd,
+          COALESCE(SUM(total_tokens), 0) AS all_time_tokens,
+          COUNT(*) AS all_time_calls
+        FROM sre_token_usage
+      `),
+      pool.query(`
+        SELECT DATE(recorded_at) AS day, SUM(cost_usd) AS cost_usd, SUM(total_tokens) AS total_tokens, COUNT(*) AS calls
+        FROM sre_token_usage
+        WHERE recorded_at >= NOW() - INTERVAL '30 days'
+        GROUP BY DATE(recorded_at)
+        ORDER BY day ASC
+      `),
+      pool.query(`
+        SELECT COALESCE(model, 'unknown') AS model, SUM(cost_usd) AS cost_usd, SUM(total_tokens) AS total_tokens, COUNT(*) AS calls
+        FROM sre_token_usage
+        GROUP BY model
+        ORDER BY cost_usd DESC
+      `),
+      pool.query(`
+        SELECT incident_number, SUM(cost_usd) AS cost_usd, SUM(total_tokens) AS total_tokens, COUNT(*) AS calls
+        FROM sre_token_usage
+        WHERE incident_number IS NOT NULL
+        GROUP BY incident_number
+        ORDER BY cost_usd DESC
+        LIMIT 10
+      `),
+    ]);
+
+    res.json({
+      allTimeUsd: parseFloat(totalsRes.rows[0].all_time_usd),
+      todayUsd: parseFloat(totalsRes.rows[0].today_usd),
+      weekUsd: parseFloat(totalsRes.rows[0].week_usd),
+      allTimeTokens: parseInt(totalsRes.rows[0].all_time_tokens, 10),
+      allTimeCalls: parseInt(totalsRes.rows[0].all_time_calls, 10),
+      byDay: byDayRes.rows.map(r => ({
+        day: r.day,
+        costUsd: parseFloat(r.cost_usd),
+        totalTokens: parseInt(r.total_tokens, 10),
+        calls: parseInt(r.calls, 10),
+      })),
+      byModel: byModelRes.rows.map(r => ({
+        model: r.model,
+        costUsd: parseFloat(r.cost_usd),
+        totalTokens: parseInt(r.total_tokens, 10),
+        calls: parseInt(r.calls, 10),
+      })),
+      topIncidents: topIncidentsRes.rows.map(r => ({
+        incidentNumber: r.incident_number,
+        costUsd: parseFloat(r.cost_usd),
+        totalTokens: parseInt(r.total_tokens, 10),
+        calls: parseInt(r.calls, 10),
+      })),
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

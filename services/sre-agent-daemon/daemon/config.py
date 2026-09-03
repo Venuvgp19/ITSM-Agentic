@@ -162,10 +162,10 @@ SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
 ROUTER_FAILURE_SLACK_CHANNEL = os.getenv("ROUTER_FAILURE_SLACK_CHANNEL", "C0BSS1M6MPD")
 
 # Specialized Agent Model Mapping
-ROUTER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
-RESOLVER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
-SYNTHESIZER_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
-GOVERNANCE_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
+ROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+RESOLVER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+SYNTHESIZER_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+GOVERNANCE_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 
 RAG_SIMILARITY_THRESHOLD = 0.42
 
@@ -207,11 +207,9 @@ ENFORCE_SOP_RULES_ON_NEW_SOP = os.getenv("ENFORCE_SOP_RULES_ON_NEW_SOP", "true")
 MODEL_NAME = ROUTER_MODEL
 POLL_INTERVAL_SECONDS = 15
 FALLBACK_MODELS = [
-    "nvidia/nemotron-3.5-lightning-30b-a3b",
-    "meta/llama-3.3-70b-instruct",
-    "nvidia/llama-3.1-nemotron-70b-instruct",
-    "mistralai/mistral-7b-instruct-v0.3",
-    "deepseek-ai/deepseek-r1"
+    "nvidia/nemotron-3-super-120b-a12b",
+    "deepseek-ai/deepseek-v4-flash-0731",
+    "nvidia/nemotron-3.5-lightning-30b-a3b"
 ]
 
 # Saved Inventory & Credentials for Configuration Items

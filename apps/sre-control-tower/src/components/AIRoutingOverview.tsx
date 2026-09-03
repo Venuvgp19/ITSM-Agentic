@@ -20,6 +20,7 @@ import {
   Flame,
   BarChart3
 } from 'lucide-react';
+import { formatTime, formatShortTime } from '../utils/datetime';
 
 interface IncidentRecord {
   id: string;
@@ -103,7 +104,7 @@ export const AIRoutingOverview: React.FC = () => {
         const data = await res.json();
         if (Array.isArray(data)) {
           setIncidents(data);
-          setLastRefreshed(new Date().toLocaleTimeString());
+          setLastRefreshed(formatTime(new Date()));
         }
       }
     } catch (err) {
@@ -167,7 +168,7 @@ export const AIRoutingOverview: React.FC = () => {
       }
 
       const dateObj = new Date(inc.createdAt || Date.now());
-      const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const timeStr = formatShortTime(dateObj);
 
       return {
         id: inc.id,

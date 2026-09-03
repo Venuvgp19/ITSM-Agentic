@@ -15,6 +15,7 @@ import {
   Zap,
   Layers,
 } from 'lucide-react';
+import { formatTime, formatDate } from '../utils/datetime';
 
 interface KnowledgeArticle {
   id: string;
@@ -672,7 +673,7 @@ export function VectorSpace3D() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
-              Live Sync: {lastRefreshedAt.toLocaleTimeString()}
+              Live Sync: {formatTime(lastRefreshedAt)}
             </span>
             <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -878,7 +879,7 @@ export function VectorSpace3D() {
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800">
                   <span className="text-[10px] text-slate-500 uppercase font-bold block">Created At</span>
-                  <span className="font-bold text-slate-400">{new Date(selectedArticle.createdAt).toLocaleDateString()}</span>
+                  <span className="font-bold text-slate-400">{formatDate(selectedArticle.createdAt)}</span>
                 </div>
               </div>
 

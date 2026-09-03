@@ -70,6 +70,16 @@ def evaluate_and_get_sop(
     _ticket_is_k8s = any(k in q_low for k in K8S_DOMAIN_KEYWORDS)
     _ticket_is_jenkins = any(k in q_low for k in ["jenkins", "initialadminpassword"])
 
+    # Decision-replay trace: one human-readable line per candidate this loop
+    # actually considered (matched, rejected-by-judge, or skipped-by-guard),
+    # posted as a single timeline step once the loop finishes. This is the
+    # "why did/didn't this incident match a KB" record that previously only
+    # existed as scattered logger.info/warning lines lost on daemon restart --
+    # reusing the existing timeline UI (AgentExecutionTimelineView already
+    # renders `details` as a code block and red-highlights anything containing
+    # "reject"), so no new frontend surface is needed for this to be visible.
+    candidate_trace: list[str] = []
+
     if rag_results:
         for idx, candidate in enumerate(rag_results):
             cand_score = candidate.get("score", 0.0)
@@ -102,30 +112,36 @@ def evaluate_and_get_sop(
             if _ticket_is_db2 and not is_allowed_for_domain(cand_art, "db2"):
                 logger.warning(f"🛡️ Strict DB2 Guard: DB2 ticket [{ticket_number}] blocked non-DB2 SOP [{cand_number}] '{cand_art.get('title', '')}'.")
                 next_best_info = f"Candidate [{cand_number}] blocked — DB2 ticket only permits DB2 SOPs."
+                candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} — ⛔ SKIPPED (DB2 Cross-Domain Guard)")
                 continue
 
             if _ticket_is_k8s:
                 if is_blocked_for_domain(cand_art, "k8s") or is_linux_only_sop:
                     logger.warning(f"🛡️ Hard Cross-Domain Guard: K8s ticket [{ticket_number}] matched Linux user SOP [{cand_number}] '{cand_art.get('title', '')}'. Rejecting.")
                     next_best_info = f"[{cand_number}] rejected — Linux user SOP blocked for K8s ticket."
+                    candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} — ⛔ SKIPPED (K8s vs Linux-user Cross-Domain Guard)")
                     continue
 
             # ── 2. ACTION DIRECTION & QUANTITY GUARDS ──
             if is_credential_task and is_sop_user_mgmt:
                 logger.warning(f"🛡️ Action Mismatch Guard: Credential Retrieval ticket [{ticket_number}] matched Account Management SOP [{cand_number}]. Skipping.")
                 next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch."
+                candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} — ⛔ SKIPPED (Action Mismatch: credential-retrieval ticket vs account-management SOP)")
                 continue
             elif is_deletion_task and is_sop_provision:
                 logger.warning(f"🛡️ Action Mismatch Guard: User Deletion ticket [{ticket_number}] matched Provisioning SOP [{cand_number}]. Skipping.")
                 next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch (Deletion vs Provisioning)."
+                candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} — ⛔ SKIPPED (Action Mismatch: deletion ticket vs provisioning SOP)")
                 continue
             elif is_creation_task and is_sop_deletion:
                 logger.warning(f"🛡️ Action Mismatch Guard: User Creation ticket [{ticket_number}] matched Deletion SOP [{cand_number}]. Skipping.")
                 next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch (Creation vs Deletion)."
+                candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} — ⛔ SKIPPED (Action Mismatch: creation ticket vs deletion SOP)")
                 continue
             elif is_single_user_req and is_bulk_sop:
                 logger.warning(f"🛡️ Quantity Mismatch Guard: Single-user ticket [{ticket_number}] matched Bulk SOP [{cand_number}]. Skipping.")
                 next_best_info = f"Candidate [{cand_number}] omitted due to Quantity Mismatch."
+                candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} — ⛔ SKIPPED (Quantity Mismatch: single-user ticket vs bulk SOP)")
                 continue
 
             # ── 3. THRESHOLD & LLM RAG JUDGE VALIDATION ──
@@ -133,6 +149,7 @@ def evaluate_and_get_sop(
                 logger.info(f"   ↳ Candidate [{cand_number}] '{cand_art.get('title', '')}' — Score {cand_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold.")
                 if not next_best_info:
                     next_best_info = f"Candidate [{cand_number}] score {cand_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold."
+                candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} — ⛔ below {RAG_SIMILARITY_THRESHOLD} match threshold, not judged")
                 continue
 
             next_cand_score = rag_results[idx + 1].get("score", 0.0) if idx + 1 < len(rag_results) else 0.0
@@ -160,6 +177,7 @@ def evaluate_and_get_sop(
                         f"Reason: {_judge_reason}. Inspecting next candidate."
                     )
                     next_best_info = f"[{cand_number}] rejected by LLM RAG Judge: {_judge_reason}"
+                    candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} margin={score_margin:.4f} — ❌ REJECTED by LLM Judge: {_judge_reason}")
                     continue
                 else:
                     logger.info(
@@ -167,6 +185,9 @@ def evaluate_and_get_sop(
                         f"'{cand_art.get('title', '')}' (hybrid score {cand_score:.4f}, margin {score_margin:.4f}). "
                         f"Reason: {_judge_reason}"
                     )
+                    candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} margin={score_margin:.4f} — ✅ APPROVED by LLM Judge: {_judge_reason}")
+            else:
+                candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} margin={score_margin:.4f} — ✅ SELECTED (score/margin strong enough to skip judge)")
 
             is_new = False
             matched_kb = cand_art
@@ -174,6 +195,15 @@ def evaluate_and_get_sop(
             similarity_score = cand_score
             logger.info(f"🎯 Hybrid RAG Match Selected: Score {similarity_score:.4f} >= {RAG_SIMILARITY_THRESHOLD} -> [{cand_number}] '{matched_kb.get('title', '')}'")
             break
+
+    _trace_header = f"Query: '{dense_query}' | Department: '{department or 'Global'}' | {len(rag_results)} candidate(s) retrieved\n"
+    _trace_body = "\n".join(candidate_trace) if candidate_trace else "(no candidates retrieved by hybrid search)"
+    post_timeline_update(
+        incident_id, ticket_number, short_desc, ci_name, "RUNNING",
+        "🎯 RAG Candidate Evaluation",
+        "SUCCESS" if not is_new else "FAILED",
+        _trace_header + _trace_body
+    )
     
     if is_new:
         miss_reason = next_best_info if next_best_info else f"Top similarity score {similarity_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold."
