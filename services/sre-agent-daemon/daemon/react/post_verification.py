@@ -49,6 +49,17 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
     evidence_lines = []
     is_fixed = True
 
+    # Ground truth for "was this a user-account action" -- the executed exec_log
+    # always contains the real useradd/userdel invocation regardless of how the
+    # human phrased the ticket (e.g. "create 10 user IDs" doesn't contain the
+    # literal "create user" trigger phrase below, but the command that actually
+    # ran is unambiguous). Same principle as checking exec_log for the Storage
+    # Account branch further down: real executed CLI syntax over ticket-text
+    # phrase matching, which is what let this ticket fall through into the
+    # Service/Application branch below just because a requested username
+    # ("Nexacore01") happened to contain that branch's trigger keyword.
+    exec_log_has_user_cmd = bool(re.search(r'\b(useradd|userdel)\b', exec_log or ""))
+
     def clean_ssh_stdout(raw):
         text = raw or ""
         if "STDOUT:" in text:
@@ -87,7 +98,7 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
     # to misroute unrelated tickets (e.g. a file-share "permission denied" issue) into
     # this branch ahead of a more appropriate one, since this is a first-match elif
     # chain -- removed. The remaining anchors are specific enough on their own.
-    elif any(k in full_text for k in ["useradd", "linux user", "user account", "provision user", "create user", "userdel", "delete user", "offboard", "pamsudo", "sudoers"]):
+    elif exec_log_has_user_cmd or any(k in full_text for k in ["useradd", "linux user", "user account", "provision user", "create user", "userdel", "delete user", "offboard", "pamsudo", "sudoers"]):
         ignore_terms = {
             "bin", "bash", "sh", "etc", "sudoers", "root", "command", "systemctl", "restart", 
             "nexacore", "pamsudox", "puser", "user", "username", "sudo_command", "99-", "90-",
@@ -128,6 +139,42 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
             clean_r = raw.strip('"\';$(){}[]')
             if is_valid_username_candidate(clean_r):
                 candidates.add(clean_r)
+
+        # 4. From bash brace-expansion loops with variable interpolation:
+        # for i in {01..10}; do userdel -r Nexacore$i; done. Neither check 1
+        # (which only splits literal tokens between "in" and ";", so "{01..10}"
+        # stays an unparsed brace-range token) nor check 3 (whose capture group
+        # excludes "$", so `Nexacore$i` only ever yields the bare stem
+        # "Nexacore" -- which is coincidentally also a required ignore_terms
+        # entry, since "nexacore" alone appears as an unrelated trigger keyword
+        # elsewhere in this file) can resolve this into actual usernames. This
+        # generalizes to any PREFIX$var loop over a brace range, not just this
+        # one ticket's naming scheme -- observed live on INC0001479, where the
+        # HITL-approved bulk userdel used exactly this pattern and left
+        # users_to_check empty despite the deletion having actually run.
+        brace_loop_re = re.compile(r'for\s+(\w+)\s+in\s+\{(\d+)\.\.(\d+)\}\s*;?\s*do\s+(.*?)done', re.DOTALL)
+        for loop_var, range_start, range_end, loop_body in brace_loop_re.findall(exec_log):
+            width = len(range_start)
+            prefixes = re.findall(rf'([a-zA-Z][a-zA-Z0-9_\-]*)\$\{{?{re.escape(loop_var)}\}}?', loop_body)
+            for prefix in set(prefixes):
+                for n in range(int(range_start), int(range_end) + 1):
+                    candidates.add(f"{prefix}{str(n).zfill(width)}")
+
+        # 4b. The other bash idiom for the same thing: the prefix is fused
+        # directly onto the brace range in the iterable itself --
+        # `for u in Nexacore{01..10}; do ...; done` -- which bash expands into
+        # the literal list Nexacore01 Nexacore02 ... before the loop body ever
+        # runs, so unlike 4 above the prefix doesn't need to be found in the
+        # body at all; it's already sitting right next to the range. Observed
+        # live back-to-back with the 4-shaped variant on the same incident
+        # (INC0001479) across two separate LLM-generated command attempts for
+        # the identical request -- both are common, interchangeable ways to
+        # write "loop over N numbered names" and neither is specific to any
+        # one naming scheme.
+        for prefix, range_start, range_end in re.findall(r'in\s+([a-zA-Z][a-zA-Z0-9_\-]*)\{(\d+)\.\.(\d+)\}', exec_log):
+            width = len(range_start)
+            for n in range(int(range_start), int(range_end) + 1):
+                candidates.add(f"{prefix}{str(n).zfill(width)}")
 
         is_deletion = any(k in full_text for k in ["delete", "remove", "offboard", "userdel", "deprovision"])
         users_to_check = list(candidates)
@@ -175,7 +222,7 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
             )
 
     # --- Service / Application check ---
-    elif not any(k in full_text for k in ["pamsudo", "sudoers", "useradd", "userdel", "user account"]) and any(k in full_text for k in ["service down", "crash", "502", "bad gateway", "outage", "nexacore", "application down"]):
+    elif not exec_log_has_user_cmd and not any(k in full_text for k in ["pamsudo", "sudoers", "useradd", "userdel", "user account"]) and any(k in full_text for k in ["service down", "crash", "502", "bad gateway", "outage", "nexacore", "application down"]):
         # Previously only matched literal `systemctl start|restart <svc>`. If the
         # agent restarted the service any other common way, `svc` was None, NO
         # evidence line was ever added, and is_fixed silently stayed at its default

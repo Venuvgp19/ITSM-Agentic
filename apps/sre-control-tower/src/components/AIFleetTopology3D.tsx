@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Radio } from 'lucide-react';
+import { Radio, Activity, Terminal, Play, Pause, X } from 'lucide-react';
 import { AIAsset } from './AIAssetInventoryView';
 
 interface AIFleetTopology3DProps {
@@ -95,10 +95,48 @@ interface TopoNode {
   kind: 'central' | 'ai_asset' | 'host' | 'database' | 'backend';
   color: string;
   status?: AIAsset['status'];
+  riskTier?: AIAsset['riskTier'];
   asset?: AIAsset;
   x: number;
   y: number;
   z: number;
+}
+
+interface Burst {
+  id: string;
+  fromId: string;
+  toId: string | null;
+  startTime: number;
+  color: string;
+}
+
+interface TickerItem {
+  id: string;
+  text: string;
+}
+
+// Best-effort mapping from a real sre_history row (agentName/agentId/actionType
+// are free-text, set by whichever daemon/service wrote the row) to the AI CI
+// that most plausibly produced it. Not a source of truth -- purely cosmetic
+// routing for the live burst/ticker visualization -- so it fails soft to the
+// primary ReAct loop rather than throwing when nothing matches.
+function matchEventToAssetNode(ev: any): string {
+  const hay = `${ev.agentName || ''} ${ev.agentId || ''} ${ev.actionType || ''}`.toLowerCase();
+  if (hay.includes('hitl') || hay.includes('gatekeeper') || hay.includes('kill switch') || hay.includes('governance')) return 'CI_AI_REACT_04';
+  if (hay.includes('verif')) return 'CI_AI_REACT_03';
+  if (hay.includes('diagnos')) return 'CI_AI_REACT_02';
+  if (hay.includes('synthes') || hay.includes('runbook') || hay.includes('sop')) return 'CI_AI_AGENT_03';
+  if (hay.includes('rout') || hay.includes('classif') || hay.includes('assign')) return 'CI_AI_AGENT_02';
+  return 'CI_AI_REACT_01';
+}
+
+function matchEventToHostNode(ev: any): string | null {
+  const ci = String(ev.targetCi || '').toLowerCase().trim();
+  if (!ci) return null;
+  const hit = INFRA_NODES.find(
+    (n) => n.kind === 'host' && (n.name.toLowerCase().includes(ci) || ci.includes(n.id.replace('HOST_', '').toLowerCase()))
+  );
+  return hit ? hit.id : null;
 }
 
 const HEAT_DECAY_MS = 5 * 60 * 1000; // 5 minutes -- matches "recent activity" window
@@ -154,8 +192,24 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
   const [focusId, setFocusId] = useState<string | null>(null);
   const wasAutoRotating = useRef(autoRotate);
   const [history, setHistory] = useState<any[]>([]);
+  const [terminalNodeId, setTerminalNodeId] = useState<string | null>(null);
+  const [ticker, setTicker] = useState<TickerItem[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+  const burstsRef = useRef<Burst[]>([]);
+  const seenHistoryIdsRef = useRef<Set<string>>(new Set());
 
-  // Live activity feed -- powers the "recent activity" glow/pulse weighting
+  // Decision Replay -- scrubs through real past sre_history events in
+  // chronological order, re-using the same burst/camera-flight machinery as
+  // live events instead of a separate rendering path.
+  const [replayMode, setReplayMode] = useState(false);
+  const [replayPlaying, setReplayPlaying] = useState(false);
+  const [replayIndex, setReplayIndex] = useState(0);
+  const replaySeqRef = useRef<any[]>([]);
+
+  // Live activity feed -- powers the "recent activity" glow/pulse weighting,
+  // and (below) real-time burst/ticker events. Polled fairly aggressively
+  // since this is a lightweight GET and the whole point of this view is to
+  // feel live.
   useEffect(() => {
     const fetchHistory = () => {
       fetch('http://localhost:5173/api/v1/agent/history')
@@ -164,9 +218,131 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         .catch(() => {});
     };
     fetchHistory();
-    const interval = setInterval(fetchHistory, 8000);
+    const interval = setInterval(fetchHistory, 4000);
     return () => clearInterval(interval);
   }, []);
+
+  // Live HITL gate state -- how many approvals are actually sitting in the
+  // queue right now, so the Gatekeeper node can show real backpressure
+  // instead of a static "ACTIVE" dot.
+  useEffect(() => {
+    const fetchStats = () => {
+      fetch('http://localhost:5173/api/v1/agent/stats')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => data && setPendingApprovals(Number(data.pendingApprovals) || 0))
+        .catch(() => {});
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Detect genuinely NEW history rows (not just a re-fetch of the same 200)
+  // and turn each one into a traveling burst + ticker line. Skipped while
+  // replaying so the two event streams never mix, and the very first load
+  // just marks everything as "seen" instead of flooding the view with a
+  // burst per row in the existing backlog.
+  useEffect(() => {
+    if (replayMode || !history.length) return;
+    if (seenHistoryIdsRef.current.size === 0) {
+      history.forEach((h) => h.id && seenHistoryIdsRef.current.add(h.id));
+      return;
+    }
+    const newest = history.filter((h) => h.id && !seenHistoryIdsRef.current.has(h.id));
+    if (!newest.length) return;
+    newest.forEach((h) => {
+      seenHistoryIdsRef.current.add(h.id);
+      const fromId = matchEventToAssetNode(h);
+      const toId = matchEventToHostNode(h);
+      burstsRef.current.push({
+        id: h.id,
+        fromId,
+        toId,
+        startTime: Date.now(),
+        color: h.status === 'REJECTED' ? '#f43f5e' : '#fbbf24',
+      });
+      const glyph = h.status === 'REJECTED' ? '✖' : h.status === 'AUTO_EXECUTED' ? '⚡' : '✓';
+      setTicker((t) =>
+        [
+          {
+            id: h.id,
+            text: `${new Date(h.executedAt).toLocaleTimeString()} ${glyph} ${h.incidentId || ''} ${h.agentName || 'Agent'} → ${h.targetCi || 'target'}`,
+          },
+          ...t,
+        ].slice(0, 20)
+      );
+    });
+  }, [history, replayMode]);
+
+  // Replay playback: advance one event every 1.2s while playing.
+  useEffect(() => {
+    if (!replayMode || !replayPlaying) return;
+    const seq = replaySeqRef.current;
+    if (!seq.length) return;
+    const timer = setInterval(() => {
+      setReplayIndex((i) => {
+        if (i + 1 >= seq.length) {
+          setReplayPlaying(false);
+          return i;
+        }
+        return i + 1;
+      });
+    }, 1200);
+    return () => clearInterval(timer);
+  }, [replayMode, replayPlaying]);
+
+  // Replay step: fire the same burst/camera-flight treatment as a live event
+  // for whichever historical row the scrubber is currently on.
+  useEffect(() => {
+    if (!replayMode) return;
+    const ev = replaySeqRef.current[replayIndex];
+    if (!ev) return;
+    const fromId = matchEventToAssetNode(ev);
+    const toId = matchEventToHostNode(ev);
+    burstsRef.current.push({
+      id: `replay-${ev.id}-${replayIndex}`,
+      fromId,
+      toId,
+      startTime: Date.now(),
+      color: ev.status === 'REJECTED' ? '#f43f5e' : '#38bdf8',
+    });
+    setFocusId(fromId);
+    setTicker((t) =>
+      [
+        {
+          id: `replay-${replayIndex}`,
+          text: `REPLAY ${new Date(ev.executedAt).toLocaleTimeString()} · ${ev.incidentId || ''} ${ev.agentName || 'Agent'} → ${ev.targetCi || 'target'}: ${ev.actionType || ev.commandExecuted || ''}`,
+        },
+        ...t,
+      ].slice(0, 20)
+    );
+  }, [replayIndex, replayMode]);
+
+  const toggleReplay = () => {
+    if (!replayMode) {
+      const seq = [...history]
+        .filter((h) => h.executedAt)
+        .sort((a, b) => new Date(a.executedAt).getTime() - new Date(b.executedAt).getTime());
+      replaySeqRef.current = seq;
+      setReplayIndex(0);
+      setReplayPlaying(false);
+      setAutoRotate(false);
+      setReplayMode(true);
+    } else {
+      setReplayMode(false);
+      setReplayPlaying(false);
+      setFocusId(null);
+      setAutoRotate(true);
+    }
+  };
+
+  const terminalEvents = useMemo(() => {
+    if (!terminalNodeId) return [] as any[];
+    return history
+      .filter((h) => matchEventToAssetNode(h) === terminalNodeId)
+      .sort((a, b) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime())
+      .slice(0, 5);
+  }, [terminalNodeId, history]);
 
   // Central node = the vector knowledge base; AI assets orbit it on an inner
   // shell, real infrastructure (hosts/DBs/backend) sits on an outer shell --
@@ -218,6 +394,7 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         kind: 'ai_asset' as const,
         color: CATEGORY_COLOR[a.category] || '#94a3b8',
         status: a.status,
+        riskTier: a.riskTier,
         asset: a,
       })),
       170,
@@ -377,9 +554,9 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         localYaw += (desiredYaw - localYaw) * 0.06;
         localPitch += (desiredPitch - localPitch) * 0.06;
         if (Math.abs(desiredYaw - localYaw) < 0.02 && Math.abs(desiredPitch - localPitch) < 0.02) {
-          if (target.asset) onSelectAsset(target.asset);
+          if (target.asset && !replayMode) onSelectAsset(target.asset);
           setFocusId(null);
-          setAutoRotate(wasAutoRotating.current);
+          if (!replayMode) setAutoRotate(wasAutoRotating.current);
         }
       } else if (autoRotate && !isDragging.current) {
         localYaw += 0.0025;
@@ -490,6 +667,44 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         }
       });
 
+      // Live/replay event bursts -- a real sre_history row (new activity, or
+      // the current replay-scrubber position) traveling as a bright comet
+      // from its source AI asset to the host it targeted, distinct from the
+      // ambient heat-based comet trail on ALL_EDGES above. Falls back to a
+      // pulsing ring on the source node alone when no host was matched.
+      const BURST_LIFESPAN = 2200;
+      burstsRef.current = burstsRef.current.filter((b) => Date.now() - b.startTime < BURST_LIFESPAN);
+      burstsRef.current.forEach((b) => {
+        const a = projById[b.fromId];
+        if (!a) return;
+        const t = Math.min(1, (Date.now() - b.startTime) / BURST_LIFESPAN);
+        const bEnd = b.toId ? projById[b.toId] : null;
+        if (bEnd) {
+          const px = a.sx + (bEnd.sx - a.sx) * t;
+          const py = a.sy + (bEnd.sy - a.sy) * t;
+          ctx.beginPath();
+          ctx.moveTo(a.sx, a.sy);
+          ctx.lineTo(px, py);
+          ctx.strokeStyle = `${b.color}55`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(px, py, 4.5, 0, 2 * Math.PI);
+          ctx.fillStyle = b.color;
+          ctx.shadowColor = b.color;
+          ctx.shadowBlur = 16;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        } else {
+          const pulse = 1 - Math.abs(0.5 - t) * 2;
+          ctx.beginPath();
+          ctx.arc(a.sx, a.sy, 14 + t * 22, 0, 2 * Math.PI);
+          ctx.strokeStyle = `${b.color}${Math.round(Math.max(0, pulse) * 180).toString(16).padStart(2, '0')}`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      });
+
       // Painter's algorithm for correct depth overlap
       projected.sort((a, b) => b.zDepth - a.zDepth);
 
@@ -584,6 +799,43 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
           ctx.stroke();
         }
 
+        // Persistent risk-tier ring -- riskTier is real CI metadata that was
+        // previously only visible in the click-through detail drawer; a
+        // Tier-1 asset now reads as elevated-risk at a glance, not just on
+        // click, via a slow dashed pulse distinct from the heat ring above.
+        if (n.kind === 'ai_asset' && n.riskTier === 'Tier 1 - High') {
+          const riskPulse = 0.5 + 0.5 * Math.sin(elapsed * 1.2);
+          ctx.beginPath();
+          ctx.arc(sx, sy, radius + 8 + riskPulse * 2, 0, 2 * Math.PI);
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = `rgba(244, 63, 94, ${(0.22 + riskPulse * 0.25).toFixed(2)})`;
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // Live HITL gate state -- the Gatekeeper's actual job is to block,
+        // so instead of a generic ACTIVE dot it shows the real pending-queue
+        // depth (sre_approvals WHERE status='PENDING') as a strobing ring
+        // and count badge.
+        if (n.id === 'CI_AI_REACT_04' && pendingApprovals > 0) {
+          const strobe = 0.4 + 0.6 * Math.abs(Math.sin(elapsed * 3));
+          ctx.beginPath();
+          ctx.arc(sx, sy, radius + 10, 0, 2 * Math.PI);
+          ctx.strokeStyle = `rgba(251, 191, 36, ${strobe.toFixed(2)})`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          const badgeText = `⛔ ${pendingApprovals} pending`;
+          ctx.font = 'bold 10px sans-serif';
+          const tw = ctx.measureText(badgeText).width;
+          roundRect(ctx, sx - tw / 2 - 6, sy - radius - 26, tw + 12, 16, 4);
+          ctx.fillStyle = 'rgba(120, 53, 15, 0.85)';
+          ctx.fill();
+          ctx.fillStyle = '#fde68a';
+          ctx.fillText(badgeText, sx - tw / 2, sy - radius - 14);
+        }
+
         if (isHovered || n.kind === 'central') {
           ctx.font = n.kind === 'central' ? 'bold 11px sans-serif' : 'bold 10px sans-serif';
           const textW = ctx.measureText(n.name).width;
@@ -617,7 +869,7 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
 
     render();
     return () => cancelAnimationFrame(animationId);
-  }, [nodes, nodeById, heatById, yaw, pitch, autoRotate, zoom, hoveredId, tooltip, focusId, onSelectAsset, stars, nebulaLayer]);
+  }, [nodes, nodeById, heatById, yaw, pitch, autoRotate, zoom, hoveredId, tooltip, focusId, onSelectAsset, stars, nebulaLayer, pendingApprovals, replayMode]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
@@ -717,6 +969,8 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
   const handleClick = () => {
     if (draggedThisPress.current) return;
     if (hoveredId) {
+      const node = nodeById[hoveredId];
+      if (node && node.kind === 'ai_asset') setTerminalNodeId(hoveredId);
       wasAutoRotating.current = autoRotate;
       setAutoRotate(false);
       setFocusId(hoveredId);
@@ -738,8 +992,20 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         </div>
         <div className="flex items-center gap-3 text-xs">
           <button
+            onClick={toggleReplay}
+            className={`px-3 py-1.5 rounded-lg border font-bold transition cursor-pointer flex items-center gap-1.5 ${
+              replayMode
+                ? 'bg-violet-600/20 border-violet-500/30 text-violet-300'
+                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            {replayMode ? 'Exit Replay' : 'Decision Replay'}
+          </button>
+          <button
             onClick={() => setAutoRotate(!autoRotate)}
-            className={`px-3 py-1.5 rounded-lg border font-bold transition cursor-pointer ${
+            disabled={replayMode}
+            className={`px-3 py-1.5 rounded-lg border font-bold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               autoRotate
                 ? 'bg-cyan-600/20 border-cyan-500/30 text-cyan-300'
                 : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -765,6 +1031,35 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         </div>
       </div>
 
+      {replayMode && (
+        <div className="flex items-center gap-3 px-3 py-2 rounded-xl border border-violet-500/30 bg-violet-950/20 text-xs">
+          <button
+            onClick={() => setReplayPlaying((p) => !p)}
+            disabled={replaySeqRef.current.length === 0}
+            className="p-1.5 rounded-lg bg-violet-600/30 border border-violet-500/40 text-violet-200 hover:bg-violet-600/50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {replayPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0, replaySeqRef.current.length - 1)}
+            value={replayIndex}
+            onChange={(e) => {
+              setReplayPlaying(false);
+              setReplayIndex(Number(e.target.value));
+            }}
+            disabled={replaySeqRef.current.length === 0}
+            className="flex-1 accent-violet-500"
+          />
+          <span className="font-mono text-violet-300 whitespace-nowrap">
+            {replaySeqRef.current.length === 0
+              ? 'No recorded events to replay'
+              : `${replayIndex + 1} / ${replaySeqRef.current.length}`}
+          </span>
+        </div>
+      )}
+
       <div ref={containerRef} className="relative">
         <canvas
           ref={canvasRef}
@@ -783,6 +1078,60 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
             style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}
           >
             {tooltip.text}
+          </div>
+        )}
+
+        {/* Live event ticker -- real sre_history rows as they land, or the
+            replay scrubber's current position, instead of only an ambient
+            heat glow with no textual record of what actually happened. */}
+        <div className="absolute bottom-3 left-3 w-72 max-h-36 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/85 backdrop-blur-sm p-2.5 text-[10px] font-mono space-y-1 pointer-events-none z-10">
+          <div className="text-slate-500 font-bold mb-1 flex items-center gap-1.5">
+            <Activity className="w-3 h-3 text-amber-400" />
+            {replayMode ? 'Replay Feed' : 'Live Event Feed'}
+          </div>
+          {ticker.length === 0 ? (
+            <div className="text-slate-600">Listening for fleet activity…</div>
+          ) : (
+            ticker.slice(0, 5).map((t) => (
+              <div key={t.id} className="text-slate-300 truncate">
+                {t.text}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Click-through live terminal -- clicking a ReAct loop / agent /
+            tool node surfaces its most recent real command + output from
+            sre_history instead of just the static metadata drawer. */}
+        {terminalNodeId && (
+          <div className="absolute top-3 right-3 w-80 max-h-72 overflow-y-auto rounded-xl border border-emerald-500/30 bg-black/90 backdrop-blur-sm p-3 font-mono text-[10px] text-emerald-300 shadow-2xl z-20">
+            <div className="flex items-center justify-between mb-2 text-emerald-400 font-bold sticky top-0 bg-black/90">
+              <span className="flex items-center gap-1.5">
+                <Terminal className="w-3 h-3" />
+                {nodeById[terminalNodeId]?.name || 'Live Terminal'}
+              </span>
+              <button
+                onClick={() => setTerminalNodeId(null)}
+                className="cursor-pointer text-slate-400 hover:text-white"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            {terminalEvents.length === 0 ? (
+              <div className="text-slate-500">No recent executions recorded for this asset.</div>
+            ) : (
+              terminalEvents.map((ev) => (
+                <div key={ev.id} className="mb-2 pb-2 border-b border-emerald-900/40 last:border-0 last:mb-0 last:pb-0">
+                  <div className="text-slate-500">
+                    [{new Date(ev.executedAt).toLocaleTimeString()}] {ev.incidentId}
+                  </div>
+                  <div className="text-cyan-300 break-words">$ {ev.commandExecuted}</div>
+                  <div className="text-emerald-300 whitespace-pre-wrap break-words">
+                    {(ev.executionOutput || '').slice(0, 300)}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>
