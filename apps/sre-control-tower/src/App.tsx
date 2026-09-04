@@ -268,15 +268,11 @@ export function App() {
           id: 'router',
           label: 'AI Router & Triage',
           icon: Radio,
-          badge: 'Active',
-          badgeType: 'success',
         },
         {
           id: 'inventory',
           label: 'AI Asset Inventory (CMDB)',
           icon: Layers,
-          badge: '16 Assets',
-          badgeType: 'info',
         },
         {
           id: 'approvals',
@@ -309,8 +305,6 @@ export function App() {
           id: 'vector',
           label: '3D Vector Universe',
           icon: Brain,
-          badge: '49 SOPs',
-          badgeType: 'info',
         },
         {
           id: 'history',
@@ -336,8 +330,6 @@ export function App() {
           id: 'risk',
           label: 'Risk & Compliance',
           icon: Scale,
-          badge: '96.4%',
-          badgeType: 'success',
         },
         {
           id: 'analytics',

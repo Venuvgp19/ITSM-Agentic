@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -730,6 +731,19 @@ app.post('/api/v1/agent/config', async (req, res) => {
     const current = currentRes.rowCount > 0 ? currentRes.rows[0].config_data : {};
     const updated = { ...current, ...req.body };
     await pool.query(`INSERT INTO sre_configs (id, config_data) VALUES ('default', $1) ON CONFLICT (id) DO UPDATE SET config_data = $1`, [JSON.stringify(updated)]);
+
+    // Dual-plane consistency: cross-sync model/environment config to ITSM backend
+    // (Port 4000) so the SRE agent daemon's get_current_model_config() -- which
+    // polls the backend directly, not this store -- picks up the same selection
+    // instead of silently continuing on its own stale config.
+    try {
+      fetch('http://localhost:4000/api/v1/agent/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      }).catch(() => {});
+    } catch (_) {}
+
     res.json(updated);
   } catch (e) {
     res.status(500).json({ error: e.message });

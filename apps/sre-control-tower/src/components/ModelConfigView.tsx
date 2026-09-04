@@ -129,7 +129,14 @@ export function ModelConfigView() {
   }, []);
 
   const handleApplyPreset = (presetKey: 'genai_lab' | 'production_azure') => {
-    setConfig(presets[presetKey]);
+    // Presets hardcode apiKey: '' since they don't know the operator's key --
+    // that's a template value, not "clear the key". Applying a preset used to
+    // wipe out whatever key was already configured/saved as soon as the
+    // operator hit Save, silently breaking every LLM call until someone
+    // noticed and retyped it (observed live: the daemon's model config lost
+    // its NVIDIA key this way mid-session). Carry the current key forward
+    // across a preset switch instead.
+    setConfig((prev) => ({ ...presets[presetKey], apiKey: prev.apiKey }));
     setToastMessage(`Switched to ${presetKey === 'genai_lab' ? 'Gen AI Lab MaaS Proxy' : 'Production Direct Enterprise'} Preset`);
     setTimeout(() => setToastMessage(null), 3000);
   };
