@@ -1,0 +1,56 @@
+[
+  {
+    "ticket_number": "ADV-001-typo",
+    "short_desc": "create a stroage account in a new resource group using azure cli.",
+    "desc": "create a stroage account in a new resource group using azure cli.",
+    "department": "DevOps Ops",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000035",
+    "_note": "Typo ('stroage') robustness. A naive keyword check against the raw ticket text misses this; the real bug found live this session."
+  },
+  {
+    "ticket_number": "ADV-002-resource-type-trap",
+    "short_desc": "Host a web application on Azure in the AI-Playground resource group.",
+    "desc": "Host a web application on Azure in the AI-Playground resource group using az cli.",
+    "department": "DevOps Ops",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000033",
+    "_note": "'resource group' appears as incidental context, not the actual ask. Must not match KB0000045 (resource-group creation) -- that's the exact class of bug found live on INC0001465/1467."
+  },
+  {
+    "ticket_number": "ADV-003-true-negative",
+    "short_desc": "Provision a new Cosmos DB account with multi-region write in the AI-Playground resource group.",
+    "desc": "Provision a new Cosmos DB account with multi-region write enabled.",
+    "department": "DevOps Ops",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": null,
+    "_note": "No Cosmos DB SOP exists in the KB. Must correctly produce a RAG-miss, not a false match on 'resource group' or generic Azure vocabulary."
+  },
+  {
+    "ticket_number": "ADV-004-create-vs-delete-trap",
+    "short_desc": "Remove the account access previously granted for creating new users -- delete user pamela from workernode1HL.",
+    "desc": "Remove the account access previously granted for creating new users -- delete user pamela from workernode1HL.",
+    "department": "Unix",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000038",
+    "_note": "Mentions 'creating new users' as context for what access is being revoked, but the actual ask is a deletion. Must not match the creation SOP (KB0000021)."
+  },
+  {
+    "ticket_number": "ADV-005-single-vs-bulk-trap",
+    "short_desc": "Create Linux user marcus with admin access on workernode1HL, similar to how we set up the team's other accounts.",
+    "desc": "Create Linux user marcus with admin access on workernode1HL, similar to how we set up the team's other accounts previously.",
+    "department": "Unix",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000021",
+    "_note": "Mentions 'other accounts' (plural, could look bulk-flavored) but is a single-user request. Must not match a bulk-user SOP."
+  },
+  {
+    "ticket_number": "ADV-006-duplicate-precedent-poisoning",
+    "short_desc": "create a stroage account in AI-Playground resource group using azure cli.",
+    "desc": "create a stroage account in AI-Playground resource group using azure cli.",
+    "department": "DevOps Ops",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000035",
+    "_note": "Exact duplicate of a real ticket (INC0001465/1467) that was ONCE misrouted before the fix. Regression check that the fix holds, not just that it worked once."
+  }
+]

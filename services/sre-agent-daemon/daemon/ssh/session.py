@@ -1,7 +1,7 @@
 import time
 import paramiko
 import requests
-from ..config import logger, DEMO_MODE, DEMO_FALLBACK_ON_ERROR, ITSM_BASE_URL
+from ..config import logger, DEMO_MODE, DEMO_FALLBACK_ON_ERROR, ITSM_BASE_URL, fetch_containment_status
 from .sanitization import strip_ssh_wrapper
 
 def simulate_command_execution(cmd: str, ip: str, user: str) -> tuple:
@@ -44,20 +44,12 @@ class PersistentSSHSession:
         self._kill_switch_cache_time = 0
 
     def _is_kill_switch_active(self) -> bool:
-        """Check master kill switch with a 10-second cache TTL."""
-        now = time.time()
-        if now - self._kill_switch_cache_time < 10:
-            return self._kill_switch_cached
+        """Check master kill switch with dual-plane defense-in-depth."""
         try:
-            res = requests.get(f"{ITSM_BASE_URL}/agent/containment", timeout=1.5)
-            if res.status_code == 200:
-                self._kill_switch_cached = bool(res.json().get("masterKillSwitch"))
-            else:
-                self._kill_switch_cached = False
+            c_data = fetch_containment_status()
+            return bool(c_data.get("masterKillSwitch"))
         except Exception:
-            self._kill_switch_cached = False
-        self._kill_switch_cache_time = now
-        return self._kill_switch_cached
+            return False
 
     def get_connection(self):
         if self.is_simulated:

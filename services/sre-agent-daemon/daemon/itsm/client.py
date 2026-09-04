@@ -259,14 +259,28 @@ def save_new_kb_article_to_storage(new_article_data, vdb=None):
                     # Title wording is free-form LLM prose and an unreliable signal on
                     # its own ("Restart Nexacore Service" vs "Recover Nexacore
                     # Application After Crash" -- title_similarity ~0.2 despite being
-                    # the same underlying task); resolutionSteps are concrete commands
-                    # and a far stronger duplicate signal, so a strong steps match alone
-                    # is sufficient, with a softer combined threshold for the case where
-                    # neither signal alone clears the bar but both partially agree.
+                    # the same underlying task), so combined corroboration is used
+                    # instead of title alone in the common case.
+                    #
+                    # steps_similarity ALONE is no longer trusted as sufficient, even at
+                    # a high bar -- synthesized SOPs' resolutionSteps embed the REAL,
+                    # SPECIFIC entity from the incident (synthesizer.py's prompt mandates
+                    # this: "Use the exact entity strings from the ticket"), not a
+                    # {placeholder}. Two per-incident-specific procedures for DIFFERENT
+                    # targets sharing the same command template (e.g. `userdel -r -f
+                    # Srinath` vs `userdel -r -f siva`) differ only in that one token, so
+                    # _steps_tokens() overlap clears even a strict threshold easily despite
+                    # being different targets -- found live via the RAG eval harness:
+                    # KB0468209 ("Unix - OS & System Service") had accumulated hardcoded
+                    # userdel commands for two unrelated people this way, and its bloated
+                    # generic-sounding title then out-competed the correct, specific
+                    # deletion SOP for unrelated future tickets. Title similarity is now
+                    # mandatory corroboration in every branch -- a steps match alone,
+                    # however strong, is not accepted as proof of "same underlying task"
+                    # for entity-specific synthesized content.
                     is_duplicate = (
                         title_similarity >= 0.85
-                        or steps_similarity >= 0.70
-                        or (title_similarity >= 0.40 and steps_similarity >= 0.50)
+                        or (title_similarity >= 0.40 and steps_similarity >= 0.60)
                     )
                     if is_duplicate:
                         logger.info(

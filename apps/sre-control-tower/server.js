@@ -1090,6 +1090,15 @@ app.post('/api/v1/agent/containment', async (req, res) => {
       `Governance lock ${status === 'CONTAINED' ? 'APPLIED' : 'REMOVED'}.`
     ]);
 
+    // Dual-plane consistency: cross-sync CI containment state to ITSM backend (Port 4000)
+    try {
+      fetch('http://localhost:4000/api/v1/agent/containment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ciId, status, reason, triggeredBy })
+      }).catch(() => {});
+    } catch (_) {}
+
     res.json({
       success: true,
       ciId,
@@ -1139,6 +1148,15 @@ app.post('/api/v1/agent/kill-switch', async (req, res) => {
       activeBool ? 'All autonomous agent loops and SSH remediations globally halted.' : 'Autonomous agent fleet restored to active monitoring.',
       activeBool ? 'EMERGENCY_CONTAINMENT_ACTIVE' : 'PRODUCTION_ACTIVE'
     ]);
+
+    // Dual-plane consistency: cross-sync kill switch state to ITSM backend (Port 4000)
+    try {
+      fetch('http://localhost:4000/api/v1/agent/kill-switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: activeBool, reason, triggeredBy })
+      }).catch(() => {});
+    } catch (_) {}
 
     res.json({
       success: true,

@@ -11,7 +11,8 @@ def run_read_only_diagnostic_react_loop(
     target_os="Linux/Unix",
     ssh_session_factory=None,
     llm_invoker=None,
-    session_state=None
+    session_state=None,
+    rejected_context=""
 ):
     logger.info(f"🔎 Starting Read-Only Diagnostic ReAct Loop for {number} on host {ip} ({ci_name})")
     invoker = llm_invoker or default_invoke_llm
@@ -38,6 +39,22 @@ def run_read_only_diagnostic_react_loop(
         }
     ]
 
+    user_content = (
+        f"Target Host: {ci_name} (IP: {ip}, OS: {target_os})\n"
+        f"Incident Ticket: {number}\n"
+        f"Short Description: {short_desc}\n"
+        f"Full Problem Details:\n{desc}\n\n"
+    )
+    if rejected_context:
+        user_content += (
+            f"NEAR-MISS RAG CANDIDATE CONTEXT (Top candidate scoring >= 0.80 rejected by RAG Judge):\n"
+            f"{rejected_context}\n"
+            f"👉 INSTRUCTION: Use the near-miss context above to identify the target toolchain (e.g. Azure CLI, Kubernetes, systemd). "
+            f"Execute safe, targeted READ-ONLY inspection commands (e.g. `az group list`, `az account show`, `kubectl get`, `systemctl status`) "
+            f"to verify current live state.\n\n"
+        )
+    user_content += "Please execute focused read-only diagnostic commands targeting the EXACT issue, pod, service, port, or user described above."
+
     messages = [
         {
             "role": "system", 
@@ -61,13 +78,7 @@ def run_read_only_diagnostic_react_loop(
         },
         {
             "role": "user", 
-            "content": (
-                f"Target Host: {ci_name} (IP: {ip}, OS: {target_os})\n"
-                f"Incident Ticket: {number}\n"
-                f"Short Description: {short_desc}\n"
-                f"Full Problem Details:\n{desc}\n\n"
-                "Please execute focused read-only diagnostic commands targeting the EXACT issue, pod, service, port, or user described above."
-            )
+            "content": user_content
         }
     ]
 
@@ -105,7 +116,7 @@ def run_read_only_diagnostic_react_loop(
             turn += 1
             logger.info(f"🔍 Read-Only Diagnostic ReAct Loop Turn {turn} for {number}...")
             try:
-                msg, used_model = invoker(
+                msg, used_model, _finish_reason = invoker(
                     messages=messages,
                     tools=tools,
                     return_message=True,

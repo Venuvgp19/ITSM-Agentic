@@ -6,6 +6,29 @@ from ..ssh.session import PersistentSSHSession
 from ..safety.validator import is_allowed_command_adaptation
 from ..itsm.dashboard import post_timeline_update
 
+# Command-level errors that no amount of retrying/re-phrasing can work around --
+# they're a hard capacity/permission wall on the target account, not a transient
+# fault. Observed live: without this, the model correctly diagnosed one of these
+# (Azure quota) in prose but had no way to *act* on that conclusion deterministically,
+# so it kept retrying variations for the rest of its turn budget (25 turns, ~$1.30,
+# zero progress in one case) before finally trailing off into a truncated ramble.
+# Matching here lets the loop stop immediately, with the real error surfaced,
+# instead of paying for turns that cannot possibly succeed.
+_TERMINAL_CAPACITY_ERROR_PATTERNS = [
+    "without additional quota",
+    "quota exceeded",
+    "quotaexceeded",
+    "insufficient quota",
+    "operation cannot be completed without additional quota",
+]
+
+def _detect_terminal_capacity_error(out_log: str) -> str | None:
+    low = (out_log or "").lower()
+    for pattern in _TERMINAL_CAPACITY_ERROR_PATTERNS:
+        if pattern in low:
+            return pattern
+    return None
+
 def run_dynamic_react_loop(
     ip, user, password, guide_commands, short_desc, number, inc_id, ci_name,
     desc="",
@@ -88,7 +111,7 @@ def run_dynamic_react_loop(
             logger.info(f"🔄 ReAct Loop Turn {turn} for {number}...")
             
             try:
-                msg, used_model = invoker(
+                msg, used_model, finish_reason = invoker(
                     messages=messages,
                     tools=tools,
                     return_message=True,
@@ -155,7 +178,14 @@ def run_dynamic_react_loop(
                             
                             ok, out_log = session.exec_command(cmd)
                             full_exec_log += out_log
-                            
+
+                            capacity_error = _detect_terminal_capacity_error(out_log)
+                            if capacity_error:
+                                logger.warning(f"🚧 Terminal capacity/quota error detected for {number} ('{capacity_error}') -- stopping ReAct loop instead of retrying variations.")
+                                full_exec_log += f"\n=== TERMINAL_CAPACITY_ERROR ===\nDetected: '{capacity_error}'\nCommand: {cmd}\n"
+                                post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Blocked by account-level capacity/quota limit: {cmd}")
+                                return False, full_exec_log
+
                             messages.append({
                                 "role": "tool",
                                 "tool_call_id": tc.id,
@@ -176,6 +206,29 @@ def run_dynamic_react_loop(
                                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Kill switch blocked execution: {cmd}")
                                     return False, full_exec_log
                 else:
+                    if finish_reason == "length":
+                        # The model's response was cut off by max_tokens, not a
+                        # deliberate stop -- without this check, a truncated
+                        # ramble with no tool call falls straight into the
+                        # "ReAct Loop finished" branch below and gets treated as
+                        # a genuine final answer (is_success=True), even though
+                        # nothing was actually verified/completed. Observed live
+                        # on INC0001467: the model correctly reasoned that each
+                        # SSH command runs in an isolated shell (so a variable
+                        # set in one command doesn't exist in the next) and was
+                        # mid-sentence proposing the fix (combine into one
+                        # command) when it got cut off -- that got logged as the
+                        # loop's "final summary" and the incident escalated after
+                        # failing verification, despite the agent never being
+                        # wrong, just never finishing its own turn.
+                        logger.warning(f"✂️ ReAct Loop Turn {turn} for {number}: response truncated by max_tokens with no tool call. Re-prompting for a concise decision instead of treating it as final.")
+                        messages.append({"role": "assistant", "content": (msg.content or "")[:500]})
+                        messages.append({
+                            "role": "user",
+                            "content": "CRITICAL DIRECTIVE: Your previous response was cut off before you reached a conclusion. Do not repeat that reasoning. Decide on ONE concrete next action right now and call the execute_ssh_command tool immediately -- do not write out your reasoning in prose first."
+                        })
+                        continue
+
                     raw_summary = msg.content or ""
                     clean_summary = clean_thinking_text(raw_summary)
 

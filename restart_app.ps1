@@ -7,33 +7,39 @@ Get-Process -Name "npm" -ErrorAction SilentlyContinue | Stop-Process -Force -Err
 
 $workingDir = Get-Location
 
-# Start PostgreSQL
+# Start PostgreSQL service or binary
 Write-Host "Starting PostgreSQL..."
-Start-Process -FilePath "$Env:USERPROFILE\pgsql\pgsql\bin\postgres.exe" -ArgumentList "-D", "$Env:USERPROFILE\pgsql\pgsql\data" -NoNewWindow
-Start-Sleep -Seconds 5
+Start-Service -Name "postgresql-x64-15" -ErrorAction SilentlyContinue
+Start-Process -FilePath "$Env:USERPROFILE\pgsql\pgsql\bin\postgres.exe" -ArgumentList "-D", "$Env:USERPROFILE\pgsql\pgsql\data" -NoNewWindow -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
 
 # Start NestJS backend (directly runs node on built main.js file)
 Write-Host "Starting NestJS backend..."
 Start-Process -FilePath "node" -ArgumentList "apps/backend/dist/main.js" -WorkingDirectory "$workingDir" -NoNewWindow
-Start-Sleep -Seconds 5
+Start-Sleep -Seconds 4
 
 # Start Next.js frontend dev server using cmd wrapper with directory context
 Write-Host "Starting Next.js frontend dev server..."
 Start-Process -FilePath "cmd.exe" -ArgumentList "/c npm --prefix apps/frontend run dev" -WorkingDirectory "$workingDir" -NoNewWindow
-Start-Sleep -Seconds 5
+Start-Sleep -Seconds 4
 
-# Start Agent Control Tower Dashboard
+# Start Agent Control Tower Dashboard (Port 5173)
 Write-Host "Starting Agent Control Tower Dashboard..."
-Start-Process -FilePath "node" -ArgumentList "server.js" -WorkingDirectory "$workingDir\Resolver Agent\agent-approval-dashboard" -NoNewWindow
+Start-Process -FilePath "node" -ArgumentList "server.js" -WorkingDirectory "$workingDir\apps\sre-control-tower" -NoNewWindow
 Start-Sleep -Seconds 3
 
 # Start Python Auto-Resolver Agent Daemon
 Write-Host "Starting Python Auto-Resolver Agent Daemon..."
-Start-Process -FilePath "python" -ArgumentList "-u", "continuous_itsm_agent_daemon.py" -WorkingDirectory "$workingDir\Resolver Agent" -NoNewWindow
+Start-Process -FilePath "python" -ArgumentList "-u", "continuous_itsm_agent_daemon.py" -WorkingDirectory "$workingDir\services\sre-agent-daemon" -NoNewWindow
 Start-Sleep -Seconds 3
 
 # Start ITSM MCP Server directly via Node targeting its built entrypoint (bypassing npm workspaces warning)
 Write-Host "Starting ITSM MCP Server..."
 Start-Process -FilePath "node" -ArgumentList "packages/mcp-server/dist/index.js" -WorkingDirectory "$workingDir" -NoNewWindow
+Start-Sleep -Seconds 2
 
-Write-Host "All processes launched successfully."
+# Start Slack Bridge
+Write-Host "Starting Slack Bridge..."
+Start-Process -FilePath "node" -ArgumentList "index.js" -WorkingDirectory "$workingDir\services\slack-bridge" -NoNewWindow
+
+Write-Host "All processes (including Slack Bridge) launched successfully."

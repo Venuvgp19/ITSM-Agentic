@@ -1,0 +1,466 @@
+[
+  {
+    "ticket_number": "INC0001463",
+    "short_desc": "Create a resource group called AI-Playground on Azure using az cli.",
+    "desc": "Create a resource group called AI-Playground on Azure using az cli.",
+    "department": "DevOps Ops",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000045"
+  },
+  {
+    "ticket_number": "INC0001460",
+    "short_desc": "Nexacore application is down . connection refused on port 8080",
+    "desc": "Nexacore application is down . connection refused on port 8080",
+    "department": "App Support",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000039"
+  },
+  {
+    "ticket_number": "INC0001459",
+    "short_desc": "create an ID called oswaldo with admin access.",
+    "desc": "create an ID called oswaldo with admin access.",
+    "department": "Unix",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001432",
+    "short_desc": "CPU Utilization on Workernode1HL is 100%",
+    "desc": "CPU Utilization on Workernode1HL is 100%",
+    "department": "Unix",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0468210"
+  },
+  {
+    "ticket_number": "INC0001357",
+    "short_desc": "Host a free-tier (F1) web application on Azure",
+    "desc": "Host a free-tier (F1) web application on Azure",
+    "department": "DevOps Ops",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000033"
+  },
+  {
+    "ticket_number": "INC0001279",
+    "short_desc": "Nexacore applciation is down on workernode1HL",
+    "desc": "Nexacore applciation is down on workernode1HL",
+    "department": "App Support",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000039"
+  },
+  {
+    "ticket_number": "INC0001210",
+    "short_desc": "Dlete user Rakshith on workernode1HL",
+    "desc": "Delete user Rakshith on workernode1HL",
+    "department": "Unix",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000038"
+  },
+  {
+    "ticket_number": "INC0001203",
+    "short_desc": "create user Rakshith on workernode1HL with admin access.",
+    "desc": "create user Rakshith on workernode1HL with admin access.",
+    "department": "Unix",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001201",
+    "short_desc": "Memory utilization on Workernode1HL is 100%",
+    "desc": "Memory utilization on Workernode1HL is 100%",
+    "department": "Unix",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0468210"
+  },
+  {
+    "ticket_number": "INC0001192",
+    "short_desc": "delete below users.",
+    "desc": "Delete below users \n\n[root@worker1ol ~]# grep -i suorathy0 /etc/passwd\nsuorathy02:x:1003:1003::/home/suorathy02:/bin/bash\nsuorathy03:x:1004:1004::/home/suorathy03:/bin/bash\nsuorathy04:x:1005:1005::/home/suorathy04:/bin/bash\nsuorathy05:x:1006:1032::/home/suorathy05:/bin/bash\nsuorathy06:x:1007:1033::/home/suorathy06:/bin/bash\nsuorathy07:x:1008:1008::/home/suorathy07:/bin/bash\nsuorathy08:x:1009:1009::/home/suorathy08:/bin/bash\nsuorathy09:x:1010:1010::/home/suorathy09:/bin/bash\nsuorathy01:x:1011:1011::/home/suorathy01:/bin/bash\n[root@worker1ol ~]# grep -i suorathy10 /etc/passwd\nsuorathy10:x:1012:1012::/home/suorathy10:/bin/bash\n[root@worker1ol ~]#\n",
+    "department": "Unix",
+    "ci_name": "Worker1OL",
+    "expected_kb": "KB0000038"
+  },
+  {
+    "ticket_number": "INC0001190",
+    "short_desc": "Create 10 users suorathy01 to suorathy10, which has access to only execute \"systemctl restart ongc.service\" on worker1OL ",
+    "desc": "Create 10 users suorathy01 to suorathy10, which has access to only execute \"systemctl restart ongc.service\" worker1OL ",
+    "department": "Unix",
+    "ci_name": "control plane",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001194",
+    "short_desc": "Create Linux User Isaac1 with permission to only execute command \"df -h\"",
+    "desc": "Create Linux User Isaac1 with permission to only execute command \"df -h\"",
+    "department": "Unix",
+    "ci_name": "Worker1OL",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001170",
+    "short_desc": "nexacore applciation down on workernode1HL server",
+    "desc": "nexacore applciation down on workernode1HL server\nport 8080: connection refused\n",
+    "department": "App Support",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000039"
+  },
+  {
+    "ticket_number": "INC0001159",
+    "short_desc": "Give details on IP and port that we can view the simple web app on kubernetes cluster on control plane",
+    "desc": "Give details on IP and port that we can view the simple web app on kubernetes cluster on control plane",
+    "department": "DevOps Ops",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000040"
+  },
+  {
+    "ticket_number": "INC0001165",
+    "short_desc": "nexacore applciation down on workernode1HL",
+    "desc": "nexacore applciation down on workernode1HL",
+    "department": "App Support",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0468208"
+  },
+  {
+    "ticket_number": "INC0001161",
+    "short_desc": "install azure cli on control plane node ",
+    "desc": "install azure cli on control plane node ",
+    "department": "DevOps Ops",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000045"
+  },
+  {
+    "ticket_number": "INC0001150",
+    "short_desc": "[root@WorkerNode1 ~]# az login Traceback (most recent call last):   File \"<frozen runpy>\", line 198, in _run_module_as_main   File \"<frozen runpy>\", line 88, in _run_code   File \"/usr/lib64/az/lib/python3.6/site-packages/azure/cli/__main__.py\", line 38, in <module>     az_cli = get_default_cli()              ^^^^^^^^^^^^^^^^^   File \"/usr/lib64/az/lib/python3.6/site-packages/azure/cli/core/__init__.py\", line 903, in get_default_cli     from azure.cli.core.azlogging import AzCliLogging   File \"/usr/lib64/az/lib/python3.6/site-packages/azure/cli/core/azlogging.py\", line 30, in <module>     from azure.cli.core.commands.events import EVENT_INVOKER_PRE_CMD_TBL_TRUNCATE   File \"/usr/lib64/az/lib/python3.6/site-packages/azure/cli/core/commands/__init__.py\", line 25, in <module>     from azure.cli.core.extension import get_extension   File \"/usr/lib64/az/lib/python3.6/site-packages/azure/cli/core/extension/__init__.py\", line 11, in <module>     from distutils.sysconfig import get_python_lib ModuleNotFoundError: No module named 'distutils' [root@WorkerNode1 ~]# ip a s|grep -i 102     inet 192.168.100.102/24 brd 192.168.100.255 scope global noprefixroute enp0s3 [root@WorkerNode1 ~]#",
+    "desc": "[root@WorkerNode1 ~]# az login Traceback (most recent call last):   File \"<frozen runpy>\", line 198, in _run_module_as_main   File \"<frozen runpy>\", line 88, in _run_code   File \"/usr/lib64/az/lib/python3.6/site-packages/azure/cli/__main__.py\", line 38, in <module>     az_cli = get_default_cli()              ^^^^^^^^^^^^^^^^^   File \"/usr/lib64/az/lib/python3.6/site-packages/azure/cli/core/__init__.py\", line 903, in get_default_cli     from azure.cli.core.azlogging import AzCliLogging   File \"/usr/lib64/az/lib/python3.6/site-packages/azure/cli/core/azlogging.py\", line 30, in <module>     from azure.cli.core.commands.events import EVENT_INVOKER_PRE_CMD_TBL_TRUNCATE   File \"/usr/lib64/az/lib/python3.6/site-packages/azure/cli/core/commands/__init__.py\", line 25, in <module>     from azure.cli.core.extension import get_extension   File \"/usr/lib64/az/lib/python3.6/site-packages/azure/cli/core/extension/__init__.py\", line 11, in <module>     from distutils.sysconfig import get_python_lib ModuleNotFoundError: No module named 'distutils' [root@WorkerNode1 ~]# ip a s|grep -i 102     inet 192.168.100.102/24 brd 192.168.100.255 scope global noprefixroute enp0s3 [root@WorkerNode1 ~]#",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000043"
+  },
+  {
+    "ticket_number": "INC0001153",
+    "short_desc": "create a virtual environment which supports /usr/bin/az on workernode1HL. Az command is not working ",
+    "desc": "create a virtual environment which supports /usr/bin/az on workernode1HL. Az command is not working ",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000001"
+  },
+  {
+    "ticket_number": "INC0001138",
+    "short_desc": "Create IBM DB2 User Sushma on Workernode1HL with Cloudbeaver access.",
+    "desc": "Create IBM DB2 User Sushma on Workernode1HL with Cloudbeaver access.",
+    "department": "DBA Team",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000025"
+  },
+  {
+    "ticket_number": "INC0001149",
+    "short_desc": "az command is unsuccessful on workernode1HL. Kindly investigate and fix it ",
+    "desc": "The 'distutils' module is available in the system's default Python 3 environment (python3 -c 'import distutils' succeeded). The Azure CLI is installed in a separate environment at /usr/lib64/az/lib/python3.6/, but the Python 3.6 binary is missing from that path. However, the system Python 3 (likely 3.6+) includes distutils, and the Azure CLI should be able to access it if the environment is correctly configured. The issue appears to be a missing or broken Python 3.6 interpreter in the Azure CLI's bundled environment, not a missing distutils module. Since distutils is present in the system Python, and the Azure CLI may be using the system Python via symlinks or PATH, the root cause is likely resolved by ensuring the Azure CLI uses the system Python. No further package installation is needed as python3-distutils is not available in DNF (it's included in python3-libs). The system is healthy with respect to the distutils dependency.",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000043"
+  },
+  {
+    "ticket_number": "INC0001134",
+    "short_desc": "Create an IBM DB2 user Lokesh with CloudBeaver access as well. on workernode1HL. (Linux Container)",
+    "desc": "Create an IBM DB2 user Lokesh with CloudBeaver access as well. on workernode1HL. (Linux Container)",
+    "department": "DBA Team",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000025"
+  },
+  {
+    "ticket_number": "INC0001133",
+    "short_desc": "create a python virtual environment called codex no workernode1HL and install chromadb",
+    "desc": "create a python virtual environment called codex no workernode1HL and install chromadb",
+    "department": "DevOps Ops",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000019"
+  },
+  {
+    "ticket_number": "INC0001130",
+    "short_desc": "Jenkin server credentials needed. It is running on either control, plane or Workernode1HL. Figure it out and get the credentials.",
+    "desc": "Jenkin server credentials needed. It is running on either control, plane or Workernode1HL. Figure it out and get the credentials.",
+    "department": "DevOps Ops",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000041"
+  },
+  {
+    "ticket_number": "INC0001125",
+    "short_desc": "Delete all the users mentioned below from Workernode1HL",
+    "desc": "Delete all the users mentioned below from Workernode1HL venu:x:1000:1000:Venu:/home/venu:/bin/bash asha:x:1001:1001:Asha Service Account:/home/asha:/bin/bash rajesh:x:1002:1002:Rajesh Kumar:/home/rajesh:/bin/bash ananya:x:1003:1003:Ananya Desai:/home/ananya:/bin/bash priya:x:1004:1004:Priya Nair:/home/priya:/bin/bash vikram:x:1005:1005:Vikram Mehta:/home/vikram:/bin/bash nexacore:x:1006:1006::/home/nexacore:/bin/bash Siva:x:1008:1008:Siva:/home/Siva:/bin/bash user01:x:1009:1009:User01:/home/user01:/bin/bash praneeth:x:1010:1010:Praneeth Operations:/home/praneeth:/bin/bash User01:x:1011:1011:Nexacore Restart Operator 01:/home/User01:/bin/bash User02:x:1012:1012:Nexacore Restart Operator 02:/home/User02:/bin/bash User03:x:1013:1013:Nexacore Restart Operator 03:/home/User03:/bin/bash User04:x:1014:1014:Nexacore Restart Operator 04:/home/User04:/bin/bash User05:x:1015:1015:Nexacore Restart Operator 05:/home/User05:/bin/bash User06:x:1016:1016:Nexacore Restart Operator 06:/home/User06:/bin/bash User07:x:1017:1017:Nexacore Restart Operator 07:/home/User07:/bin/bash User08:x:1018:1018:Nexacore Restart Operator 08:/home/User08:/bin/bash User09:x:1019:1019:Nexacore Restart Operator 09:/home/User09:/bin/bash User10:x:1020:1020:Nexacore Restart Operator 10:/home/User10:/bin/bash User11:x:1021:1021:Nexacore Restart Operator 11:/home/User11:/bin/bash User12:x:1022:1022:Nexacore Restart Operator 12:/home/User12:/bin/bash User13:x:1023:1023:Nexacore Restart Operator 13:/home/User13:/bin/bash User14:x:1024:1024:Nexacore Restart Operator 14:/home/User14:/bin/bash User15:x:1025:1025:Nexacore Restart Operator 15:/home/User15:/bin/bash User16:x:1026:1026:Nexacore Restart Operator 16:/home/User16:/bin/bash User17:x:1027:1027:Nexacore Restart Operator 17:/home/User17:/bin/bash User18:x:1028:1028:Nexacore Restart Operator 18:/home/User18:/bin/bash User19:x:1029:1029:Nexacore Restart Operator 19:/home/User19:/bin/bash User20:x:1030:1030:Nexacore Restart Operator 20:/home/User20:/bin/bash Pamsudo1:x:1031:1031:Pamsudo1 Account:/home/Pamsudo1:/bin/bash Pamsudo2:x:1032:1032:Pamsudo2 Account:/home/Pamsudo2:/bin/bash Pamsudo3:x:1033:1033:Pamsudo3 Account:/home/Pamsudo3:/bin/bash Pamsudo4:x:1034:1034:Pamsudo4 Account:/home/Pamsudo4:/bin/bash Pamsudo5:x:1035:1035:Pamsudo5 Account:/home/Pamsudo5:/bin/bash jboss:x:1036:1036::/home/jboss:/bin/bash pamsudo1:x:1037:1037::/home/pamsudo1:/bin/bash pamsudo2:x:1038:1038::/home/pamsudo2:/bin/bash pamsudo3:x:1039:1039::/home/pamsudo3:/bin/bash pamsudo4:x:1040:1040::/home/pamsudo4:/bin/bash pamsudo5:x:1041:1041::/home/pamsudo5:/bin/bash ignio:x:1042:1042:Project XYZ Automation:/home/ignio:/bin/bash",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000038"
+  },
+  {
+    "ticket_number": "INC0001110",
+    "short_desc": "create 5 users Pamsudo1 to pamsudo5, which has the capabality to execute command like su - jboss on workernode1HL",
+    "desc": "create 5 users Pamsudo1 to pamsudo5, which has the capabality to execute command like su - jboss on workernode1HL",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001106",
+    "short_desc": "Create an IBM DB2 user Revanth on the host Workernode1HL and provide cloudBeaver UI Access which is hosted on a linux Container",
+    "desc": "Create an IBM DB2 user Revanth on the host Workernode1HL and provide cloudBeaver UI Access which is hosted on a linux Container",
+    "department": "DBA Team",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000025"
+  },
+  {
+    "ticket_number": "INC0001111",
+    "short_desc": "Create an IBM DB2 user venkat on the host Workernode1HL and provide cloudBeaver UI Access which is hosted on a linux Container",
+    "desc": "Create an IBM DB2 user venkat on the host Workernode1HL and provide cloudBeaver UI Access which is hosted on a linux Container",
+    "department": "DBA Team",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000025"
+  },
+  {
+    "ticket_number": "INC0001096",
+    "short_desc": "Create IBM DB2 database user venu with CloudBeaver UI access",
+    "desc": "Create IBM DB2 database user venu with CloudBeaver UI accessfor TESTDB on workernode1HL\n",
+    "department": "DBA Team",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000025"
+  },
+  {
+    "ticket_number": "INC0001082",
+    "short_desc": "Create a DB2 user named venu on TESTDB on the server WorkerNode1HL",
+    "desc": "Create a DB2 user named venu on TESTDB on the server WorkerNode1HL",
+    "department": "DBA Team",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001083",
+    "short_desc": "Create an IBM DB2 User called venu on WorkerNode1HL with Beaver Access ",
+    "desc": "Create an IBM DB2 User called venu on WorkerNode1HL with Beaver Access ",
+    "department": "DBA Team",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001089",
+    "short_desc": "High CPU on WorkerNode1HL",
+    "desc": "High CPU Utilization on Control Plane of WorkerNode1HL",
+    "department": "Unix",
+    "ci_name": null,
+    "expected_kb": "KB0051346"
+  },
+  {
+    "ticket_number": "INC0001075",
+    "short_desc": "create user ID venu on Worker1OL",
+    "desc": "create user ID venu on Worker1OL with sudo access",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001084",
+    "short_desc": "BM DB2 User venu for TestDB and provide Beaver UI Access (Linux Container) on WorkerNode1HL",
+    "desc": "BM DB2 User venu for TestDB and provide Beaver UI Access (Linux Container) on WorkerNode1HL",
+    "department": "DBA Team",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000025"
+  },
+  {
+    "ticket_number": "INC0001086",
+    "short_desc": "Delete IBM DB2 user Venu from TESTDB on WorkerNode1HL also the beaver access on Linux container",
+    "desc": "Delete IBM DB2 user Venu from TESTDB on WorkerNode1HL also the beaver access on Linux container",
+    "department": "DBA Team",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000025"
+  },
+  {
+    "ticket_number": "INC0001077",
+    "short_desc": "create user Venu on worker1OL with sudo access",
+    "desc": "create user Venu on worker1OL with sudo access",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001068",
+    "short_desc": "create user ID ravi on Worker1OL with sudo access",
+    "desc": "Provision user account ravi on Worker1OL with passwordless sudo access",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001061",
+    "short_desc": "create user ID user102 on Worker1OL without sudo access",
+    "desc": "Provision standard user account user102 on Worker1OL with bash shell. Do NOT grant sudo privileges or root access.",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001065",
+    "short_desc": "create user ID anita on Worker1OL with sudo access",
+    "desc": "Provision user account anita on Worker1OL with passwordless sudo access",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001062",
+    "short_desc": "create user ID user101 on Worker1OL without sudo access",
+    "desc": "Provision standard user account user101 on Worker1OL with bash shell. Do NOT grant sudo privileges or root access.",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001067",
+    "short_desc": "create user ID priya on Worker1OL with sudo access",
+    "desc": "Provision user account priya on Worker1OL with passwordless sudo access",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001066",
+    "short_desc": "create user ID karthik on Worker1OL with sudo access",
+    "desc": "Provision user account karthik on Worker1OL with passwordless sudo access",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001057",
+    "short_desc": "create user ID user106 on Worker1OL without sudo access",
+    "desc": "Provision standard user account user106 on Worker1OL with bash shell. Do NOT grant sudo privileges or root access.",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001054",
+    "short_desc": "create user ID user109 on Worker1OL without sudo access",
+    "desc": "Provision standard user account user109 on Worker1OL with bash shell. Do NOT grant sudo privileges or root access.",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001063",
+    "short_desc": "create user ID ignio on Worker1OL and set password root123",
+    "desc": "Create user ID ignio on Worker1OL, set password to root123. Configure sudoers so user ignio is ONLY able to execute /usr/bin/passwd command without issuing any password.",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001064",
+    "short_desc": "create user ID suresh on Worker1OL with sudo access",
+    "desc": "Provision user account suresh on Worker1OL with passwordless sudo access",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001052",
+    "short_desc": "Reset the password of following user Accounts on Worker1OL",
+    "desc": "Reset the password of following user Accounts on Worker1OL to abcd1234\nuser110\nuser102\nuser106\nuser103\nuser105\nuser109\nuser104\nuser107\nuser101\nuser108\n",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000017"
+  },
+  {
+    "ticket_number": "INC0001058",
+    "short_desc": "create user ID user105 on Worker1OL without sudo access",
+    "desc": "Provision standard user account user105 on Worker1OL with bash shell. Do NOT grant sudo privileges or root access.",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001050",
+    "short_desc": "Reset the password of following user Accounts on Worker1OL to qwerty user110 user102 user106 user103 user105 user109 user104 user107 user101 user108",
+    "desc": "Reset the password of following user Accounts on Worker1OL to abcd1234 user110 user102 user106 user103 user105 user109 user104 user107 user101 user108",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000017"
+  },
+  {
+    "ticket_number": "INC0001056",
+    "short_desc": "create user ID user107 on Worker1OL without sudo access",
+    "desc": "Provision standard user account user107 on Worker1OL with bash shell. Do NOT grant sudo privileges or root access.",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000021"
+  },
+  {
+    "ticket_number": "INC0001036",
+    "short_desc": "Create Python Virtual Environment 'snappy' with pandas and openpyxl on Control Plane",
+    "desc": "Create Python Virtual Environment 'snappy' with pandas and openpyxl on Control Plane",
+    "department": "DevOps Ops",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000019"
+  },
+  {
+    "ticket_number": "INC0001037",
+    "short_desc": "Nexacore Application is not running on the server WorkerNode1HL ",
+    "desc": "Nexacore Application is not running on the server WorkerNode1HL ",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000039"
+  },
+  {
+    "ticket_number": "INC0001038",
+    "short_desc": "Nexacore app is down. please check ",
+    "desc": "Nexacore app is down. please check ",
+    "department": "Unix",
+    "ci_name": "WorkerNode1HL",
+    "expected_kb": "KB0000039"
+  },
+  {
+    "ticket_number": "INC0001022",
+    "short_desc": "Create User ID Venu with full access on worker1OL",
+    "desc": "Create User ID Venu with full access on worker1OL",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000001"
+  },
+  {
+    "ticket_number": "INC0001012",
+    "short_desc": "Lock user account for security on WorkerNode1HL",
+    "desc": "Suspected brute force attack on WorkerNode1HL (192.168.100.102). Lock user account vikram immediately. Username: vikram. Security incident.",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000001"
+  },
+  {
+    "ticket_number": "INC0001014",
+    "short_desc": "Reset password for user amit on Control Plane",
+    "desc": "User amit on Control Plane (192.168.100.101) forgot password. Reset to NewPass@2026",
+    "department": "DevOps Ops",
+    "ci_name": "Control Plane",
+    "expected_kb": "KB0000017"
+  },
+  {
+    "ticket_number": "INC0001009",
+    "short_desc": "Create user account for developer on Control Plane",
+    "desc": "Create new user account for developer Amit Singh on Control Plane (192.168.100.101). Username: amit. Standard bash shell. No sudo needed. Password: Dev@2026",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000001"
+  },
+  {
+    "ticket_number": "INC0001007",
+    "short_desc": "Create admin account with sudo on WorkerNode1HL",
+    "desc": "Create user account for sysadmin Vikram Mehta on WorkerNode1HL. Username: vikram. Needs full sudo access for server management. Password: Admin@2026",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000001"
+  },
+  {
+    "ticket_number": "INC0001006",
+    "short_desc": "Create new Linux account for QA tester on WorkerNode1HL",
+    "desc": "We need a new user account created on WorkerNode1HL for our QA tester Ananya Desai. Username: ananya. Standard bash shell and home directory. No sudo required. Password: QATester@2026",
+    "department": "Unix",
+    "ci_name": "Unspecified CI",
+    "expected_kb": "KB0000001"
+  }
+]

@@ -39,6 +39,7 @@ from .config import (
     submitted_approval_incidents,
     locked_incident_sessions,
     resolved_incident_sessions,
+    fetch_containment_status,
 )
 
 from .llm import (

@@ -169,6 +169,66 @@ GOVERNANCE_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 
 RAG_SIMILARITY_THRESHOLD = 0.42
 
+# ----------------------------------------------------
+# Containment & Kill Switch Dual-Plane Enforcement
+# ----------------------------------------------------
+_containment_cache = {"data": {"masterKillSwitch": False, "containedCis": []}, "timestamp": 0.0}
+_containment_lock = threading.Lock()
+
+def fetch_containment_status(force_refresh=False):
+    """
+    Checks containment & Master Kill Switch state across Governance Control Tower (Port 5173)
+    and ITSM Core (Port 4000).
+    Defense-in-depth: If EITHER source reports masterKillSwitch=True, returns masterKillSwitch=True.
+    Aggregates containedCis from both sources.
+    Cached for 2.0 seconds across threads.
+    """
+    import time
+    import requests
+
+    now = time.time()
+    with _containment_lock:
+        if not force_refresh and (now - _containment_cache["timestamp"] < 2.0):
+            return _containment_cache["data"]
+
+    master_kill = False
+    contained_cis = set()
+
+    # 1. Primary: Governance Control Tower (Port 5173 / PostgreSQL sre_containment)
+    try:
+        res = requests.get(f"{GOVERNANCE_BASE_URL}/containment", timeout=1.5)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("masterKillSwitch"):
+                master_kill = True
+            for ci in data.get("containedCis", []):
+                contained_cis.add(ci)
+    except Exception:
+        pass
+
+    # 2. Secondary: ITSM Platform Core (Port 4000)
+    try:
+        res = requests.get(f"{ITSM_BASE_URL}/agent/containment", timeout=1.5)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("masterKillSwitch"):
+                master_kill = True
+            for ci in data.get("containedCis", []):
+                contained_cis.add(ci)
+    except Exception:
+        pass
+
+    result = {
+        "masterKillSwitch": master_kill,
+        "containedCis": list(contained_cis)
+    }
+
+    with _containment_lock:
+        _containment_cache["data"] = result
+        _containment_cache["timestamp"] = now
+
+    return result
+
 # --- RAG Scoring Configuration ---
 HYBRID_DENSE_WEIGHT    = 0.75   # weight of cosine similarity in hybrid blend
 HYBRID_KW_WEIGHT       = 0.25   # weight of keyword-frequency score in hybrid blend

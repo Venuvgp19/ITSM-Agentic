@@ -79,6 +79,7 @@ def evaluate_and_get_sop(
     # renders `details` as a code block and red-highlights anything containing
     # "reject"), so no new frontend surface is needed for this to be visible.
     candidate_trace: list[str] = []
+    near_miss_candidates: list[dict] = []
 
     if rag_results:
         for idx, candidate in enumerate(rag_results):
@@ -132,11 +133,29 @@ def evaluate_and_get_sop(
                 logger.warning(f"🛡️ Action Mismatch Guard: User Deletion ticket [{ticket_number}] matched Provisioning SOP [{cand_number}]. Skipping.")
                 next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch (Deletion vs Provisioning)."
                 candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} — ⛔ SKIPPED (Action Mismatch: deletion ticket vs provisioning SOP)")
+                if cand_score >= 0.80:
+                    _c_cmds = cand_art.get("resolutionSteps", cand_art.get("steps", cand_art.get("commands", [])))
+                    near_miss_candidates.append({
+                        "kb_number": cand_number,
+                        "title": cand_art.get("title", ""),
+                        "score": cand_score,
+                        "reason": "Action Mismatch: Ticket requires DELETION, but candidate SOP is for PROVISIONING.",
+                        "commands": _c_cmds
+                    })
                 continue
             elif is_creation_task and is_sop_deletion:
                 logger.warning(f"🛡️ Action Mismatch Guard: User Creation ticket [{ticket_number}] matched Deletion SOP [{cand_number}]. Skipping.")
                 next_best_info = f"Candidate [{cand_number}] omitted due to Action Mismatch (Creation vs Deletion)."
                 candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} — ⛔ SKIPPED (Action Mismatch: creation ticket vs deletion SOP)")
+                if cand_score >= 0.80:
+                    _c_cmds = cand_art.get("resolutionSteps", cand_art.get("steps", cand_art.get("commands", [])))
+                    near_miss_candidates.append({
+                        "kb_number": cand_number,
+                        "title": cand_art.get("title", ""),
+                        "score": cand_score,
+                        "reason": "Action Mismatch: Ticket requires CREATION, but candidate SOP is for DELETION.",
+                        "commands": _c_cmds
+                    })
                 continue
             elif is_single_user_req and is_bulk_sop:
                 logger.warning(f"🛡️ Quantity Mismatch Guard: Single-user ticket [{ticket_number}] matched Bulk SOP [{cand_number}]. Skipping.")
@@ -154,16 +173,7 @@ def evaluate_and_get_sop(
 
             next_cand_score = rag_results[idx + 1].get("score", 0.0) if idx + 1 < len(rag_results) else 0.0
             score_margin = cand_score - next_cand_score
-            # Strict Validation: ALWAYS invoke LLM Judge if falling back (idx > 0), score < 0.90,
-            # score margin < 0.10, specialized domains, or the candidate came from the
-            # embedding-free keyword-intent fallback (hybrid_search.py's
-            # search_kb_without_embeddings, only used when the primary dense+BM25 search
-            # returns zero results -- e.g. ChromaDB unavailable). That path's "confidences"
-            # are broad substring guesses, not similarity scores; hybrid_search.py already
-            # caps them below 0.90 so they'd trip the score check above too, but checking the
-            # source tag directly here means this stays correct even if that threshold ever
-            # changes independently of this one.
-            requires_judge = (idx > 0) or (cand_score < 0.90) or (score_margin < 0.10) or _ticket_is_k8s or _ticket_is_db2 or candidate.get("source") == "keyword_fallback"
+            requires_judge = True
             if requires_judge:
                 _cand_cmds = cand_art.get("resolutionSteps", cand_art.get("steps", cand_art.get("commands", [])))
                 _judge_approved, _judge_reason = verify_rag_match_intent_with_llm(
@@ -178,6 +188,14 @@ def evaluate_and_get_sop(
                     )
                     next_best_info = f"[{cand_number}] rejected by LLM RAG Judge: {_judge_reason}"
                     candidate_trace.append(f"[{cand_number}] {cand_art.get('title', '')} — score={cand_score:.4f} margin={score_margin:.4f} — ❌ REJECTED by LLM Judge: {_judge_reason}")
+                    if cand_score >= 0.80:
+                        near_miss_candidates.append({
+                            "kb_number": cand_number,
+                            "title": cand_art.get("title", ""),
+                            "score": cand_score,
+                            "reason": _judge_reason,
+                            "commands": _cand_cmds
+                        })
                     continue
                 else:
                     logger.info(
@@ -209,6 +227,17 @@ def evaluate_and_get_sop(
         miss_reason = next_best_info if next_best_info else f"Top similarity score {similarity_score:.4f} < {RAG_SIMILARITY_THRESHOLD} threshold."
         logger.info(f"✨ RAG Miss ({miss_reason}). Executing live SSH server diagnosis probe...")
         
+        rejected_context_str = ""
+        if near_miss_candidates:
+            rc_lines = []
+            for c in near_miss_candidates[:3]:
+                cmds = [str(x).strip() for x in c.get("commands", []) if str(x).strip()]
+                rc_lines.append(f"- Candidate [{c['kb_number']}] '{c['title']}' (Score: {c['score']:.4f}) — ❌ REJECTED by RAG Judge: {c['reason']}")
+                if cmds:
+                    rc_lines.append(f"  Reference Commands from Candidate: {'; '.join(cmds[:4])}")
+            rejected_context_str = "\n".join(rc_lines)
+            logger.info(f"💡 Contrastive RAG Injection: passing {len(near_miss_candidates)} near-miss candidate(s) (score >= 0.80) to Diagnostic Probe & SOP Synthesizer.")
+
         logger.info(f"🔎 Executing Dynamic Read-Only Diagnostic ReAct Loop on host {ci_name} ({ip})...")
         post_timeline_update(incident_id, ticket_number, short_desc, ci_name, "RUNNING", "🔍 Read-Only Diagnostic Probe", "RUNNING", f"Gathering live server status via Read-Only Diagnostic ReAct Loop...")
         
@@ -219,13 +248,26 @@ def evaluate_and_get_sop(
                 target_os=target_os,
                 ssh_session_factory=ssh_session_factory,
                 llm_invoker=invoker,
-                session_state=state
+                session_state=state,
+                rejected_context=rejected_context_str
             )
             logger.info(f"🔍 Dynamic Server Diagnostic Context Captured ({len(diag_logs)} bytes)")
             post_timeline_update(incident_id, ticket_number, short_desc, ci_name, "RUNNING", "🔍 Read-Only Diagnostic Probe", "SUCCESS", f"Captured {len(diag_logs)} bytes of live diagnostic logs.")
         except Exception as diag_err:
             logger.warning(f"Diagnostic ReAct loop warning: {diag_err}")
             diag_logs = "Diagnostic context unavailable (SSH probe timeout/skipped)."
+
+        rejected_prompt_section = ""
+        if rejected_context_str:
+            rejected_prompt_section = f"""
+CONTRASTIVE RAG CONTEXT (High-Scoring Candidate Rejected by Judge):
+{rejected_context_str}
+
+CONTRASTIVE REASONING DIRECTIVES:
+- Use the candidate above to anchor to the exact technology/toolchain (e.g. Azure CLI, Kubernetes, systemd, database).
+- Fix the EXACT gap noted in the Judge's rejection reason! For instance, if the candidate was rejected because it performs PROVISIONING while the ticket requests DELETION, you MUST formulate proper DELETION/TEARDOWN commands (e.g., `az group delete`, `kubectl delete`, `userdel`) instead of creation.
+- Do NOT repeat the mistake that caused the candidate to be rejected by the Judge.
+"""
 
         prompt = f"""You are a Senior L2 Systems & DevOps Administrator. Write a Standard Operating Procedure (SOP) to resolve the incident below.
 
@@ -236,12 +278,12 @@ TARGET HOST: {ci_name} (IP: {ip}, OS: {target_os})
 
 LIVE SERVER DIAGNOSTIC CONTEXT (live diagnostic findings from target host):
 {diag_logs[:8000]}
-
+{rejected_prompt_section}
 CRITICAL RULES:
-1. Ground your solution directly on the LIVE SERVER DIAGNOSTIC CONTEXT and the INCIDENT requirement above.
+1. Use the LIVE SERVER DIAGNOSTIC CONTEXT only to ground real entity names/facts (existing resource group, existing resources, current state) -- it is READ-ONLY reconnaissance, not a template to copy. Echoing back the same read-only/list/show commands you see in it is NOT a valid SOP: the incident asks for an action (create/delete/fix/configure/etc.), and the diagnostic context exists so you name the RIGHT target for that action, not so you avoid performing it.
 2. If the diagnostic findings revealed specific resource names (e.g. controlling Deployment name, ReplicaSet, service unit, PID, config file), YOUR COMMANDS MUST OPERATE ON THOSE EXACT DISCOVERED RESOURCES!
    For example, if the ticket asks to delete the deployment for pod 'simple-web-app-6d6f6c7497-4dwr9' and diagnostic logs show controlling Deployment is 'simple-web-app' in namespace 'default', your commands MUST delete that specific deployment (`kubectl delete deployment simple-web-app -n default`).
-3. Write 3-5 REAL, EXECUTABLE shell commands that directly fulfill the EXACT requirement described above.
+3. Write 3-5 REAL, EXECUTABLE shell commands that directly fulfill the EXACT requirement described above. MANDATORY: at least one step MUST perform the actual state-changing action the incident requests (the verb the ticket names -- create/delete/install/configure/restart/etc.) -- a plan consisting only of `show`/`list`/`get`/other read-only commands does not resolve the incident and will be rejected.
 4. ENTITY GROUNDING — MANDATORY. Use the exact entity strings from the ticket and diagnostic logs (real usernames, real deployment/pod names, real ports, real service names).
 5. Commands must be NATIVE shell commands — do NOT prefix with ssh or any remote connection command. The agent already has an open SSH session.
 6. Do NOT write placeholder text. Write real commands.
@@ -270,6 +312,15 @@ Respond ONLY with valid JSON:
                 response_format={"type": "json_object"},
                 call_label=f"SOP Synthesis [{ticket_number}]",
                 session_state=state,
+                # Low temperature for reliable instruction-following -- this call
+                # had no explicit temperature (falling back to the provider
+                # default, likely ~0.7+) unlike the router (0.1) and eval (0.0)
+                # calls elsewhere in this codebase. Observed live: the same
+                # incident synthesized a correct `az storage account create...`
+                # step on one run and, on a later run with an unset temperature,
+                # produced only read-only show/list commands -- pure run-to-run
+                # randomness on a call that should behave consistently.
+                temperature=0.1,
                 role="synthesizer"
             )
             if plan_content:

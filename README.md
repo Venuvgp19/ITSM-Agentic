@@ -1,6 +1,6 @@
 # 🚀 Enterprise Autonomous ITSM Platform & Agentic SRE Control Tower
 
-An enterprise-grade, autonomous **IT Service Management (ITSM) Platform** powered by a **Multi-Agent Artificial Intelligence Engine** and **NVIDIA NIM LLMs** (NVIDIA Nemotron 3.5 Lightning, Llama 3.3 70B, DeepSeek R1).
+An enterprise-grade, autonomous **IT Service Management (ITSM) Platform** powered by a **Multi-Agent Artificial Intelligence Engine** and **NVIDIA NIM LLMs** (`nvidia/nemotron-3-super-120b-a12b` primary, with `deepseek-ai/deepseek-v4-flash-0731` as fallback — the active model per role is configurable per-tenant via the Control Tower's Model Config page).
 
 The platform automates enterprise helpdesk and Site Reliability Engineering operations end-to-end: autonomous ticket routing and classification grounded on historical precedents, Hybrid Dense & Lexical Vector RAG (ChromaDB 4096-D NV-Embed-v1 + BM25Okapi), loop-aware command validation, remote persistent SSH remediation, autonomous in-guest terminal verification, self-learning SOP synthesis, and Human-in-the-Loop (HITL) governance through the **Agent Control Tower Dashboard**.
 
@@ -35,7 +35,11 @@ The platform automates enterprise helpdesk and Site Reliability Engineering oper
   - *Read-Only Diagnostic Loop*: Live non-destructive telemetry gathering on target hosts before formulating a solution.
   - *Remediation Loop*: Dynamic SSH command execution guided by approved runbooks with per-turn tool calling and automated 10-second service stabilization pauses.
 - **In-Guest Terminal Proof Verification**: Remediation is evaluated 100% directly from live SSH execution proof and stdout/stderr output (`ss -tulpn`, `systemctl status`), eliminating dependency on external host network probes.
-- **Self-Learning Knowledge Base Synthesizer**: Automatically writes and persists newly discovered and verified SOPs to the knowledge base and indexes them in ChromaDB.
+- **Self-Learning Knowledge Base Synthesizer**: Automatically writes and persists newly discovered and verified SOPs to the knowledge base and indexes them in ChromaDB, with title/steps-similarity deduplication to merge near-duplicate SOPs instead of accumulating redundant articles.
+- **Tiered Command Authorization**: Read-only diagnostic binaries (`ps`, `ss`, `journalctl`, etc.) are always available; state-changing binaries must appear in the matched SOP's own approved commands; catastrophic patterns (`rm -rf /`, `az group delete`, `kubectl delete`, mass deletions) are hard-blocked even with human authorization unless the exact command text was explicitly approved. When a live command needs a binary the SOP's own text didn't resolve to, the daemon stops and requests one HITL approval per incident rather than blocking outright or silently widening the allowlist.
+- **AI Ops Cost Dashboard**: Per-LLM-call token usage and cost persisted to Postgres (not an in-memory estimate) — spend by day/model/incident, surfaced in its own Control Tower tab.
+- **Decision Replay**: Every RAG candidate a matched/rejected SOP went through — score, margin, and judge reasoning — is posted to the incident timeline as an auditable trace, not just the final outcome.
+- **RAG Regression Eval Harness** (`services/sre-agent-daemon/tests/eval_rag.py`): Tiered evaluation of the SOP-matching pipeline — Tier 1 (retrieval-only Recall@K/MRR against real historical incidents) and Tier 2 (full pipeline accuracy + *selection precision*, the fraction of autonomous commits that are actually correct — the metric that matters most for safety, since a wrong RAG-miss just costs a slower human-approval path while a wrong commit is a wrong autonomous action). Not a startup gate — run manually or in CI after touching retrieval/judge/synthesis code.
 - **Emergency Containment & Kill Switch**: Immediate fleet-wide or per-CI shutdown toggle to instantly terminate active SSH sessions across target hosts.
 
 ---
@@ -66,7 +70,7 @@ flowchart TD
     subgraph ROUTER["Phase 1: Agentic AI Router (Historical Precedent Grounding)"]
         R1["scanAndRouteUnassignedQueue()"]
         R2["Precedent Lookup (itsm_db + sre_history)"]
-        R3["Priority & Department Classifier<br/>(NVIDIA Nemotron 3.5 Lightning)"]
+        R3["Priority & Department Classifier<br/>(NVIDIA Nemotron 3 Super 120B)"]
         R4{"Confidence ≥ 85%?"}
         R5["Assign Group & Set State = IN_PROGRESS"]
         R6["Leave UNASSIGNED for Manual Triage"]
@@ -86,12 +90,15 @@ flowchart TD
         R5 --> P1 --> P2 --> P3 --> P4 --> P5
     end
 
-    subgraph RAGHIT["Phase 3A: Master SOP Match & Parameterization"]
+    subgraph RAGHIT["Phase 3A: Master SOP Match, LLM Judge & Parameterization"]
+        H0["LLM RAG Judge<br/>Verifies candidate actually resolves this ticket's root cause"]
         H1["Retrieve Matched SOP Runbook"]
         H2["LLM Parameterizer<br/>Substitute {username}, {venv}, {target_ci}"]
         H3["Direct Remote SSH Execution Path"]
 
-        P5 -->|"RAG Hit"| H1 --> H2 --> H3
+        P5 -->|"RAG Hit"| H0
+        H0 -->|"Approved"| H1 --> H2 --> H3
+        H0 -->|"Rejected"| P4
     end
 
     subgraph RAGMISS["Phase 3B: RAG Miss & Knowledge Synthesis"]
@@ -400,13 +407,15 @@ Whenever the backend is built (`npm run build:backend`), restarted, or compiled,
 
 ## 🛡️ Safety, Validation & Guardrails
 
-1. **Pre-Execution Catastrophic Blacklist**: Deterministic AST parser blocking destructive commands (`rm -rf /`, `mkfs`, `dd if=`, `:(){ :|:& };:`, `fdisk`, `reboot`, `shutdown`) before they reach any live host.
-2. **Loop-Aware Command Safety Validator**: Validates bash control structures (`for`, `while`, pipes) to ensure every invoked binary is within the approved SOP blueprint.
-3. **Mandatory Domain-Aware Proof-of-Fix Guard**: Prevents false resolutions by requiring in-context terminal proof:
+1. **Pre-Execution Catastrophic Blacklist**: Deterministic AST parser blocking destructive commands (`rm -rf /`, `mkfs`, `dd if=`, `:(){ :|:& };:`, `fdisk`, `reboot`, `shutdown`, `az group delete`, `kubectl delete`, and more) before they reach any live host, recursing into pipelines, subshells, `find -exec`, `xargs`, and `ssh host "..."` payloads so a wrapper can't smuggle a blocked command past the scan. These stay hard-blocked even with human authorization unless the exact command text was what a human explicitly approved — binary-level trust alone is never sufficient for this class.
+2. **Tiered Command Authorization**: Read-only diagnostic binaries (`ps`, `ss`, `journalctl`, `grep`, etc.) are always available; every state-changing binary (`systemctl`, `useradd`, `az`, `kubectl`, `rm`, ...) must appear in the matched SOP's own approved commands. If a live command legitimately needs a binary the SOP text didn't literally resolve to, the ReAct loop stops immediately (instead of letting the model spin through its remaining turns re-phrasing the same blocked binary) and the orchestrator requests one HITL approval for that incident/binary — RAG-matched-SOP relevance plus explicit human sign-off, not either alone.
+3. **LLM RAG Judge**: Runs on every RAG candidate above the similarity threshold (not just low-confidence ones — a high hybrid score reflects corpus-relative ranking, not proof the SOP addresses this incident's actual root cause) and does a real semantic check before a match is ever trusted enough to parameterize and execute.
+4. **Mandatory Domain-Aware Proof-of-Fix Guard**: Prevents false resolutions by requiring in-context terminal proof:
    - *User Deletion*: Confirms `id {username}` returns `no such user`.
    - *User Creation*: Confirms `id {username}` returns valid UID/GID and sudo permissions exist.
    - *Service Restarts*: Confirms target port/process is actively listening via `ss -tulpn`.
-4. **Autonomous Emergency Abort (Kill Switch)**:
+   - *Cloud Resource Provisioning/Teardown* (Azure resource groups, storage accounts, web apps): Re-derives the actual target resource name from the commands that ran (not from ticket text, which can be typo'd) and confirms its live existence/absence directly via CLI, independent of what the LLM's own narrative claimed happened.
+5. **Autonomous Emergency Abort (Kill Switch)**:
    - Operators can instantly abort running executions via the Control Tower UI.
    - Daemon actively checks containment state and terminates execution in `< 1.5s`.
 

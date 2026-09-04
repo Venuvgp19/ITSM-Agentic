@@ -256,25 +256,176 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
                 is_fixed = True
                 evidence_lines.append(f"✅ Verified Azure Web App(s) {', '.join(webapp_names)} live via 'az webapp list'.")
 
+    # --- Azure Storage Account check ---
+    # Must be checked before the generic Resource Group branch below, same reason
+    # as the Web App branch above: "create a storage account in AI-Playground
+    # resource group" contains the words "resource group" as incidental context
+    # (which RG to put it in), not as the actual deliverable, but the generic
+    # branch below matches on that substring regardless and then fails to find
+    # any `az group create` command (there isn't one -- the RG already existed),
+    # so it reports "could not verify" on a ticket it was never actually
+    # equipped to check. Observed live on INC0001467: the storage account was
+    # genuinely created (confirmed live via `az storage account list`) but this
+    # gap made the guard reject it, triggering a full unnecessary re-run.
+    elif "storage account" in full_text or "az storage account" in exec_log.lower():
+        # Checking exec_log too (not just full_text/ticket description) matters:
+        # this ticket's own text has a typo ("stroage account"), so a check
+        # against full_text alone never matched and this branch was silently
+        # skipped in favor of the generic Resource Group branch below -- exactly
+        # the same class of bug as the earlier RAG keyword-guard that a typo also
+        # defeated. exec_log contains the actual executed `az storage account
+        # create ...` command, which is real CLI syntax and therefore always
+        # spelled correctly regardless of how the human-written ticket text reads.
+        _is_sa_deletion = any(k in full_text for k in ["delete", "remove", "deprovision", "teardown"])
+        if _is_sa_deletion:
+            # Delete-intent ticket -- verifying via a "provisioningState:
+            # Succeeded" text match (used for the create case below) is actively
+            # wrong here: that text is a completely normal field on any *existing*
+            # storage account's own metadata (e.g. from an `az storage account
+            # list` probe enumerating what to delete), unrelated to whether this
+            # ticket's delete action happened. Observed live on INC0001468: the
+            # actual `az storage account delete` was correctly blocked by the
+            # enterprise safety guard (destructive commands require an exact
+            # text match to the approved SOP, and the model's piped
+            # list-then-delete-loop didn't match) -- nothing was deleted -- but
+            # the create-path's loose fallback matched stale "Succeeded" text
+            # from an earlier list/show step and falsely marked this RESOLVED.
+            # Delete evidence must come from a delete command that actually ran.
+            delete_blocks = re.findall(r'az\s+storage\s+account\s+delete\b[^\n]*', exec_log, re.IGNORECASE)
+            has_delete_error = bool(re.search(r'az\s+storage\s+account\s+delete\b.*?(?:error|forbidden|denied|blocked)', exec_log, re.IGNORECASE | re.DOTALL))
+            if not delete_blocks or has_delete_error:
+                is_fixed = False
+                evidence_lines.append(
+                    "❌ No `az storage account delete` command was found to have actually executed "
+                    "(it may have been blocked by the enterprise safety guard, which requires an exact "
+                    "command-text match to the approved SOP for destructive operations) — refusing to "
+                    "assume deletion succeeded without live confirmation."
+                )
+            else:
+                ok, out = session.exec_command("az storage account list --query '[].name' -o tsv 2>&1")
+                still_present = clean_ssh_stdout(out).splitlines()
+                if still_present:
+                    is_fixed = False
+                    evidence_lines.append(f"❌ Azure Storage Account(s) still present after delete attempt: {', '.join(still_present)}.")
+                else:
+                    is_fixed = True
+                    evidence_lines.append("✅ Verified all Azure Storage Accounts removed from the resource group via live 'az storage account list'.")
+        else:
+            # Only the LAST `create` command's name counts as the target to verify.
+            # Two false rejections observed live, both from over-broad name
+            # collection: (1) collecting names from show/list probes too -- a
+            # multi-turn run routinely checks "does X already exist?" with a guessed
+            # name before creating under a different one; (2) collecting names from
+            # EVERY create attempt -- Azure storage account names are globally
+            # unique across all Azure customers, so a first attempt with a plausible
+            # but already-taken name (e.g. "mystorageaccount") fails, the model
+            # correctly notices and retries with a collision-safe generated name,
+            # and that retry succeeds. Requiring the first (abandoned) name to also
+            # exist live fails a genuinely successful run. Only the last attempted
+            # name reflects what the run actually settled on and (per the "did this
+            # actually happen" question this guard exists to answer) is the only
+            # one that matters -- same "last command represents the outcome"
+            # principle _last_command_unrecovered_error() above already uses.
+            created_names = re.findall(r'az\s+storage\s+account\s+create\s+.*?(?:-n|--name)\s+([^\s]+)', exec_log)
+            sa_names = {created_names[-1]} if created_names else set()
+            # The create command's --name is routinely a shell variable
+            # ($STORAGE_ACCOUNT_NAME, generated with a timestamp/random suffix to
+            # avoid global-namespace collisions -- Azure storage account names are
+            # globally unique) rather than a literal string, so it can't be checked
+            # against a live listing by name. Those get dropped from sa_names below;
+            # if that empties the set entirely, fall back to reading the executed
+            # `az storage account show ... --query provisioningState` step's own
+            # STDOUT (the SOP's own verification step) for "Succeeded" -- still live
+            # evidence from this run, just keyed on outcome text instead of a name.
+            # Scoped to CMD blocks that actually invoke `storage account create/show`
+            # (not the whole exec_log) so a pre-existing, unrelated account's own
+            # "Succeeded" metadata from an earlier list/show probe can't satisfy this.
+            literal_sa_names = {n for n in sa_names if not n.startswith("$")}
+            _sa_cmd_blocks = _LAST_CMD_BLOCK_RE.findall(exec_log or "")
+            _sa_relevant_output = "\n".join(
+                f"{stdout}\n{stderr}" for cmd, stdout, stderr in _sa_cmd_blocks
+                if re.search(r'storage\s+account\s+(?:create|show)\b', cmd, re.IGNORECASE)
+            )
+            if not literal_sa_names and re.search(r'provisioningstate.*?succeeded|"succeeded"', _sa_relevant_output, re.IGNORECASE | re.DOTALL):
+                is_fixed = True
+                evidence_lines.append("✅ Verified Azure Storage Account creation via the executed `provisioningState` check reporting 'Succeeded' (name was a shell variable, not a literal, so live name-lookup wasn't possible).")
+            elif not literal_sa_names and not sa_names:
+                is_fixed = False
+                evidence_lines.append(
+                    "❌ Could not identify a specific Azure Storage Account name from the executed commands to verify — "
+                    "refusing to assume success without live confirmation."
+                )
+            elif not literal_sa_names:
+                is_fixed = False
+                evidence_lines.append(
+                    "❌ Storage account name was a shell variable and no 'provisioningState: Succeeded' evidence was found in the executed output — "
+                    "refusing to assume success without live confirmation."
+                )
+            else:
+                sa_names = literal_sa_names
+                ok, out = session.exec_command("az storage account list --query '[].name' -o tsv 2>&1")
+                existing_sas = clean_ssh_stdout(out).splitlines()
+                missing = [sa for sa in sa_names if sa not in existing_sas]
+                if missing:
+                    is_fixed = False
+                    evidence_lines.append(f"❌ Azure Storage Account(s) {', '.join(missing)} NOT found live via 'az storage account list'.")
+                else:
+                    is_fixed = True
+                    evidence_lines.append(f"✅ Verified Azure Storage Account(s) {', '.join(sa_names)} live via 'az storage account list'.")
+
     # --- Azure Resource Group / Cloud Resources check ---
     elif any(k in full_text for k in ["resource group", "az group", "azure resource", "azure group"]):
-        rg_matches = set(re.findall(r'az\s+group\s+create\s+--name\s+([^\s]+)', exec_log))
-        if not rg_matches:
-            is_fixed = False
-            evidence_lines.append(
-                "❌ Could not identify a specific Azure Resource Group name from the executed commands to verify — "
-                "refusing to assume success without live confirmation."
-            )
-        else:
-            ok, out = session.exec_command("az group list --query '[].name' -o tsv 2>&1")
-            existing_rgs = clean_ssh_stdout(out).splitlines()
-            missing = [rg for rg in rg_matches if rg not in existing_rgs]
-            if missing:
-                is_fixed = False
-                evidence_lines.append(f"❌ Azure Resource Group(s) {', '.join(missing)} NOT found live in subscription.")
+        is_deletion = any(k in full_text for k in ["delete", "destroy", "remove", "teardown", "drop", "purge", "clean"])
+        is_all_groups = any(k in full_text for k in ["delete all", "all resource group", "all group", "all rg", "all azure"])
+
+        if is_deletion:
+            deleted_rgs = set(re.findall(r'az\s+group\s+delete\s+(?:--name|-n)\s+["\']?([^\s"\']+)["\']?', exec_log))
+            ok, out = session.exec_command("az group list --query \"[?properties.provisioningState!='Deleting'].name\" -o tsv 2>&1")
+            existing_rgs = [rg.strip() for rg in clean_ssh_stdout(out).splitlines() if rg.strip()]
+
+            if is_all_groups or "delete all" in exec_log.lower():
+                if not existing_rgs:
+                    is_fixed = True
+                    evidence_lines.append("✅ Verified all Azure Resource Groups were deleted live (az group list is empty or remaining groups are in Deleting state).")
+                else:
+                    is_fixed = False
+                    evidence_lines.append(f"❌ Azure Resource Groups still exist live: {', '.join(existing_rgs)}.")
+            elif deleted_rgs:
+                still_existing = [rg for rg in deleted_rgs if rg in existing_rgs]
+                if still_existing:
+                    is_fixed = False
+                    evidence_lines.append(f"❌ Azure Resource Group(s) {', '.join(still_existing)} still exist in subscription.")
+                else:
+                    is_fixed = True
+                    evidence_lines.append(f"✅ Verified {len(deleted_rgs)} Azure Resource Group(s) were deleted live: {', '.join(deleted_rgs)}.")
             else:
-                is_fixed = True
-                evidence_lines.append(f"✅ Verified {len(rg_matches)} Azure Resource Group(s) live via 'az group list': {', '.join(rg_matches)}.")
+                if not existing_rgs:
+                    is_fixed = True
+                    evidence_lines.append("✅ Verified Azure subscription contains 0 Resource Groups live via 'az group list'.")
+                else:
+                    is_fixed = False
+                    evidence_lines.append(
+                        "❌ Could not identify a specific Azure Resource Group name from the executed commands to verify — "
+                        "refusing to assume success without live confirmation."
+                    )
+        else:
+            rg_matches = set(re.findall(r'az\s+group\s+create\s+(?:--name|-n)\s+["\']?([^\s"\']+)["\']?', exec_log))
+            if not rg_matches:
+                is_fixed = False
+                evidence_lines.append(
+                    "❌ Could not identify a specific Azure Resource Group name from the executed commands to verify — "
+                    "refusing to assume success without live confirmation."
+                )
+            else:
+                ok, out = session.exec_command("az group list --query '[].name' -o tsv 2>&1")
+                existing_rgs = clean_ssh_stdout(out).splitlines()
+                missing = [rg for rg in rg_matches if rg not in existing_rgs]
+                if missing:
+                    is_fixed = False
+                    evidence_lines.append(f"❌ Azure Resource Group(s) {', '.join(missing)} NOT found live in subscription.")
+                else:
+                    is_fixed = True
+                    evidence_lines.append(f"✅ Verified {len(rg_matches)} Azure Resource Group(s) live via 'az group list': {', '.join(rg_matches)}.")
 
     # --- CPU / Memory Resource Utilization check ---
     elif any(k in full_text for k in ["cpu", "memory", "ram", "load average", "high load", "resource utilization", "performance"]):

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ShieldCheck,
   History,
@@ -151,9 +151,18 @@ export function App() {
     setIsAuthenticated(false);
   };
 
+  // Only the very first fetch should show a loading skeleton (loading is
+  // passed straight into PendingApprovalsView/AIControlTowerOverview's
+  // LoadingState). Every subsequent call is a silent background poll (every
+  // 10s) -- toggling `loading` true/false on each of those swapped the whole
+  // approvals list to a skeleton and back every cycle, which is what made the
+  // HITL approvals tab look like it was "refreshing" every few seconds while
+  // someone was mid-review of a pending SOP.
+  const hasLoadedOnceRef = useRef(false);
+
   const fetchData = async () => {
     if (!isAuthenticated) return;
-    setLoading(true);
+    if (!hasLoadedOnceRef.current) setLoading(true);
     try {
       const [appRes, histRes, statsRes] = await Promise.all([
         fetch(`${API_BASE}/approvals`).catch(() => null),
@@ -169,6 +178,7 @@ export function App() {
     } catch (err) {
       console.error('Error fetching SRE dashboard telemetry:', err);
     } finally {
+      hasLoadedOnceRef.current = true;
       setLoading(false);
     }
   };

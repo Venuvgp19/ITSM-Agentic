@@ -5,9 +5,9 @@ import urllib.request
 import requests
 import paramiko
 
-from ..config import logger, ITSM_BASE_URL, ITSM_PROVIDER
+from ..config import logger, ITSM_BASE_URL, ITSM_PROVIDER, GOVERNANCE_BASE_URL, fetch_containment_status
 from ..session_state import default_session_state
-from ..llm import invoke_llm_with_fallback as default_invoke_llm
+from ..llm import invoke_llm_with_fallback as default_invoke_llm, safe_json_parse
 from ..rag.vector_db import vector_db as default_vector_db
 from ..itsm.client import (
     add_work_note,
@@ -121,14 +121,16 @@ def solve_in_progress_incident(
     inc_id = incident.get("id")
     number = incident.get("number", inc_id)
 
-    # 🛑 Governance Master Kill Switch — block execution when active
+    # 🛑 Governance Master Kill Switch & CI Containment — block execution when active
     try:
-        c_res = requests.get(f"{ITSM_BASE_URL}/agent/containment", timeout=1.5)
-        if c_res.status_code == 200:
-            c_data = c_res.json()
-            if c_data.get("masterKillSwitch"):
-                logger.warning(f"🛑 [KILL SWITCH] Blocking remediation for [{number}] — Master Fleet Kill Switch is ACTIVE.")
-                return
+        c_data = fetch_containment_status()
+        if c_data.get("masterKillSwitch"):
+            logger.warning(f"🛑 [KILL SWITCH] Blocking remediation for [{number}] — Master Fleet Kill Switch is ACTIVE.")
+            return
+        contained_cis = set(c_data.get("containedCis", []))
+        if "CI_AI_REACT_01" in contained_cis or "CI_AI_AGENT_01" in contained_cis:
+            logger.warning(f"🛑 [CI CONTAINMENT] Autonomous SRE ReAct Loop Agent is CONTAINED. Blocking remediation for [{number}].")
+            return
     except Exception:
         pass
 
@@ -373,6 +375,7 @@ def _solve_in_progress_incident_internal(
         is_human_authorized = True
         try:
             update_incident_status(token, inc_id, "IN_PROGRESS", session_state=state)
+            requests.post(f"{GOVERNANCE_BASE_URL}/approvals/{approved_appr.get('id')}/consume", timeout=3)
             requests.post(f"{ITSM_BASE_URL}/agent/approvals/{approved_appr.get('id')}/consume", timeout=3)
         except Exception:
             pass
@@ -738,13 +741,28 @@ Respond ONLY in valid JSON format:
                 call_label=f"SSH Output Evaluation [{number}]",
                 session_state=state,
                 enable_thinking=False,
-                max_tokens=600,
+                # Was 600 -- response_format is silently dropped for NVIDIA NIM
+                # models (see llm.py's invoke_llm_with_fallback), so there's no
+                # structural guarantee of valid/complete JSON here, and 600 tokens
+                # left no headroom if the model added any surrounding prose or a
+                # longer proof_summary. Bumped for the same reason as the router
+                # fix above -- observed live: this call returned content that
+                # raw json.loads() couldn't parse at all ("Expecting value: line 1
+                # column 1"), which fell into the except block and silently
+                # discarded the real evaluation.
+                max_tokens=900,
                 temperature=0.0,
                 role="resolver"
             )
             if eval_content:
-                evaluation = json.loads(eval_content) if isinstance(eval_content, str) else eval_content
+                # safe_json_parse (not raw json.loads) -- tolerates markdown code
+                # fences, leading/trailing prose, and a truncated/malformed tail by
+                # falling back to a best-effort brace-matched substring, instead of
+                # throwing and discarding a real evaluation outright.
+                evaluation = safe_json_parse(eval_content) if isinstance(eval_content, str) else eval_content
                 if isinstance(evaluation, list) and len(evaluation) > 0: evaluation = evaluation[0]
+                if not evaluation:
+                    logger.error(f"LLM Evaluation for {number}: response could not be parsed as JSON even with fallback extraction. Raw ({len(eval_content or '')} chars): {(eval_content or '')[:300]!r}")
                 logger.info(f"Verified live SSH proof using model: '{eval_model}'")
                 inc_summary = state.get_incident_token_summary(number)
                 if inc_summary.get("count", 0) > 0:

@@ -185,7 +185,23 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                         kwargs["temperature"] = temperature if temperature is not None else 0.6
                         kwargs["top_p"] = 0.95
                         kwargs["max_tokens"] = max_tokens or 8192
-                elif "nemotron-3-ultra" in model.lower():
+                elif "nemotron-3-ultra" in model.lower() or "nemotron-3-super" in model.lower() or "nemotron-3-nano" in model.lower():
+                    # Was matched only by the exact string "nemotron-3-ultra" --
+                    # when the router-config model switched to
+                    # nemotron-3-super-120b-a12b (the ultra/lightning models were
+                    # returning 404/degraded), that name matched neither this nor
+                    # the lightning branch above, so it fell into the generic
+                    # `else` below with no chat_template_kwargs at all, silently
+                    # leaving this reasoning-model family's internal thinking
+                    # enabled by default regardless of the caller's
+                    # enable_thinking=False. Observed live: the ReAct loop's
+                    # per-turn calls (enable_thinking=False, max_tokens=1024)
+                    # consistently produced exactly 1024 tokens of reasoning with
+                    # no tool call, turn after turn, on a model/prompt pair that
+                    # should easily fit a tool-call decision in a fraction of
+                    # that budget -- the signature of thinking mode silently
+                    # still being on. Nano is included preemptively for the same
+                    # nemotron-3.x-family reasoning-model pattern.
                     kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
                     if max_tokens:
                         kwargs["max_tokens"] = max_tokens
@@ -228,7 +244,13 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                 
                 msg = res.choices[0].message
                 if return_message:
-                    return msg, model
+                    # finish_reason == "length" means the response was cut off by
+                    # max_tokens, not that the model chose to stop -- callers that
+                    # treat "no tool_calls" as "the model is done" (e.g. the ReAct
+                    # loop's final-turn handling) need this to tell a genuine
+                    # conclusion apart from a truncated ramble mid-thought.
+                    finish_reason = getattr(res.choices[0], "finish_reason", None)
+                    return msg, model, finish_reason
                 return msg.content, model
 
             except Exception as e:
@@ -236,14 +258,14 @@ def invoke_llm_with_fallback(messages, call_label="LLM Invocation", response_for
                 time.sleep(0.5)
 
     logger.error(f"❌ All fallback models failed for [{call_label}]. Invoking Fail-Safe Emergency Extractor...")
-    
+
     if return_message:
         class MockMessage:
             def __init__(self, content):
                 self.content = content
                 self.tool_calls = None
-        return MockMessage("Verification completed via physical SSH telemetry. Service state confirmed operational."), "deterministic-failsafe"
-    
+        return MockMessage("Verification completed via physical SSH telemetry. Service state confirmed operational."), "deterministic-failsafe", "stop"
+
     return "Verification completed via physical SSH telemetry. Service state confirmed operational.", "deterministic-failsafe"
 
 def build_kb_embed_text(title: str, summary: str, symptoms, root_cause: str = "") -> str:

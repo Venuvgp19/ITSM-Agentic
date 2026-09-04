@@ -85,25 +85,39 @@ def get_historical_routing_precedents(short_desc, desc, ci_name, limit=5):
         keywords = ['cpu', 'user', 'memory', 'down', 'k8s']
         
     like_clauses = " OR ".join(['"shortDescription" ILIKE %s OR description ILIKE %s' for _ in keywords])
+    # Per-keyword match-count expression, e.g. for keywords [a, b]:
+    #   (CASE WHEN "shortDescription" ILIKE %s OR description ILIKE %s THEN 1 ELSE 0 END) +
+    #   (CASE WHEN "shortDescription" ILIKE %s OR description ILIKE %s THEN 1 ELSE 0 END)
+    # A single generic word (e.g. "create") is still enough to appear as a candidate at
+    # all (kept permissive on recall), but tickets sharing several distinctive keywords
+    # with the incident now rank above ones sharing only one -- previously this was
+    # ORDER BY "createdAt" DESC, so a ticket matching just one generic word (e.g. "create
+    # an ID called oswaldo" matching "create"/"called") could bury a near-identical older
+    # precedent (e.g. "create resource groups... azure... az cli" matching 4+ keywords)
+    # purely because it was more recent, feeding the LLM classifier misleading grounding.
+    match_count_expr = " + ".join(
+        ['(CASE WHEN "shortDescription" ILIKE %s OR description ILIKE %s THEN 1 ELSE 0 END)' for _ in keywords]
+    )
     params = []
     for kw in keywords:
         params.extend([f"%{kw}%", f"%{kw}%"])
-        
+
     # 1. Query itsm_db for resolved/closed incidents
     try:
         conn_itsm = psycopg2.connect("postgresql://postgres:postgres@localhost:5432/itsm_db")
         cur_itsm = conn_itsm.cursor(cursor_factory=RealDictCursor)
         sql = f"""
-            SELECT number, "shortDescription", department, "assignedToName", priority, state
+            SELECT number, "shortDescription", department, "assignedToName", priority, state,
+                   ({match_count_expr}) AS match_count
             FROM "Incident"
             WHERE state IN ('RESOLVED', 'CLOSED')
               AND department IS NOT NULL
               AND department NOT IN ('UNASSIGNED', 'NONE', 'UNSPECIFIED')
               AND ({like_clauses})
-            ORDER BY "createdAt" DESC
+            ORDER BY match_count DESC, "createdAt" DESC
             LIMIT {limit};
         """
-        cur_itsm.execute(sql, params)
+        cur_itsm.execute(sql, params + params)
         rows = cur_itsm.fetchall()
         for r in rows:
             precedents.append({
@@ -124,20 +138,24 @@ def get_historical_routing_precedents(short_desc, desc, ci_name, limit=5):
         conn_sre = psycopg2.connect("postgresql://postgres:postgres@localhost:5432/agentic_sre_db")
         cur_sre = conn_sre.cursor(cursor_factory=RealDictCursor)
         sre_like = " OR ".join(['incident_title ILIKE %s OR action_type ILIKE %s' for _ in keywords])
+        sre_match_count_expr = " + ".join(
+            ['(CASE WHEN incident_title ILIKE %s OR action_type ILIKE %s THEN 1 ELSE 0 END)' for _ in keywords]
+        )
         sre_params = []
         for kw in keywords:
             sre_params.extend([f"%{kw}%", f"%{kw}%"])
-            
+
         sql_sre = f"""
-            SELECT incident_id, incident_title, department, human_approver, risk_level, action_type
+            SELECT incident_id, incident_title, department, human_approver, risk_level, action_type,
+                   ({sre_match_count_expr}) AS match_count
             FROM sre_history
             WHERE status IN ('APPROVED', 'AUTO_EXECUTED')
               AND department IS NOT NULL
               AND ({sre_like})
-            ORDER BY executed_at DESC
+            ORDER BY match_count DESC, executed_at DESC
             LIMIT {limit};
         """
-        cur_sre.execute(sql_sre, sre_params)
+        cur_sre.execute(sql_sre, sre_params + sre_params)
         sre_rows = cur_sre.fetchall()
         for r in sre_rows:
             precedents.append({
@@ -188,9 +206,36 @@ class ControlTowerAIRouter:
         precedents = get_historical_routing_precedents(short_desc, desc, ci_name, limit=4)
         
         # ── 0. DETERMINISTIC DOMAIN POLICIES ──
-        # Policy Rule: Nexacore application down / error alerts MUST always get routed to App Support
         combined_text = f"{short_desc} {desc}".strip().lower()
-        if "nexacore" in combined_text:
+
+        # Policy Rule A: Linux OS User Administration, Provisioning & Sudoers Permissions -> Unix
+        is_user_mgmt = bool(re.search(
+            r'\b(user\s*id|user\s*ids|create\s+user|delete\s+user|remove\s+user|add\s+user|useradd|userdel|usermod|sudoers?|passwd|password\s+reset|offboard(?:ing)?|onboard(?:ing)?)\b',
+            combined_text
+        ))
+        if is_user_mgmt:
+            audit_entry = {
+                "incidentId": incident.get("id"),
+                "number": number,
+                "shortDescription": short_desc,
+                "recommendedDepartment": "Unix",
+                "priority": "P2",
+                "confidenceScore": 99,
+                "reasoningText": "Deterministic Policy Rule: Linux OS user provisioning, deprovisioning, and sudoers permissions are strictly routed to Unix Administration.",
+                "thinkingTrace": f"Enforced deterministic platform routing policy: User administration / sudoers request routed to Unix (P2) with 99% confidence.",
+                "historicalPrecedentsCount": len(precedents),
+                "autoAssigned": True
+            }
+            self.routing_history.append(audit_entry)
+            logger.info(f"🤖 [Agentic AI Router] Classified [{number}] -> Unix (P2) with 99% confidence (OS User Mgmt Policy Rule).")
+            return audit_entry
+
+        # Policy Rule B: Nexacore application downtime, service crashes, and portal alerts -> App Support
+        is_app_incident = bool(re.search(
+            r'\b(down|error|crash|http|404|500|502|503|unresponsive|unavailable|portal|timeout|latency|gateway)\b',
+            combined_text
+        ))
+        if "nexacore" in combined_text and is_app_incident:
             is_critical = bool(re.search(r'\b(p1|critical|sev-?1|disaster|total outage)\b', combined_text))
             prio = "P1" if is_critical else "P2"
             audit_entry = {
@@ -201,7 +246,7 @@ class ControlTowerAIRouter:
                 "priority": prio,
                 "confidenceScore": 99,
                 "reasoningText": "Deterministic Policy Rule: Nexacore application downtime, service failures, and portal alerts are strictly routed to App Support.",
-                "thinkingTrace": f"Enforced deterministic platform routing policy: 'nexacore' alert routed to App Support ({prio}) with 99% confidence.",
+                "thinkingTrace": f"Enforced deterministic platform routing policy: 'nexacore' application alert routed to App Support ({prio}) with 99% confidence.",
                 "historicalPrecedentsCount": len(precedents),
                 "autoAssigned": True
             }
@@ -237,12 +282,33 @@ class ControlTowerAIRouter:
                 messages=messages,
                 call_label=f"AI-Router-Triage-{number}",
                 enable_thinking=False,
-                max_tokens=512,
+                # Was 512 -- the schema asks for both reasoningText AND a separate,
+                # open-ended thinkingTrace field, and 512 tokens routinely wasn't
+                # enough to finish emitting both before hitting the cap. That leaves
+                # the JSON object unclosed (no trailing '}'), which safe_json_parse
+                # correctly rejects and returns {} for -- silently defaulting EVERY
+                # field below (dept="Unix", conf=85, generic reasoning) with no
+                # error logged. Verified live: 3/3 reproductions of a real router
+                # call truncated mid-thinkingTrace at 512 tokens. 1024 gives enough
+                # headroom for both fields to complete on a typical response.
+                max_tokens=1024,
                 temperature=0.1,
                 role="router"
             )
-            
+
             res = safe_json_parse(raw_response)
+            if not res:
+                # Every field below is about to silently fall back to its default
+                # (dept="Unix", conf=85) -- that's indistinguishable from a genuine
+                # low-confidence classification unless this is logged loudly. This
+                # is the exact failure mode that produced repeated "Unix, 85%
+                # confidence, grounded on N historical records" misroutes this
+                # session even when strong, correctly-retrieved precedents existed.
+                logger.error(
+                    f"AI Router: classification JSON failed to parse for [{number}] -- "
+                    f"falling back to defaults (Unix/85%). Raw response ({len(raw_response or '')} chars): "
+                    f"{(raw_response or '')[:300]!r}"
+                )
             conf = int(res.get("confidenceScore", 85))
             dept = res.get("recommendedDepartment", "Unix")
             prio = res.get("priority", "P3")
@@ -360,6 +426,14 @@ class ControlTowerAIRouter:
 
     def poll_and_route_unassigned_queue(self, token):
         """Scans queue for unassigned tickets and routes them automatically using historical data."""
+        from ..config import fetch_containment_status
+        c_data = fetch_containment_status()
+        if c_data.get("masterKillSwitch"):
+            return 0
+        contained_cis = set(c_data.get("containedCis", []))
+        if "CI_AI_AGENT_02" in contained_cis or "CI_AI_ROUTER_01" in contained_cis:
+            return 0
+
         self.sync_confidence_threshold()
         incidents = fetch_incident_queue(token)
         unassigned = []

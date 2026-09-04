@@ -9,6 +9,7 @@ from ..config import (
     POLL_INTERVAL_SECONDS,
     acquire_lock,
     release_lock,
+    fetch_containment_status,
 )
 from ..session_state import default_session_state
 from ..rag.vector_db import vector_db as default_vector_db, sync_vector_db_with_kb
@@ -157,18 +158,16 @@ def start_continuous_monitoring(session_state=None, vdb=None, llm_invoker=None, 
 
             # Governance Master Kill Switch & CI Containment Enforcement
             try:
-                c_res = requests.get(f"{ITSM_BASE_URL}/agent/containment", timeout=1.5)
-                if c_res.status_code == 200:
-                    c_data = c_res.json()
-                    if c_data.get("masterKillSwitch"):
-                        logger.warning("🛑 [GOVERNANCE MASTER KILL SWITCH ACTIVE] Autonomous fleet execution halted by operator.")
-                        time.sleep(POLL_INTERVAL_SECONDS)
-                        continue
-                    contained_cis = set(c_data.get("containedCis", []))
-                    if "CI_AI_REACT_01" in contained_cis or "CI_AI_AGENT_01" in contained_cis:
-                        logger.warning("🛑 [CI CONTAINMENT] Autonomous SRE ReAct Loop Agent (CI_AI_REACT_01) is CONTAINED. Execution blocked.")
-                        time.sleep(POLL_INTERVAL_SECONDS)
-                        continue
+                c_data = fetch_containment_status()
+                if c_data.get("masterKillSwitch"):
+                    logger.warning("🛑 [GOVERNANCE MASTER KILL SWITCH ACTIVE] Autonomous fleet execution halted by operator.")
+                    time.sleep(POLL_INTERVAL_SECONDS)
+                    continue
+                contained_cis = set(c_data.get("containedCis", []))
+                if "CI_AI_REACT_01" in contained_cis or "CI_AI_AGENT_01" in contained_cis:
+                    logger.warning("🛑 [CI CONTAINMENT] Autonomous SRE ReAct Loop Agent (CI_AI_REACT_01) is CONTAINED. Execution blocked.")
+                    time.sleep(POLL_INTERVAL_SECONDS)
+                    continue
             except Exception:
                 pass
 
