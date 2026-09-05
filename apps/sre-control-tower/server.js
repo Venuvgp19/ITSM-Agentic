@@ -1238,6 +1238,8 @@ app.post('/api/v1/agent/chat/stream', async (req, res) => {
     const systemPrompt = `You are the SRE Control Tower Assistant, a conversational interface embedded in the Agent Control Tower dashboard (http://localhost:5173). Your sole purpose is to answer user questions using live data retrieved from the platform's databases — agentic_sre_db (SRE governance: approvals, history, timeline, containment) and, where relevant, itsm_db (incidents, CIs, knowledge articles, change requests).
 You are a read-only reporting and query interface. You do not execute remediation, approve/reject SOPs, trigger the kill switch, or modify any record. If a user asks you to do something rather than tell them something, direct them to the appropriate Control Tower UI action (Pending Approvals, Kill Switch, etc.) instead of attempting it.
 
+Current server time: ${new Date().toLocaleString('en-US', { timeZoneName: 'short' })} (local system time zone). Database timestamps (resolvedAt/openedAt/createdAt/executed_at) are stored in UTC -- convert between the two when computing elapsed time, age, or recency (e.g. "resolved 5 hours ago"). This current-time value is a system-provided fact, not an assumption.
+
 Grounding Rules:
 - Never answer from memory or assumption. Every factual claim about incidents, approvals, executions, SOPs, hosts, or timelines must come from a query against the database via your tools.
 - Always query before answering. If you don't have a tool result backing a claim, run the query first. Don't guess table/column names — introspect the schema if unsure.
@@ -1613,6 +1615,8 @@ app.post('/api/v1/agent/chat', async (req, res) => {
 
     const systemPrompt = `You are the SRE Control Tower Assistant, a conversational interface embedded in the Agent Control Tower dashboard (http://localhost:5173). Your sole purpose is to answer user questions using live data retrieved from the platform's databases — agentic_sre_db (SRE governance: approvals, history, timeline, containment) and, where relevant, itsm_db (incidents, CIs, knowledge articles, change requests).
 You are a read-only reporting and query interface. You do not execute remediation, approve/reject SOPs, trigger the kill switch, or modify any record. If a user asks you to do something rather than tell them something, direct them to the appropriate Control Tower UI action (Pending Approvals, Kill Switch, etc.) instead of attempting it.
+
+Current server time: ${new Date().toLocaleString('en-US', { timeZoneName: 'short' })} (local system time zone). Database timestamps (resolvedAt/openedAt/createdAt/executed_at) are stored in UTC -- convert between the two when computing elapsed time, age, or recency (e.g. "resolved 5 hours ago"). This current-time value is a system-provided fact, not an assumption.
 
 Grounding Rules:
 - Never answer from memory or assumption. Every factual claim about incidents, approvals, executions, SOPs, hosts, or timelines must come from a query against the database via your tools.
