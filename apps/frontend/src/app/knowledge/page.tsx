@@ -51,6 +51,7 @@ interface KnowledgeArticle {
   helpfulCount: number;
   createdAt: string;
   content?: string;
+  isPublished: boolean;
 }
 
 export default function KnowledgePage() {
@@ -170,6 +171,27 @@ export default function KnowledgePage() {
       console.error('Error saving article:', e);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handlePublishArticle = async (article: KnowledgeArticle) => {
+    try {
+      const res = await fetch(`/api/v1/knowledge/articles/${article.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPublished: true }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setArticles((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+        if (selectedArticle && selectedArticle.id === updated.id) {
+          setSelectedArticle(updated);
+        }
+        setSaveSuccessMsg(`'${updated.title}' published — now eligible for autonomous RAG matching. ✅`);
+        setTimeout(() => setSaveSuccessMsg(''), 4000);
+      }
+    } catch (e) {
+      console.error('Error publishing article:', e);
     }
   };
 
@@ -397,7 +419,13 @@ export default function KnowledgePage() {
                   <span className="flex items-center gap-1 text-[#0284c7] font-semibold">
                     <Code2 className="w-3 h-3" /> {article.resolutionSteps?.length || 0} Executable Steps
                   </span>
-                  <span className="text-slate-400">Published</span>
+                  {article.isPublished ? (
+                    <span className="text-emerald-600 font-semibold">Published</span>
+                  ) : (
+                    <span className="text-amber-600 font-semibold flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> Pending Review
+                    </span>
+                  )}
                 </div>
               </div>
             ))
@@ -414,6 +442,15 @@ export default function KnowledgePage() {
                 <span className="font-extrabold text-slate-900 text-sm">{selectedArticle.number || selectedArticle.id}: {selectedArticle.title}</span>
               </div>
               <div className="flex items-center gap-2">
+                {!selectedArticle.isPublished && (
+                  <button
+                    onClick={() => handlePublishArticle(selectedArticle)}
+                    className="px-3 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Publish (approve for autonomous use)</span>
+                  </button>
+                )}
                 <button
                   onClick={() => openEditModal(selectedArticle)}
                   className="px-3 py-1 rounded bg-[#288554] hover:bg-[#30bb7b] text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
@@ -439,6 +476,15 @@ export default function KnowledgePage() {
                 <span className="text-xs font-bold text-slate-700 bg-white px-3 py-1 rounded border border-[#cbd5e1] flex items-center gap-1.5 font-mono">
                   <Server className="w-3.5 h-3.5 text-slate-500" /> Target CI: {selectedArticle.configurationItem}
                 </span>
+                {selectedArticle.isPublished ? (
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded border border-emerald-300 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Published — eligible for autonomous RAG matching
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1 rounded border border-amber-300 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Pending Review — excluded from autonomous execution
+                  </span>
+                )}
               </div>
 
               <div className="bg-white p-4 rounded border border-[#e2e8f0] shadow-sm space-y-2">

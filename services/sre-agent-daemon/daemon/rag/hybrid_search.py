@@ -348,7 +348,7 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
         )
         if not nexacore_kb:
             try:
-                all_articles = requests.get("http://localhost:4000/api/v1/knowledge/articles", timeout=5).json()
+                all_articles = requests.get("http://localhost:4000/api/v1/knowledge/articles?publishedOnly=true", timeout=5).json()
                 nexacore_kb = next((a for a in all_articles if "KB0000003" in a.get("number", "")), None)
             except Exception:
                 pass
@@ -386,7 +386,7 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
         triage_sop = _pick_triage_sop(kb_articles, is_cpu_alert, is_mem_alert)
         if not triage_sop:
             try:
-                all_articles = requests.get("http://localhost:4000/api/v1/knowledge/articles", timeout=5).json()
+                all_articles = requests.get("http://localhost:4000/api/v1/knowledge/articles?publishedOnly=true", timeout=5).json()
                 triage_sop = _pick_triage_sop(all_articles, is_cpu_alert, is_mem_alert)
             except Exception:
                 pass

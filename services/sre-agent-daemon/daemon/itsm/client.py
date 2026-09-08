@@ -1,4 +1,5 @@
 import re
+import time
 import requests
 from ..config import (
     logger,
@@ -81,12 +82,18 @@ def fetch_incident_queue(token):
     return []
 
 def fetch_kb_articles(token):
+    """
+    This is the primary KB source for RAG retrieval/execution -- publishedOnly=true
+    excludes any article a human hasn't reviewed yet (e.g. one autonomously written
+    by the backend's runContinuousBackgroundSynthesis KB consolidator), so an
+    unreviewed synthesized SOP can't become a candidate for autonomous execution.
+    """
     if ITSM_PROVIDER == "SERVICENOW":
         return servicenow_client.fetch_kb_articles()
 
     headers = {"Authorization": f"Bearer {token}"}
     try:
-        res = requests.get(f"{ITSM_BASE_URL}/knowledge/articles", headers=headers, timeout=5)
+        res = requests.get(f"{ITSM_BASE_URL}/knowledge/articles?publishedOnly=true", headers=headers, timeout=5)
         if res.status_code == 200:
             return res.json()
     except Exception as e:
@@ -335,7 +342,15 @@ def save_new_kb_article_to_storage(new_article_data, vdb=None):
             "resolutionSteps": new_article_data.get("resolutionSteps", []),
             "sourceIncidentIds": new_article_data.get("sourceIncidentIds", []),
             "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-            "modelUsed": MODEL_NAME
+            "modelUsed": MODEL_NAME,
+            # This function's only real caller (incident_lifecycle.py) only reaches
+            # here after is_human_authorized is True -- the SOP's commands were
+            # already shown to and approved by a human before execution. Default
+            # True reflects that gating; the backend only honors this on an
+            # explicit boolean, so a caller that omits it still gets published
+            # (this function is never invoked for the fully-autonomous
+            # runContinuousBackgroundSynthesis path, which posts nothing here).
+            "isPublished": new_article_data.get("isPublished", True),
         }
         res = requests.post(f"{ITSM_BASE_URL}/knowledge/articles", json=payload, timeout=5)
         if res.status_code in [200, 201]:
@@ -373,6 +388,9 @@ def save_new_kb_article_to_storage(new_article_data, vdb=None):
         logger.error(f"Failed to persist new KB article via API: {e}")
         return None
 
+_ci_inventory_cache = {"data": None, "fetched_at": 0.0}
+_CI_INVENTORY_CACHE_TTL_SECONDS = 10
+
 def fetch_ci_inventory():
     """
     Fetches live Configuration Items from the CMDB (`ConfigurationItem.attributesJson`)
@@ -385,15 +403,32 @@ def fetch_ci_inventory():
     A CMDB asset with no sshUser/sshPassword recorded yet is skipped, not an
     error -- CMDB tracks assets the agent has no reason to ever resolve too
     (routers, k8s clusters, ...).
+
+    Short TTL cache: this has no request-scoped memoization of its own, and is
+    called from several places (poller.py's per-incident CI resolution,
+    incident_lifecycle.py's per-ticket lookups, potentially several in parallel
+    from the worker pool) that can all fire within the same poll cycle. Without
+    a cache each of those is a separate live HTTP round-trip for identical data
+    -- exactly the pattern that made resolve_ci_credentials() re-fetch this on
+    every one of 1,477 incidents per cycle before that call site was fixed to
+    only call it when actually needed. The cache is the second, structural
+    layer of that same fix: even a caller that DOES need this data repeatedly
+    in a short window no longer re-hits the network for it. 10s is shorter
+    than the 15s poll interval, so a CI credential edit is still picked up
+    within one cycle, not permanently stale.
     """
+    now = time.monotonic()
+    if _ci_inventory_cache["data"] is not None and (now - _ci_inventory_cache["fetched_at"]) < _CI_INVENTORY_CACHE_TTL_SECONDS:
+        return _ci_inventory_cache["data"]
+
     try:
         res = requests.get(f"{ITSM_BASE_URL}/cmdb/ci", timeout=3)
         if res.status_code != 200:
-            return {}
+            return _ci_inventory_cache["data"] or {}
         cis = res.json()
     except Exception as e:
         logger.warning(f"CMDB CI inventory fetch failed, using local CI_CREDENTIALS fallback only: {e}")
-        return {}
+        return _ci_inventory_cache["data"] or {}
 
     inventory = {}
     for ci in cis if isinstance(cis, list) else []:
@@ -417,6 +452,8 @@ def fetch_ci_inventory():
         secondary_ip = attrs.get("secondaryIp")
         if secondary_ip:
             inventory[secondary_ip] = {**info, "ip": secondary_ip}
+    _ci_inventory_cache["data"] = inventory
+    _ci_inventory_cache["fetched_at"] = now
     return inventory
 
 

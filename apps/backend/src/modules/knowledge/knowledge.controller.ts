@@ -23,8 +23,9 @@ export class KnowledgeController {
   @ApiOperation({ summary: 'List & Search Knowledge Base Articles' })
   @ApiQuery({ name: 'category', required: false })
   @ApiQuery({ name: 'query', required: false })
-  async findAll(@Query('category') category?: string, @Query('query') query?: string) {
-    return this.knowledgeService.findAll(category, query);
+  @ApiQuery({ name: 'publishedOnly', required: false, description: 'When true, excludes articles pending human review (isPublished=false) -- used by the RAG retrieval pipeline so an unreviewed autonomously-synthesized SOP cannot be executed against.' })
+  async findAll(@Query('category') category?: string, @Query('query') query?: string, @Query('publishedOnly') publishedOnly?: string) {
+    return this.knowledgeService.findAll(category, query, publishedOnly === 'true');
   }
 
   @Public()

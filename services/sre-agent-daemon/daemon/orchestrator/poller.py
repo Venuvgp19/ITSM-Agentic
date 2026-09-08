@@ -66,9 +66,23 @@ def poll_and_dispatch_incidents(
                 state.unlock_session(inc_id)
                 logger.info(f"🔓 Un-locking Incident [{inc.get('number', inc_id)}] — Human approval granted! Proceeding with execution.")
 
-        ci_info, ci_name = resolve_ci_credentials(inc)
+        # resolve_ci_credentials() does its own fresh, uncached CMDB fetch on every
+        # call -- it was previously invoked here for EVERY incident in the system
+        # (1,477 and growing) on every 15s poll cycle, even though ci_info/ci_name
+        # are only ever used inside the ON_HOLD-with-unspecified-CI branch below.
+        # For every other ticket (the overwhelming majority -- RESOLVED, CLOSED,
+        # already-specified-CI ON_HOLD, etc.) the result was computed and
+        # immediately discarded. That's what was actually causing the daemon's
+        # multi-second-per-cycle slowdown, not a slow model call. Gating the call
+        # behind the same condition that consumes its result turns an O(all
+        # incidents ever created) cost into O(tickets actually on hold for this
+        # specific reason) -- typically zero.
         is_unpaused_ci_on_hold = False
-        if ticket_state == "ON_HOLD" and state.is_unspecified_ci(inc_id) and ci_info is not None and not state.is_resolved(inc_id):
+        if ticket_state == "ON_HOLD" and state.is_unspecified_ci(inc_id) and not state.is_resolved(inc_id):
+            ci_info, ci_name = resolve_ci_credentials(inc)
+        else:
+            ci_info, ci_name = None, None
+        if ci_info is not None:
             is_rejected = any(a.get("incidentId") == inc_id and a.get("status") == "REJECTED" for a in approvals_list)
             if not is_rejected:
                 is_unpaused_ci_on_hold = True

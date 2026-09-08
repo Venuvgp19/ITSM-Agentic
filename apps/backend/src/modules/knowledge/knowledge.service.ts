@@ -20,6 +20,7 @@ export interface KnowledgeArticle {
   viewCount: number;
   helpfulCount: number;
   createdAt: string;
+  isPublished: boolean;
 }
 
 @Injectable()
@@ -61,6 +62,7 @@ export class KnowledgeService {
       viewCount: record.viewsCount || 0,
       helpfulCount: record.helpfulCount || 0,
       createdAt: record.createdAt ? record.createdAt.toISOString() : new Date().toISOString(),
+      isPublished: record.isPublished === true,
     };
   }
 
@@ -118,10 +120,21 @@ export class KnowledgeService {
     };
   }
 
-  async findAll(category?: string, query?: string): Promise<KnowledgeArticle[]> {
+  async findAll(category?: string, query?: string, publishedOnly?: boolean): Promise<KnowledgeArticle[]> {
     let whereClause: any = {};
     if (category && category.toLowerCase() !== 'all') {
       whereClause.category = { contains: category, mode: 'insensitive' };
+    }
+    // Retrieval callers that feed autonomous execution (the RAG pipeline) pass
+    // publishedOnly=true so an unreviewed article -- e.g. one produced by
+    // runContinuousBackgroundSynthesis()'s autonomous consolidation below,
+    // which never sets isPublished -- can't become a candidate SOP before a
+    // human has reviewed it. Human-facing browsing (the Knowledge Base page)
+    // omits this so drafts stay visible for review. isPublished itself was
+    // previously set on creation but never enforced anywhere -- this is the
+    // one place that needed to actually check it.
+    if (publishedOnly) {
+      whereClause.isPublished = true;
     }
     
     if (query) {
@@ -203,6 +216,7 @@ export class KnowledgeService {
         author: dto.author !== undefined ? dto.author : undefined,
         resolutionSteps: Array.isArray(dto.resolutionSteps) ? dto.resolutionSteps : undefined,
         symptoms: Array.isArray(dto.symptoms) ? dto.symptoms : undefined,
+        isPublished: typeof dto.isPublished === 'boolean' ? dto.isPublished : undefined,
       }
     });
 
@@ -558,6 +572,11 @@ Respond in strict JSON format:
                 resolutionSteps: mergedSteps,
                 sourceIncidentIds: articles.map(a => a.number),
                 workNotesAnalyzedCount: articles.reduce((sum, a) => sum + (a.workNotesAnalyzedCount || 0), 0),
+                // This autonomous merge just changed the actual commands a
+                // human may have already reviewed and published -- force
+                // re-review rather than silently keeping trusted status on
+                // content nobody has seen yet.
+                isPublished: false,
               }
             });
             this.logger.log(`🔄 Updated Master SOP ${masterSop.number} with ${newSteps.length} new steps from ${articles.length} articles`);
@@ -673,6 +692,10 @@ Return JSON with:
                   workNotesAnalyzedCount: masterArticle.workNotesAnalyzedCount,
                   sourceIncidentIds: masterArticle.sourceIncidentIds,
                   summary: masterArticle.summary,
+                  // Same reasoning as the merge branch above: content changed
+                  // autonomously, so any prior human review no longer covers
+                  // what's actually stored now.
+                  isPublished: false,
                 }
               });
               this.logger.log(`🔄 Updated existing Master SOP ${existingMaster.number} for "${category}" consolidating ${articles.length} articles`);
@@ -803,8 +826,28 @@ If no existing Master SOP is a semantic match, reply with "NONE" and nothing els
       }
     }
 
-    const totalKb = await this.prisma.knowledgeArticle.count({ where: { tenantId } });
-    const newId = dto.number || `KB${String(totalKb + 1).padStart(7, '0')}`;
+    // A total-count-based next-number ("KB" + count+1) collides with an existing
+    // number the moment any article has ever been deleted (e.g. KB0468209,
+    // deleted earlier this session as corrupted) or the sequence otherwise has a
+    // gap -- the upsert below then matches that EXISTING row on `number` and
+    // silently overwrites its real content via the `update` branch instead of
+    // creating a new row. Observed live: this exact bug just overwrote a real
+    // Nexacore-404 SOP with test data before being caught and reverted. Deriving
+    // the next number from the actual max existing number (same query the
+    // autonomous consolidator already uses correctly elsewhere in this file)
+    // closes the gap regardless of any deletions.
+    const lastKb = await this.prisma.$queryRaw<{ number: string }[]>`
+      SELECT number FROM "KnowledgeArticle"
+      WHERE number LIKE 'KB%'
+      ORDER BY CAST(SUBSTRING(number FROM 3) AS INTEGER) DESC
+      LIMIT 1
+    `;
+    let nextNum = 1;
+    if (lastKb && lastKb.length > 0) {
+      const match = lastKb[0].number.match(/KB(\d+)/);
+      if (match) nextNum = parseInt(match[1], 10) + 1;
+    }
+    const newId = dto.number || `KB${String(nextNum).padStart(7, '0')}`;
     const record = await this.prisma.knowledgeArticle.upsert({
       where: { number: newId },
       create: {
@@ -823,6 +866,15 @@ If no existing Master SOP is a semantic match, reply with "NONE" and nothing els
         modelUsed: dto.modelUsed || 'Gemini 3.5 Flash',
         viewsCount: 1,
         helpfulCount: 0,
+        // The Python daemon's human-approved synthesis path (see
+        // save_new_kb_article_to_storage / incident_lifecycle.py) explicitly
+        // sends isPublished: true for a SOP a human already reviewed and
+        // approved before this call -- but this create block previously
+        // ignored it entirely, so every new article silently landed
+        // unpublished (the schema default) regardless of caller intent. That
+        // was the actual reason 25 of 33 live KB articles were unpublished
+        // even though most of them came through the reviewed path.
+        isPublished: dto.isPublished === true,
       },
       update: {
         title: dto.title || 'Troubleshooting & SOP: New Issue',
@@ -836,6 +888,9 @@ If no existing Master SOP is a semantic match, reply with "NONE" and nothing els
         sourceIncidentIds: dto.sourceIncidentIds || [],
         author: dto.author || '🤖 Gemini 3.1 Pro Knowledge Synthesis Agent',
         modelUsed: dto.modelUsed || 'Gemini 3.5 Flash',
+        // Only ever promotes on explicit true; never silently demotes an
+        // already-published article back to unreviewed via this upsert path.
+        ...(dto.isPublished === true ? { isPublished: true } : {}),
       }
     });
     return this.mapKBToDTO(record);
