@@ -23,6 +23,24 @@ function nvidiaKwargs(modelName) {
   return /nvidia|nemotron/i.test(modelName || '') ? { chat_template_kwargs: { enable_thinking: false } } : {};
 }
 
+// Wraps a single LLM completions fetch with one automatic retry on timeout --
+// the chat endpoints previously surfaced a hard 500 straight to the caller
+// (Slack, dashboard chat) the moment a single completion call ran past its
+// timeout, even though that's often just a transient provider-side latency
+// spike rather than a real failure. One retry with a fresh timeout absorbs
+// that (worst case ~2x the base timeout instead of an immediate failure).
+async function fetchWithRetry(url, options, timeoutMs = 45000, retries = 1) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (err) {
+      const isTimeout = err.name === 'TimeoutError' || err.name === 'AbortError';
+      if (attempt >= retries || !isTimeout) throw err;
+      console.warn(`[chat] LLM call timed out (attempt ${attempt + 1}/${retries + 1}), retrying...`);
+    }
+  }
+}
+
 // PostgreSQL Pool for Dedicated Agentic SRE Database
 const pool = new Pool({
   connectionString: DATABASE_URL,
@@ -1352,14 +1370,13 @@ Safety:
         ...nvidiaKwargs(modelName)
       };
 
-      const r = await fetch(`${baseUrl}/chat/completions`, {
+      const r = await fetchWithRetry(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(45000)
+        body: JSON.stringify(payload)
       });
 
       if (!r.ok) {
@@ -1402,14 +1419,17 @@ When the user replies, you will seamlessly resume from this checkpoint.`
           ...nvidiaKwargs(modelName)
         };
 
-        const synthRes = await fetch(`${baseUrl}/chat/completions`, {
+        // Retry only covers the initial connection/first-byte timeout -- once
+        // streaming starts, a mid-stream timeout still surfaces as a reader
+        // error below rather than being retried, since restarting a partially
+        // -consumed stream mid-response isn't a safe retry.
+        const synthRes = await fetchWithRetry(`${baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`
           },
-          body: JSON.stringify(synthPayload),
-          signal: AbortSignal.timeout(45000)
+          body: JSON.stringify(synthPayload)
         });
 
         const reader = synthRes.body.getReader();
@@ -1730,14 +1750,13 @@ Safety:
         ...nvidiaKwargs(modelName)
       };
 
-      const r = await fetch(`${baseUrl}/chat/completions`, {
+      const r = await fetchWithRetry(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(45000)
+        body: JSON.stringify(payload)
       });
 
       if (!r.ok) {
@@ -1763,7 +1782,7 @@ Safety:
 When the user replies, you will seamlessly resume from this checkpoint.`
         });
 
-        const synthRes = await fetch(`${baseUrl}/chat/completions`, {
+        const synthRes = await fetchWithRetry(`${baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1775,8 +1794,7 @@ When the user replies, you will seamlessly resume from this checkpoint.`
             temperature: 0.2,
             max_tokens: 1200,
             ...nvidiaKwargs(modelName)
-          }),
-          signal: AbortSignal.timeout(45000)
+          })
         });
 
         if (synthRes.ok) {
