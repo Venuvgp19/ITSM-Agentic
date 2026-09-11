@@ -1,0 +1,15 @@
+{
+  "name": "@itsm/service-desk",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Standalone end-user Service Desk chat portal -- conversational ticket intake, kept as its own process/port so it's never confused with the internal ITSM staff app (apps/frontend, :3000) or the SRE Control Tower (apps/sre-control-tower, :5173).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}

@@ -39,6 +39,17 @@ interface NavSection {
 
 const sections: NavSection[] = [
   {
+    title: 'Get Help',
+    defaultOpen: true,
+    items: [
+      // Deliberately a separate standalone app on its own port (:5050), not
+      // an internal Next.js route -- see apps/service-desk. Opens in a new
+      // tab since it's a different origin entirely, meant for end users
+      // reporting a problem rather than staff working tickets here.
+      { label: 'Service Desk Chat', href: 'http://localhost:5050' },
+    ],
+  },
+  {
     title: 'Incident Management',
     defaultOpen: true,
     items: [
@@ -104,6 +115,7 @@ export function Sidebar() {
   const [filterText, setFilterText] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'favorites' | 'history'>('all');
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    'Get Help': true,
     'Incident Management': true,
     'Problem Management': true,
     'Knowledge Base': true,
@@ -207,12 +219,15 @@ export function Sidebar() {
               {isOpen && (
                 <div className="space-y-0.5 pl-5 pr-2">
                   {section.items.map((item) => {
-                    const isActive = pathname === item.href;
+                    const isExternal = item.href.startsWith('http');
+                    const isActive = !isExternal && pathname === item.href;
 
                     return (
                       <Link
                         key={item.label + item.href}
                         href={item.href}
+                        target={isExternal ? '_blank' : undefined}
+                        rel={isExternal ? 'noopener noreferrer' : undefined}
                         className={`flex items-center justify-between px-2.5 py-1 rounded text-xs transition cursor-pointer ${
                           isActive
                             ? 'bg-[#243f44] text-white font-bold border-l-2 border-[#30bb7b]'

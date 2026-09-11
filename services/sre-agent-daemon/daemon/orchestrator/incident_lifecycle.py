@@ -363,7 +363,64 @@ def _solve_in_progress_incident_internal(
         
         except Exception as e:
             logger.error(f"Autonomous threshold check failed: {e}")
-    
+
+    # Nexacore "app is down" tickets get force-matched by hybrid_search.py's
+    # keyword-based intent booster (KB0000039/KB0000034), which always end in
+    # a systemctl start/restart -- executed unconditionally regardless of
+    # whether the app is actually still down by the time the daemon gets to
+    # it. Restarting a healthy service is needless churn at best and can drop
+    # live connections at worst. Mirrors the CPU/Memory threshold check above:
+    # a cheap, deterministic, LLM-free live probe before committing to any
+    # SOP. Scoped to "down"/unreachable-style Nexacore tickets only -- 404
+    # tickets are deliberately excluded, since there the app being up is the
+    # known, expected state (see rag/judge.py's reasoning on 404 vs restart).
+    is_nexacore_down_alert = (
+        not is_user_mgmt_ticket
+        and ("nexacore" in full_text or "8080" in full_text)
+        and "404" not in full_text
+        and any(k in full_text for k in ["down", "not responding", "unreachable", "connection refused", "crash", "outage", "502", "unavailable"])
+    )
+    if is_nexacore_down_alert:
+        logger.info(f"🌐 Nexacore Down Alert Detected — Verifying live application health on {ci_name} ({ip}) before any restart/start action...")
+        post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🌐 Autonomous Application Health Check", "RUNNING", f"Probing live HTTP response from {ci_name}:8080 before executing any restart/start action...")
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            ssh.connect(ip, username=user, password=password, timeout=10)
+            stdin, stdout, stderr = ssh.exec_command("curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:8080")
+            http_code = stdout.read().decode('utf-8', 'ignore').strip()
+            ssh.close()
+
+            if http_code and http_code.isdigit() and 200 <= int(http_code) < 500:
+                logger.info(f"✅ Nexacore already responding (HTTP {http_code}) — no restart/start action needed.")
+                post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🌐 Autonomous Application Health Check", "SUCCESS", f"Application already responding (HTTP {http_code}) — skipping restart/start; no remediation required.")
+                res_notes = (
+                    f"Autonomous Application Health Check completed (deterministic SSH probe -- no LLM invoked, no service restarted).\n"
+                    f"Host: {ci_name} ({ip})\n"
+                    f"Result: Application already responding with HTTP {http_code} on port 8080. No stop/start/restart action was executed.\n"
+                    f"Ticket auto-resolved directly from the live health probe; no SOP was applied."
+                )
+                add_work_note(token, inc_id,
+                    f"🌐 Autonomous Application Health Check — Nexacore already responding (HTTP {http_code}). No restart/start action taken; resolving ticket directly.")
+                if update_incident_status(token, inc_id, "RESOLVED", "Server - Kernel & OS Patch", res_notes, session_state=state):
+                    logger.info(f"🎉 Successfully RESOLVED IN_PROGRESS Incident [{number}] via direct health check (no SOP, no restart)!")
+                    post_timeline_update(inc_id, number, short_desc, ci_name, "SUCCESS", "Incident Remediation Resolved", "SUCCESS", f"Application already healthy (HTTP {http_code}) — incident closed without touching the service.")
+                    post_history_entry_to_dashboard(
+                        inc_id, short_desc, ci_name, ["curl http://localhost:8080"], f"Already responding (HTTP {http_code})",
+                        f"Application already healthy: HTTP {http_code}",
+                        "KB0000039",
+                        status="AUTO_EXECUTED",
+                        human_approver="Autonomous Policy (Health Check)"
+                    )
+                    state.mark_resolved(inc_id)
+                    return
+                else:
+                    logger.error(f"❌ Failed to PATCH [{number}] to RESOLVED after health check — falling through to standard SOP pipeline instead of leaving it stuck.")
+            else:
+                logger.info(f"📋 Nexacore health probe returned HTTP '{http_code or 'no response'}' — genuinely down, proceeding to standard SOP pipeline.")
+        except Exception as e:
+            logger.warning(f"Nexacore live health pre-check failed (will proceed to standard SOP pipeline): {e}")
+
     is_human_authorized = False
     is_destructive_sop = False
     if approved_appr:

@@ -565,20 +565,26 @@ export class AgentGovernanceService implements OnModuleInit {
     }
   }
 
+  // nemotron-3.5-lightning-30b-a3b was the previous default here, but it's
+  // been observed live returning sustained request timeouts/connection errors
+  // under the daemon's real traffic (see services/sre-agent-daemon/daemon/llm.py's
+  // comment on the same migration). nemotron-3-super-120b-a12b is the
+  // Python daemon's own hardcoded ROUTER_MODEL/GOVERNANCE_MODEL default
+  // (daemon/config.py) precisely because it replaced lightning for this
+  // reason previously -- kept in sync here so a fresh DB seed (no AgentConfig
+  // row yet) doesn't silently reintroduce the unreliable model.
   private modelConfig: any = {
     environment: 'nvidia',
     baseUrl: 'https://integrate.api.nvidia.com/v1',
     apiKey: process.env.NVIDIA_API_KEY || '',
-    routerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
-    resolverModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
-    synthesizerModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
-    governanceModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+    routerModel: 'nvidia/nemotron-3-super-120b-a12b',
+    resolverModel: 'nvidia/nemotron-3-super-120b-a12b',
+    synthesizerModel: 'nvidia/nemotron-3-super-120b-a12b',
+    governanceModel: 'nvidia/nemotron-3-super-120b-a12b',
     fallbackModels: [
-      'nvidia/nemotron-3.5-lightning-30b-a3b',
-      'meta/llama-3.3-70b-instruct',
-      'nvidia/llama-3.1-nemotron-70b-instruct',
-      'mistralai/mistral-7b-instruct-v0.3',
-      'deepseek-ai/deepseek-r1'
+      'nvidia/nemotron-3-super-120b-a12b',
+      'deepseek-ai/deepseek-v4-flash-0731',
+      'nvidia/nemotron-3.5-lightning-30b-a3b'
     ]
   };
 
