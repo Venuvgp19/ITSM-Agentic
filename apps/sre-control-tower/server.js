@@ -23,16 +23,25 @@ function nvidiaKwargs(modelName) {
   return /nvidia|nemotron/i.test(modelName || '') ? { chat_template_kwargs: { enable_thinking: false } } : {};
 }
 
-// Wraps a single LLM completions fetch with one automatic retry on timeout --
-// the chat endpoints previously surfaced a hard 500 straight to the caller
-// (Slack, dashboard chat) the moment a single completion call ran past its
-// timeout, even though that's often just a transient provider-side latency
-// spike rather than a real failure. One retry with a fresh timeout absorbs
-// that (worst case ~2x the base timeout instead of an immediate failure).
+// Wraps a single LLM completions fetch with one automatic retry on timeout OR
+// a transient provider-side 5xx -- the chat endpoints previously surfaced a
+// hard error straight to the caller (Slack, dashboard chat) the moment a
+// single completion call either ran past its timeout or the provider handed
+// back a bare 500, even though both are typically transient blips rather
+// than real failures (observed live: a 500 from NVIDIA that succeeded again
+// seconds later with no other change). A 4xx is never retried here -- that's
+// a real problem with the request itself (bad auth, bad payload) that a
+// retry won't fix. One retry with a fresh timeout absorbs the transient case
+// (worst case ~2x the base timeout instead of an immediate failure).
 async function fetchWithRetry(url, options, timeoutMs = 45000, retries = 1) {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+      const res = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok && res.status >= 500 && attempt < retries) {
+        console.warn(`[chat] LLM call returned ${res.status} (attempt ${attempt + 1}/${retries + 1}), retrying...`);
+        continue;
+      }
+      return res;
     } catch (err) {
       const isTimeout = err.name === 'TimeoutError' || err.name === 'AbortError';
       if (attempt >= retries || !isTimeout) throw err;
@@ -1272,6 +1281,9 @@ Data You Can Answer Questions About:
 - Timeline/observability: step-by-step execution traces for a given incident or session (sre_timeline)
 - Containment state: current kill-switch status, past containment events (sre_containment)
 - ITSM records (if connected): incident status, priority, assignment group, CI details, related knowledge articles (itsm_db)
+- Knowledge Base SOP matching: given an incident description or symptom, use search_knowledge_base_rag (NOT a query_itsm_database SQL LIKE query) -- it runs the actual hybrid semantic RAG search the autonomous agent uses, and returns ranked candidates by real similarity score, not keyword overlap.
+
+CRITICAL -- do not confuse these two concepts, they live in different databases with different valid values: "on hold" / "pending" / "in progress" etc. in a user's question almost always means an Incident's STATE (itsm_db, column "state", values: IN_PROGRESS, ON_HOLD, RESOLVED, CLOSED) -- NOT an approval's STATUS (agentic_sre_db, sre_approvals.status, values: PENDING, APPROVED, REJECTED, EXECUTED; there is no "ON_HOLD" approval status, ever). A query using a status/state value not in these exact lists is a real bug, not a valid empty result -- introspect via get_schema_overview rather than guessing a value that merely sounds plausible.
 
 Out of Scope — Decline and Redirect:
 - Executing, approving, rejecting, or modifying any record
@@ -1316,7 +1328,7 @@ Safety:
         type: 'function',
         function: {
           name: 'query_itsm_database',
-          description: 'Execute a read-only SELECT query against the itsm_db PostgreSQL database. Tables: "Incident", "KnowledgeArticle", "ConfigurationItem", "Problem", "ChangeRequest", "User". NOTE: Ticket numbers (e.g. INC0001171) are in the "number" column (NOT "id", which is a UUID). Mixed-case column names in itsm_db MUST be quoted in SQL (e.g. SELECT id, number, "shortDescription", "description", priority, state, "resolutionNotes", "assignedToName" FROM "Incident" WHERE number = \'INC0001171\').',
+          description: 'Execute a read-only SELECT query against the itsm_db PostgreSQL database. Tables: "Incident", "KnowledgeArticle", "ConfigurationItem", "Problem", "ChangeRequest", "User". NOTE: Ticket/article numbers (e.g. INC0001171, KB0000045) are in the "number" column (NOT "id" -- some KnowledgeArticle rows have non-UUID ids like "az-cli-sop-id-045"). CRITICAL: Postgres lowercases every unquoted identifier, so ANY column with a capital letter MUST be double-quoted or the query fails with "column ... does not exist". Quote every mixed-case column in the SAME query on your FIRST attempt, not one at a time as each error comes back -- repeated single-column retries waste your turn budget and have caused fabricated answers when the budget ran out before a query ever succeeded. Copy these exactly: Incident -> SELECT id, number, "shortDescription", description, priority, state, "resolutionNotes", "assignedToName", "createdAt", "resolvedAt" FROM "Incident" WHERE number = \'INC0001171\'; KnowledgeArticle -> SELECT id, number, title, category, "configurationItem", summary, symptoms, "rootCause", "resolutionSteps", "isPublished", "createdAt" FROM "KnowledgeArticle" WHERE number = \'KB0000045\'.',
           parameters: {
             type: 'object',
             properties: {
@@ -1342,6 +1354,35 @@ Safety:
             type: 'object',
             properties: {},
             required: []
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'search_knowledge_base_rag',
+          description: 'Runs the SAME hybrid semantic RAG search (dense embeddings + BM25 lexical + reciprocal rank fusion) the autonomous SRE agent daemon uses to match incidents to Knowledge Base SOPs -- finds articles by MEANING and symptom similarity, not just keyword overlap. Use this whenever the user describes a problem/symptom and wants to know which SOP would match and how confidently, instead of writing your own SQL LIKE query against the KnowledgeArticle table for that purpose. IMPORTANT: the raw score alone is NOT proof of relevance -- it is corpus-relative rank, and an unrelated article can still score near 1.0 if nothing better exists in the KB. Each of the top few results also carries judge_approved (true/false/null) and judge_reason from an independent LLM relevance check -- always read and report that, not just the score. If any_judge_approved_match is false, tell the user plainly that no genuinely matching SOP was found, even if a raw score looks high.',
+          parameters: {
+            type: 'object',
+            properties: {
+              short_desc: {
+                type: 'string',
+                description: 'A short incident-style summary of the problem (e.g. "Nexacore application down, connection refused on port 8080").'
+              },
+              desc: {
+                type: 'string',
+                description: 'Optional longer description or raw error/log text, if the user provided any.'
+              },
+              department: {
+                type: 'string',
+                description: 'Optional department to scope the search to (e.g. "Unix", "App Support"). Omit to search all departments.'
+              },
+              limit: {
+                type: 'number',
+                description: 'Max number of candidates to return (default 5).'
+              }
+            },
+            required: ['short_desc']
           }
         }
       }
@@ -1401,11 +1442,12 @@ Safety:
         // Prompt the model for a graceful checkpoint synthesis
         convoMessages.push({
           role: 'system',
-          content: `[REASONING CHECKPOINT AT ITERATION 12]: You have completed 12 reasoning iterations for this turn. Do NOT invoke any further tools. 
+          content: `[REASONING CHECKPOINT AT ITERATION 12]: You have completed 12 reasoning iterations for this turn. Do NOT invoke any further tools.
 Please synthesize an operational checkpoint:
 1. Explain clearly what you have found and understood so far from the database records retrieved.
 2. Outline what specific details, scope, or table fields are still missing to fully answer the request.
 3. Ask the user 1 concise, direct clarifying question so they can provide guidance.
+CRITICAL: If your queries mostly or entirely FAILED (e.g. repeated "column does not exist" errors) rather than returning real rows, say exactly that -- "I was unable to retrieve this due to repeated query errors" -- and do NOT invent a plausible-looking answer, record, ID, or timestamp to fill the gap. A fabricated answer is worse than admitting the lookup failed.
 When the user replies, you will seamlessly resume from this checkpoint.`
         });
 
@@ -1562,6 +1604,11 @@ When the user replies, you will seamlessly resume from this checkpoint.`
                 ConfigurationItem: ['id', 'name', 'ciClass', 'status', 'ipAddress', 'macAddress', 'location', 'environment', 'createdAt'],
                 Problem: ['id', 'number', 'shortDescription', 'description', 'rootCause', 'workaround', 'knownError', 'state', 'priority', 'configurationItemName', 'assignedToName', 'relatedIncidentsCount'],
                 ChangeRequest: ['id', 'number', 'title', 'description', 'changeType', 'state', 'approvalState', 'riskScore', 'impact', 'requestedByName', 'assignedToName', 'configurationItemName', 'plannedStartDate', 'plannedEndDate']
+              },
+              _field_value_notes: {
+                warning: '"on hold" in a user question almost always means Incident.state, NOT sre_approvals.status -- these are two different concepts in two different databases. Do not guess a value that "sounds right"; use exactly the values listed below.',
+                'sre_approvals.status': ['PENDING', 'APPROVED', 'REJECTED', 'EXECUTED'],
+                'Incident.state (itsm_db)': ['IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'CLOSED']
               }
             };
             toolOutput = JSON.stringify(schemaData);
@@ -1573,6 +1620,35 @@ When the user replies, you will seamlessly resume from this checkpoint.`
             };
             toolTraces.push(traceItem);
             sendEvent('tool_done', traceItem);
+          } else if (fnName === 'search_knowledge_base_rag') {
+            try {
+              const ragRes = await fetchWithRetry('http://127.0.0.1:8008/rag/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  short_desc: fnArgs.short_desc || '',
+                  desc: fnArgs.desc || '',
+                  department: fnArgs.department,
+                  limit: fnArgs.limit || 5
+                })
+              }, 15000, 0);
+              const ragData = await ragRes.json();
+              toolOutput = JSON.stringify(ragData);
+              const traceItem = {
+                db: 'rag',
+                query: `search_knowledge_base_rag(${fnArgs.short_desc || ''})`,
+                rowCount: (ragData.results || []).length,
+                reason: fnArgs.reason || 'Semantic RAG search against the Knowledge Base'
+              };
+              toolTraces.push(traceItem);
+              sendEvent('tool_done', traceItem);
+            } catch (ragErr) {
+              // Most likely cause: the Python daemon (and its RAG Search API on
+              // :8008) isn't running right now -- surface that plainly rather
+              // than a raw connection-refused stack trace, since the model
+              // otherwise has no way to explain the failure to the user.
+              toolOutput = JSON.stringify({ error: `RAG search unavailable: ${ragErr.message}. The SRE agent daemon (which hosts this search) may not be running.` });
+            }
           } else {
             toolOutput = JSON.stringify({ error: `Unknown tool function: ${fnName}` });
           }
@@ -1652,6 +1728,9 @@ Data You Can Answer Questions About:
 - Timeline/observability: step-by-step execution traces for a given incident or session (sre_timeline)
 - Containment state: current kill-switch status, past containment events (sre_containment)
 - ITSM records (if connected): incident status, priority, assignment group, CI details, related knowledge articles (itsm_db)
+- Knowledge Base SOP matching: given an incident description or symptom, use search_knowledge_base_rag (NOT a query_itsm_database SQL LIKE query) -- it runs the actual hybrid semantic RAG search the autonomous agent uses, and returns ranked candidates by real similarity score, not keyword overlap.
+
+CRITICAL -- do not confuse these two concepts, they live in different databases with different valid values: "on hold" / "pending" / "in progress" etc. in a user's question almost always means an Incident's STATE (itsm_db, column "state", values: IN_PROGRESS, ON_HOLD, RESOLVED, CLOSED) -- NOT an approval's STATUS (agentic_sre_db, sre_approvals.status, values: PENDING, APPROVED, REJECTED, EXECUTED; there is no "ON_HOLD" approval status, ever). A query using a status/state value not in these exact lists is a real bug, not a valid empty result -- introspect via get_schema_overview rather than guessing a value that merely sounds plausible.
 
 Out of Scope — Decline and Redirect:
 - Executing, approving, rejecting, or modifying any record
@@ -1696,7 +1775,7 @@ Safety:
         type: 'function',
         function: {
           name: 'query_itsm_database',
-          description: 'Execute a read-only SELECT query against the itsm_db PostgreSQL database. Tables: "Incident", "KnowledgeArticle", "ConfigurationItem", "Problem", "ChangeRequest", "User". NOTE: Ticket numbers (e.g. INC0001171) are in the "number" column (NOT "id", which is a UUID). Mixed-case column names in itsm_db MUST be quoted in SQL (e.g. SELECT id, number, "shortDescription", "description", priority, state, "resolutionNotes", "assignedToName" FROM "Incident" WHERE number = \'INC0001171\').',
+          description: 'Execute a read-only SELECT query against the itsm_db PostgreSQL database. Tables: "Incident", "KnowledgeArticle", "ConfigurationItem", "Problem", "ChangeRequest", "User". NOTE: Ticket/article numbers (e.g. INC0001171, KB0000045) are in the "number" column (NOT "id" -- some KnowledgeArticle rows have non-UUID ids like "az-cli-sop-id-045"). CRITICAL: Postgres lowercases every unquoted identifier, so ANY column with a capital letter MUST be double-quoted or the query fails with "column ... does not exist". Quote every mixed-case column in the SAME query on your FIRST attempt, not one at a time as each error comes back -- repeated single-column retries waste your turn budget and have caused fabricated answers when the budget ran out before a query ever succeeded. Copy these exactly: Incident -> SELECT id, number, "shortDescription", description, priority, state, "resolutionNotes", "assignedToName", "createdAt", "resolvedAt" FROM "Incident" WHERE number = \'INC0001171\'; KnowledgeArticle -> SELECT id, number, title, category, "configurationItem", summary, symptoms, "rootCause", "resolutionSteps", "isPublished", "createdAt" FROM "KnowledgeArticle" WHERE number = \'KB0000045\'.',
           parameters: {
             type: 'object',
             properties: {
@@ -1722,6 +1801,35 @@ Safety:
             type: 'object',
             properties: {},
             required: []
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'search_knowledge_base_rag',
+          description: 'Runs the SAME hybrid semantic RAG search (dense embeddings + BM25 lexical + reciprocal rank fusion) the autonomous SRE agent daemon uses to match incidents to Knowledge Base SOPs -- finds articles by MEANING and symptom similarity, not just keyword overlap. Use this whenever the user describes a problem/symptom and wants to know which SOP would match and how confidently, instead of writing your own SQL LIKE query against the KnowledgeArticle table for that purpose. IMPORTANT: the raw score alone is NOT proof of relevance -- it is corpus-relative rank, and an unrelated article can still score near 1.0 if nothing better exists in the KB. Each of the top few results also carries judge_approved (true/false/null) and judge_reason from an independent LLM relevance check -- always read and report that, not just the score. If any_judge_approved_match is false, tell the user plainly that no genuinely matching SOP was found, even if a raw score looks high.',
+          parameters: {
+            type: 'object',
+            properties: {
+              short_desc: {
+                type: 'string',
+                description: 'A short incident-style summary of the problem (e.g. "Nexacore application down, connection refused on port 8080").'
+              },
+              desc: {
+                type: 'string',
+                description: 'Optional longer description or raw error/log text, if the user provided any.'
+              },
+              department: {
+                type: 'string',
+                description: 'Optional department to scope the search to (e.g. "Unix", "App Support"). Omit to search all departments.'
+              },
+              limit: {
+                type: 'number',
+                description: 'Max number of candidates to return (default 5).'
+              }
+            },
+            required: ['short_desc']
           }
         }
       }
@@ -1779,6 +1887,7 @@ Safety:
 1. Explain clearly what you have understood from the retrieved data and summarize key findings.
 2. Outline what specific details or scope are still needed.
 3. Ask the user a direct, concise clarifying question so they can guide the next step.
+CRITICAL: If your queries mostly or entirely FAILED (e.g. repeated "column does not exist" errors) rather than returning real rows, say exactly that -- "I was unable to retrieve this due to repeated query errors" -- and do NOT invent a plausible-looking answer, record, ID, or timestamp to fill the gap. A fabricated answer is worse than admitting the lookup failed.
 When the user replies, you will seamlessly resume from this checkpoint.`
         });
 
@@ -1890,6 +1999,11 @@ When the user replies, you will seamlessly resume from this checkpoint.`
                 ConfigurationItem: ['id', 'name', 'ciClass', 'status', 'ipAddress', 'macAddress', 'location', 'environment', 'createdAt'],
                 Problem: ['id', 'number', 'shortDescription', 'description', 'rootCause', 'workaround', 'knownError', 'state', 'priority', 'configurationItemName', 'assignedToName', 'relatedIncidentsCount'],
                 ChangeRequest: ['id', 'number', 'title', 'description', 'changeType', 'state', 'approvalState', 'riskScore', 'impact', 'requestedByName', 'assignedToName', 'configurationItemName', 'plannedStartDate', 'plannedEndDate']
+              },
+              _field_value_notes: {
+                warning: '"on hold" in a user question almost always means Incident.state, NOT sre_approvals.status -- these are two different concepts in two different databases. Do not guess a value that "sounds right"; use exactly the values listed below.',
+                'sre_approvals.status': ['PENDING', 'APPROVED', 'REJECTED', 'EXECUTED'],
+                'Incident.state (itsm_db)': ['IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'CLOSED']
               }
             };
             toolOutput = JSON.stringify(schemaData);
@@ -1899,6 +2013,29 @@ When the user replies, you will seamlessly resume from this checkpoint.`
               rowCount: 1,
               reason: 'Introspected schemas for agentic_sre_db & itsm_db'
             });
+          } else if (fnName === 'search_knowledge_base_rag') {
+            try {
+              const ragRes = await fetchWithRetry('http://127.0.0.1:8008/rag/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  short_desc: fnArgs.short_desc || '',
+                  desc: fnArgs.desc || '',
+                  department: fnArgs.department,
+                  limit: fnArgs.limit || 5
+                })
+              }, 15000, 0);
+              const ragData = await ragRes.json();
+              toolOutput = JSON.stringify(ragData);
+              toolTraces.push({
+                db: 'rag',
+                query: `search_knowledge_base_rag(${fnArgs.short_desc || ''})`,
+                rowCount: (ragData.results || []).length,
+                reason: fnArgs.reason || 'Semantic RAG search against the Knowledge Base'
+              });
+            } catch (ragErr) {
+              toolOutput = JSON.stringify({ error: `RAG search unavailable: ${ragErr.message}. The SRE agent daemon (which hosts this search) may not be running.` });
+            }
           } else {
             toolOutput = JSON.stringify({ error: `Unknown tool function: ${fnName}` });
           }
