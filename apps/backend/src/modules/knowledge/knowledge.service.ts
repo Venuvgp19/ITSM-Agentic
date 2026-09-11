@@ -862,8 +862,8 @@ If no existing Master SOP is a semantic match, reply with "NONE" and nothing els
         resolutionSteps: dto.resolutionSteps || [],
         workNotesAnalyzedCount: 1,
         sourceIncidentIds: dto.sourceIncidentIds || [],
-        author: dto.author || '🤖 Gemini 3.1 Pro Knowledge Synthesis Agent',
-        modelUsed: dto.modelUsed || 'Gemini 3.5 Flash',
+        author: dto.author || '🤖 Unknown Agent (not specified by caller)',
+        modelUsed: dto.modelUsed || 'unknown',
         viewsCount: 1,
         helpfulCount: 0,
         // The Python daemon's human-approved synthesis path (see
@@ -886,8 +886,8 @@ If no existing Master SOP is a semantic match, reply with "NONE" and nothing els
         resolutionSteps: dto.resolutionSteps || [],
         workNotesAnalyzedCount: 1,
         sourceIncidentIds: dto.sourceIncidentIds || [],
-        author: dto.author || '🤖 Gemini 3.1 Pro Knowledge Synthesis Agent',
-        modelUsed: dto.modelUsed || 'Gemini 3.5 Flash',
+        author: dto.author || '🤖 Unknown Agent (not specified by caller)',
+        modelUsed: dto.modelUsed || 'unknown',
         // Only ever promotes on explicit true; never silently demotes an
         // already-published article back to unreviewed via this upsert path.
         ...(dto.isPublished === true ? { isPublished: true } : {}),

@@ -122,15 +122,15 @@ def post_timeline_update(incident_id, incident_number, incident_title, ci_name, 
     except Exception as e:
         logger.warning(f"Could not post timeline update: {e}")
 
-def format_new_sop_work_note(ticket_number, short_desc, ci_name, ip, user, kb_num, kb_title, reasoning, proposed_commands, is_new_use_case=False):
+def format_new_sop_work_note(ticket_number, short_desc, ci_name, ip, user, kb_num, kb_title, reasoning, proposed_commands, model_used, is_new_use_case=False):
     cmd_block = "\n".join([f"$ {cmd}" for cmd in proposed_commands])
     use_case_badge = "✨ NEW USE CASE (SOP GENERATED & STORED TO KB)" if is_new_use_case else "📌 EXISTING SOP MATCHED"
-    
+
     return (
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"📌 SOP REMEDIATION PLAN (PAUSED FOR SYSTEM ADMIN REVIEW)\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🤖 Agent Engine: Gemini 3.1 Pro Preview (Google Gen AI / ADK)\n"
+        f"🤖 Agent Engine: {model_used}\n"
         f"🎫 Ticket: [{ticket_number}] {short_desc}\n"
         f"🖥️ Target Host: {ci_name} (IP: {ip} | SSH User: {user})\n"
         f"🏷️ Detection Mode: {use_case_badge}\n"
@@ -150,13 +150,13 @@ def format_new_sop_work_note(ticket_number, short_desc, ci_name, ip, user, kb_nu
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     )
 
-def format_execution_proof_work_note(ticket_number, short_desc, ci_name, ip, kb_num, kb_title, is_healthy, proof_summary, exec_log):
+def format_execution_proof_work_note(ticket_number, short_desc, ci_name, ip, kb_num, kb_title, is_healthy, proof_summary, exec_log, model_used):
     health_badge = "HEALTHY ✅" if is_healthy else "ISSUE DETECTED ❌"
     return (
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"⚡ IN-PROGRESS SOP REMEDIATION & LIVE EXECUTION PROOF\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🤖 Agent Engine: Gemini 3.1 Pro Preview (Google Gen AI / ADK)\n"
+        f"🤖 Agent Engine: {model_used}\n"
         f"🎫 Ticket: [{ticket_number}] {short_desc}\n"
         f"🖥️ Target Host: {ci_name} (IP: {ip})\n"
         f"📚 Applied SOP: {kb_num} — {kb_title}\n"

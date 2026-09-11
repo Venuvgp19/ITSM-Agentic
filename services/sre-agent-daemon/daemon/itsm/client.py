@@ -341,8 +341,14 @@ def save_new_kb_article_to_storage(new_article_data, vdb=None):
             "rootCause": new_article_data.get("rootCause", "Root cause identified in new use case diagnostic."),
             "resolutionSteps": new_article_data.get("resolutionSteps", []),
             "sourceIncidentIds": new_article_data.get("sourceIncidentIds", []),
-            "author": "🤖 Gemini 3.1 Pro Knowledge Synthesis Agent",
-            "modelUsed": MODEL_NAME,
+            # Forwarded from the caller (incident_lifecycle.py, which reads the real
+            # model off new_sop_data["model_used"] -- set at the actual synthesis
+            # call in synthesizer.py) rather than hardcoded here. This used to always
+            # write a fixed "Gemini" string regardless of which model actually
+            # synthesized the SOP, and MODEL_NAME (= ROUTER_MODEL) even on models
+            # that don't do this work at all.
+            "author": new_article_data.get("author") or "🤖 Unknown Model (not captured at synthesis time)",
+            "modelUsed": new_article_data.get("modelUsed") or "unknown",
             # This function's only real caller (incident_lifecycle.py) only reaches
             # here after is_human_authorized is True -- the SOP's commands were
             # already shown to and approved by a human before execution. Default

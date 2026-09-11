@@ -10,6 +10,11 @@ from ..config import (
     acquire_lock,
     release_lock,
     fetch_containment_status,
+    ROUTER_MODEL,
+    RESOLVER_MODEL,
+    SYNTHESIZER_MODEL,
+    GOVERNANCE_MODEL,
+    FALLBACK_MODELS,
 )
 from ..session_state import default_session_state
 from ..rag.vector_db import vector_db as default_vector_db, sync_vector_db_with_kb
@@ -149,15 +154,25 @@ def start_continuous_monitoring(session_state=None, vdb=None, llm_invoker=None, 
     active_vdb = vdb if vdb is not None else default_vector_db
 
     logger.info("=" * 75)
-    logger.info("🚀 Starting Continuous ITSM Agent Daemon (Gemini 3.1 Pro Preview)")
+    logger.info("🚀 Starting Continuous ITSM Agent Daemon")
     logger.info("   Mode: SELF-LEARNING SOP GENERATION & DUAL-STAGE REMEDIATION")
     logger.info(f"   Remediation Polling Interval: Every {POLL_INTERVAL_SECONDS} seconds")
     logger.info("   Agentic AI Router Interval: Every 15 seconds (Decoupled from ITSM Core)")
     logger.info(f"   Target System: ITSM Platform ({ITSM_BASE_URL})")
+    # Printed from config, not hardcoded, so this banner can never drift from
+    # whichever model is actually configured -- individual per-call log lines
+    # ("Token Usage [...] model=...") remain the source of truth for which
+    # model handled any specific incident, since invoke_llm_with_fallback()
+    # can fall through to a different model than the primary below at runtime.
+    logger.info(f"   Models -- Router: {ROUTER_MODEL} | Resolver: {RESOLVER_MODEL} | Synthesizer: {SYNTHESIZER_MODEL} | Governance: {GOVERNANCE_MODEL}")
+    logger.info(f"   Fallback chain: {' -> '.join(FALLBACK_MODELS)}")
     logger.info("=" * 75)
 
     from .router import control_tower_router
     control_tower_router.start_15s_background_router(get_auth_token)
+
+    from ..rag.search_api import start_rag_search_server
+    start_rag_search_server()
 
     escalated_incident_ids: set = set()
     sync_counter = 4

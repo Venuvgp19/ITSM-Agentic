@@ -330,7 +330,8 @@ def _solve_in_progress_incident_internal(
                 post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "📊 Autonomous Threshold Check", "SUCCESS", f"{decision_summary} — no remediation required.")
                 res_code = "Server - Kernel & OS Patch"
                 res_notes = (
-                    f"Autonomous Threshold Check completed by Gemini 3.1 Pro Preview Agent.\n"
+                    f"Autonomous Threshold Check completed (deterministic SSH probe -- no LLM invoked; "
+                    f"decision is a direct comparison against the live top/free output, not a model judgment).\n"
                     f"Host: {ci_name} ({ip})\n"
                     f"Result: {decision_summary}. No remediation action required.\n"
                     f"Ticket auto-resolved directly from the live utilization sample; no SOP was applied."
@@ -589,7 +590,7 @@ def _solve_in_progress_incident_internal(
     state.mark_processed_in_progress(inc_id)
 
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Dynamic SSH Execution", "RUNNING", f"LLM is dynamically orchestrating execution (human_authorized={is_human_authorized})...")
-    success, exec_log = run_dynamic_react_loop(
+    success, exec_log, react_model_used = run_dynamic_react_loop(
         ip, user, password, sop_commands, short_desc, number, inc_id, ci_name,
         desc=desc, session_state=state, ssh_session_factory=session_factory, llm_invoker=invoker,
         is_human_authorized=is_human_authorized
@@ -867,14 +868,15 @@ Respond ONLY in valid JSON format:
         number, short_desc, ci_name, ip, kb_num, kb_title,
         evaluation.get("is_healthy", False),
         f"{evaluation.get('proof_summary', 'Verified healthy host status.')} | Post-fix: {post_fix_evidence}",
-        exec_log
+        exec_log,
+        react_model_used or "a deterministic fallback (no LLM turn completed; approved SOP commands executed directly)"
     )
     add_work_note(token, inc_id, proof_note)
 
     # 9. Resolve Ticket & Report Auto-Execution to Dashboard Audit Stream
     res_code = "Server - Kernel & OS Patch"
     res_notes = (
-        f"Autonomous SOP Remediation completed by Gemini 3.1 Pro Preview Agent.\n"
+        f"Autonomous SOP Remediation completed by {react_model_used or 'a deterministic fallback (no LLM turn completed; approved SOP commands executed directly)'}.\n"
         f"Applied SOP: {kb_num} ({kb_title})\n"
         f"Host: {ci_name} ({ip})\n"
         f"Verification: {evaluation.get('proof_summary', 'Verified normal operational metrics.')}\n"
@@ -908,6 +910,8 @@ Respond ONLY in valid JSON format:
                 "rootCause": "Root cause verified by human operator approval & automated execution.",
                 "resolutionSteps": sop_commands,
                 "sourceIncidentIds": [inc_id],
+                "author": f"🤖 {new_sop_data.get('model_used')} Knowledge Synthesis Agent" if new_sop_data.get("model_used") else "🤖 Unknown Model (not captured at synthesis time)",
+                "modelUsed": new_sop_data.get("model_used") or "unknown",
                 "isPublished": True
             }
             logger.info(f"💾 Saving human-approved and verified new Master SOP to knowledge base: '{master_title}'...")

@@ -306,6 +306,7 @@ Respond ONLY with valid JSON:
   "reasoning": "<1-2 sentence technical rationale for these specific commands>"
 }}"""
         plan = {}
+        used_model = None
         try:
             plan_content, used_model = invoker(
                 messages=[{"role": "user", "content": prompt}],
@@ -572,7 +573,8 @@ Respond ONLY with valid JSON:
             "resolution_steps": formatted_steps,
             "safety_checks": safety_checks,
             "reasoning": reasoning,
-            "relevance": relevance_metrics
+            "relevance": relevance_metrics,
+            "model_used": used_model,
         }
 
         return True, "KB_NEW", kb_title, reasoning, formatted_steps, new_sop_data
@@ -634,6 +636,7 @@ Respond ONLY in JSON:
 }}
 """
         plan = {}
+        used_model = None
         try:
             plan_content, used_model = invoker(
                 messages=[{"role": "user", "content": prompt}],

@@ -88,6 +88,13 @@ def run_dynamic_react_loop(
 
     full_exec_log = ""
     is_success = True
+    # Tracks whichever model actually answered the most recent turn -- invoke_llm_with_fallback()
+    # can silently fall through to a different model than RESOLVER_MODEL if the primary is
+    # degraded/unavailable, so this is the only accurate source for "which LLM worked on this
+    # incident" (see incident_lifecycle.py, which surfaces this in the resolution note instead
+    # of a hardcoded model name). Stays None on the deterministic-fallback paths that never
+    # complete an LLM turn at all (e.g. exception before the first invoker() call).
+    last_used_model = None
 
     max_turns = max(35, len(guide_commands) * 5)
     turn = 0
@@ -124,6 +131,7 @@ def run_dynamic_react_loop(
                 )
                 if not msg:
                     raise Exception("All fallback models failed to return a valid response.")
+                last_used_model = used_model
                 # Normalize to a plain dict before re-appending to `messages` --
                 # this list gets fed straight back into the next turn's
                 # client.chat.completions.create() call, and the fail-safe
@@ -161,7 +169,7 @@ def run_dynamic_react_loop(
                                         f"\n=== UNAUTHORIZED_BINARY_NEEDS_APPROVAL ===\n"
                                         f"Command: {cmd}\nBinaries: {sorted(unauth_bins)}\n"
                                     )
-                                    return False, full_exec_log
+                                    return False, full_exec_log, last_used_model
                                 error_msg = (
                                     f"SECURITY ERROR: Command '{cmd}' is prohibited by enterprise safety guard ({unauth_bins}). "
                                     f"Destructive/unauthorized operations are strictly forbidden."
@@ -184,7 +192,7 @@ def run_dynamic_react_loop(
                                 logger.warning(f"🚧 Terminal capacity/quota error detected for {number} ('{capacity_error}') -- stopping ReAct loop instead of retrying variations.")
                                 full_exec_log += f"\n=== TERMINAL_CAPACITY_ERROR ===\nDetected: '{capacity_error}'\nCommand: {cmd}\n"
                                 post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Blocked by account-level capacity/quota limit: {cmd}")
-                                return False, full_exec_log
+                                return False, full_exec_log, last_used_model
 
                             messages.append({
                                 "role": "tool",
@@ -197,14 +205,14 @@ def run_dynamic_react_loop(
                                     logger.warning(f"🚨 Server {ip} unreachable during ReAct loop turn {turn}. Breaking out of ReAct loop immediately!")
                                     full_exec_log += f"\n=== SERVER UNREACHABLE ALERT ===\nServer {ip} failed SSH reachability check. Exited ReAct loop.\n"
                                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Server {ip} unreachable via SSH.")
-                                    return False, full_exec_log
+                                    return False, full_exec_log, last_used_model
                                 elif "EXECUTION BLOCKED" in out_log and "Kill Switch" in out_log:
                                     # Any other ok=False mid-run was previously absorbed silently, letting the
                                     # loop continue and potentially still end in is_success=True later even
                                     # though the kill switch stopped a command from actually running.
                                     logger.warning(f"🛑 Kill switch blocked mid-execution for {number}. Aborting ReAct loop.")
                                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Kill switch blocked execution: {cmd}")
-                                    return False, full_exec_log
+                                    return False, full_exec_log, last_used_model
                 else:
                     if finish_reason == "length":
                         # The model's response was cut off by max_tokens, not a
@@ -264,7 +272,7 @@ def run_dynamic_react_loop(
                                     if "SERVER_UNREACHABLE" in out_log:
                                         logger.warning(f"🚨 Server {ip} unreachable during fallback execution for {number}.")
                                         post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Server {ip} unreachable via SSH.")
-                                        return False, full_exec_log
+                                        return False, full_exec_log, last_used_model
 
                             clean_summary = f"Directly executed approved SOP commands:\n" + "\n".join([f"- `{c}`" for c in guide_commands])
                             full_exec_log += f"\n=== FINAL AGENT SUMMARY ===\n{clean_summary}\n"
@@ -316,4 +324,4 @@ def run_dynamic_react_loop(
     finally:
         session.close()
             
-    return is_success, full_exec_log
+    return is_success, full_exec_log, last_used_model
