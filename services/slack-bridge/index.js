@@ -155,21 +155,87 @@ app.view('reject_modal_submit', async ({ ack, body, view, client }) => {
 
 // ---------------------------------------------------------------------------
 // 4. ITSM/SRE Q&A — @mentions and DMs proxy to the read-only SRE Assistant.
+// Streams from /api/v1/agent/chat/stream (SSE) and progressively edits the
+// same Slack message as tokens arrive, instead of waiting silently for the
+// full response then posting it once.
 // ---------------------------------------------------------------------------
+async function streamChat(question, onEvent) {
+  const res = await fetch(`${CONTROL_TOWER_URL}/api/v1/agent/chat/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [{ role: 'user', content: question }] }),
+  });
+  if (!res.ok || !res.body) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`POST /api/v1/agent/chat/stream -> ${res.status}: ${body}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split('\n\n');
+      buffer = frames.pop() || '';
+      for (const frame of frames) {
+        let eventName = 'message';
+        let dataStr = '';
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+          else if (line.startsWith('data: ')) dataStr += line.slice(6);
+        }
+        if (!dataStr) continue;
+        let data;
+        try { data = JSON.parse(dataStr); } catch { continue; }
+        await onEvent(eventName, data);
+      }
+    }
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+}
+
 async function answerQuestion({ text, channel, thread_ts, say }) {
   const question = text.trim();
   if (!question) return;
+
+  const initial = await say({ text: '🤔 Thinking…', channel, thread_ts });
+  let accumulated = '';
+  let lastUpdateAt = 0;
+  const UPDATE_INTERVAL_MS = 1000;
+
+  const updateMessage = async (displayText, force = false) => {
+    const now = Date.now();
+    if (!force && now - lastUpdateAt < UPDATE_INTERVAL_MS) return;
+    lastUpdateAt = now;
+    try {
+      await app.client.chat.update({ channel: initial.channel, ts: initial.ts, text: truncate(displayText, 3900) });
+    } catch (err) {
+      console.error('[slack-bridge] chat.update error:', err.message);
+    }
+  };
+
   try {
-    await say({ text: '🤔 Thinking…', channel, thread_ts });
-    const data = await ctFetch('/api/v1/agent/chat', {
-      method: 'POST',
-      body: JSON.stringify({ messages: [{ role: 'user', content: question }] }),
+    await streamChat(question, async (eventName, data) => {
+      if (eventName === 'token' && data.delta) {
+        accumulated += data.delta;
+        await updateMessage(`${accumulated} ▌`);
+      } else if (eventName === 'checkpoint' && data.message) {
+        await updateMessage(`🤔 ${data.message}`, true);
+      } else if (eventName === 'error') {
+        throw new Error(data.error || 'Unknown error from SRE Assistant');
+      }
+      // tool_start / tool_done fire per DB query the assistant runs -- not
+      // surfaced to Slack, only the accumulating answer text is.
     });
-    const answer = data.content || data.message || 'Sorry, I could not generate a response.';
-    await say({ text: truncate(answer, 3900), channel, thread_ts });
+    const finalText = accumulated.trim() || 'Sorry, I could not generate a response.';
+    await updateMessage(finalText, true);
   } catch (err) {
     console.error('[slack-bridge] chat error:', err.message);
-    await say({ text: `⚠️ Failed to reach the SRE Assistant: ${err.message}`, channel, thread_ts });
+    await updateMessage(`⚠️ Failed to reach the SRE Assistant: ${err.message}`, true);
   }
 }
 
