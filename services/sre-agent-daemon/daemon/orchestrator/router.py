@@ -14,6 +14,40 @@ from ..llm import invoke_llm_with_fallback, safe_json_parse
 from ..itsm.client import add_work_note, update_incident_status, fetch_incident_queue, get_team_member_for_department
 from ..notifications.slack_notifier import notify_router_failure, reset_router_failure_notice
 
+
+def _regex_recover_classification_fields(raw_text):
+    """Best-effort recovery of individual classification fields when the LLM's
+    JSON response is syntactically broken (e.g. a stray/orphaned token from the
+    model) but the field values themselves are still intact substrings -- seen
+    live on INC0001731, where the model correctly reasoned "DevOps Ops" citing
+    real precedents, but a rogue `",` fragment mid-object broke json.loads and
+    that entire correct answer was discarded for a wrong hardcoded default.
+
+    Deliberately narrow (exact known field names for this one schema) rather
+    than a general JSON repair, so it can't silently misparse something it
+    shouldn't. Only called after safe_json_parse has already failed outright.
+    """
+    if not raw_text:
+        return {}
+
+    def _unescape(s):
+        return (
+            s.replace('\\"', '"')
+             .replace("\\n", "\n")
+             .replace("\\t", "\t")
+             .replace("\\\\", "\\")
+        )
+
+    out = {}
+    for field in ("recommendedDepartment", "priority", "reasoningText", "thinkingTrace"):
+        m = re.search(rf'"{field}"\s*:\s*"((?:[^"\\]|\\.)*)"', raw_text)
+        if m:
+            out[field] = _unescape(m.group(1))
+    m = re.search(r'"confidenceScore"\s*:\s*(\d+)', raw_text)
+    if m:
+        out["confidenceScore"] = int(m.group(1))
+    return out
+
 CLASSIFICATION_PROMPT_TEMPLATE = """
 You are the Agentic AI Ticket Router for Enterprise IT Infrastructure.
 Analyze the following IT Incident Ticket and classify it accurately into the correct Operational Assignment Group and Priority.
@@ -298,21 +332,37 @@ class ControlTowerAIRouter:
 
             res = safe_json_parse(raw_response)
             if not res:
-                # Every field below is about to silently fall back to its default
-                # (dept="Unix", conf=85) -- that's indistinguishable from a genuine
-                # low-confidence classification unless this is logged loudly. This
-                # is the exact failure mode that produced repeated "Unix, 85%
-                # confidence, grounded on N historical records" misroutes this
-                # session even when strong, correctly-retrieved precedents existed.
                 logger.error(
                     f"AI Router: classification JSON failed to parse for [{number}] -- "
-                    f"falling back to defaults (Unix/85%). Raw response ({len(raw_response or '')} chars): "
-                    f"{(raw_response or '')[:300]!r}"
+                    f"attempting regex field recovery before falling back. Raw response "
+                    f"({len(raw_response or '')} chars): {(raw_response or '')[:300]!r}"
                 )
-            conf = int(res.get("confidenceScore", 85))
+                res = _regex_recover_classification_fields(raw_response)
+                if res.get("recommendedDepartment"):
+                    # The model's own answer was still recoverable despite the broken
+                    # JSON wrapper -- trust it (including its own stated confidence,
+                    # if we got one) rather than a generic default.
+                    logger.warning(
+                        f"AI Router: recovered classification for [{number}] via regex "
+                        f"repair -- dept={res['recommendedDepartment']!r}, "
+                        f"conf={res.get('confidenceScore', 'unrecovered')}."
+                    )
+                else:
+                    logger.error(
+                        f"AI Router: regex recovery also found nothing usable for [{number}] "
+                        f"-- falling back to a LOW-confidence default so this is flagged "
+                        f"(below threshold, triggers the low-confidence alert path) instead "
+                        f"of silently masquerading as an 85%-confidence real classification."
+                    )
+            conf = int(res.get("confidenceScore", 40))
             dept = res.get("recommendedDepartment", "Unix")
             prio = res.get("priority", "P3")
-            reasoning = res.get("reasoningText", "Classified based on historical data and infrastructure taxonomy.")
+            reasoning = res.get(
+                "reasoningText",
+                "⚠️ AI classification response was unparseable and no fields could be "
+                "recovered -- this is a low-confidence fallback guess, not a grounded "
+                "decision. Verify department/priority manually.",
+            )
             trace = res.get("thinkingTrace", f"Evaluated against historical precedents: {len(precedents)} past cases analyzed.")
 
             audit_entry = {
