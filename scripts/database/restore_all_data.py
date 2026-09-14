@@ -9,6 +9,10 @@ with DATABASE_URL set) before this. This script only truncates + reinserts
 data into tables that migrations have already created.
 
 At the end it also:
+  - redistributes every Incident-linked timestamp onto the last 4 months
+    ending right now (see redistribute_timestamps.py) -- the snapshot freezes
+    absolute dates at export time, so without this every restore would look
+    progressively staler the longer it's been since the snapshot was taken
   - re-derives KnowledgeArticle.capabilityTags via tag_kb_capabilities.py's
     inference (idempotent, always regenerated rather than trusted from the
     snapshot)
@@ -299,6 +303,14 @@ print(f"  sre_configs: {len(sre_data.get('sre_configs', []))} (apiKey injected f
 conn_sre.commit()
 cur_sre.close()
 conn_sre.close()
+
+# --- Redistribute timestamps to end at "now" --------------------------------
+# The snapshot freezes absolute dates at export time; every restore re-anchors
+# them onto the last 4 months ending right now, so the data never looks stale
+# no matter how long ago the snapshot was captured. See redistribute_timestamps.py.
+print("\n--- Redistributing incident timestamps to end at 'now' ---")
+redistribute_script = os.path.join(repo_root, "scripts", "database", "redistribute_timestamps.py")
+subprocess.run([sys.executable, redistribute_script], cwd=repo_root, check=False)
 
 # --- Derived state: capability tags + vector index --------------------------
 print("\n--- Re-deriving capability tags & vector index ---")

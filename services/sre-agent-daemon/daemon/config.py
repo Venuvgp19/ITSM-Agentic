@@ -21,11 +21,17 @@ if hasattr(sys.stdout, "reconfigure"):
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Logging Setup
+# Also writes to a stable file path (daemon.log, alongside daemon.lock) so
+# log tailing/watcher scripts have a fixed target that survives daemon
+# restarts -- unlike a background-task output file, whose path changes
+# every time the process is relaunched.
+_log_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.StreamHandler(sys.stdout)
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(os.path.join(_log_dir, "daemon.log"), encoding="utf-8"),
     ]
 )
 logger = logging.getLogger("SelfLearningUnixResolverAgent")
