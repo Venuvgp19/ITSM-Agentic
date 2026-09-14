@@ -1248,7 +1248,7 @@ app.post('/api/v1/agent/chat/stream', async (req, res) => {
 
     let apiKey = process.env.NVIDIA_API_KEY || '';
     let baseUrl = 'https://integrate.api.nvidia.com/v1';
-    let modelName = 'nvidia/nemotron-3.5-lightning-30b-a3b';
+    let modelName = 'nvidia/nemotron-3-super-120b-a12b'; // was lightning -- degraded/timed-out under real load, see AgentConfig fix
 
     try {
       const cfgRes = await pool.query(`SELECT config_data FROM sre_configs WHERE id = 'default'`);
@@ -1284,6 +1284,8 @@ Data You Can Answer Questions About:
 - Knowledge Base SOP matching: given an incident description or symptom, use search_knowledge_base_rag (NOT a query_itsm_database SQL LIKE query) -- it runs the actual hybrid semantic RAG search the autonomous agent uses, and returns ranked candidates by real similarity score, not keyword overlap.
 
 CRITICAL -- do not confuse these two concepts, they live in different databases with different valid values: "on hold" / "pending" / "in progress" etc. in a user's question almost always means an Incident's STATE (itsm_db, column "state", values: IN_PROGRESS, ON_HOLD, RESOLVED, CLOSED) -- NOT an approval's STATUS (agentic_sre_db, sre_approvals.status, values: PENDING, APPROVED, REJECTED, EXECUTED; there is no "ON_HOLD" approval status, ever). A query using a status/state value not in these exact lists is a real bug, not a valid empty result -- introspect via get_schema_overview rather than guessing a value that merely sounds plausible.
+
+CRITICAL -- itsm_db.Incident.priority values are the bare strings 'P1', 'P2', 'P3', 'P4' (plus a handful of dirty legacy rows: 'P1 - CRITICAL', 'HIGH', 'MODERATE' from inconsistent historical data entry) -- NOT ServiceNow's display convention ('1 - Critical', '2 - High', etc.). That display format only exists in the frontend UI layer, never in the database. Filtering on an assumed value like priority = '1 - Critical' will silently return 0 rows and is NOT proof the count is actually zero -- it is a wrong-value bug. If a filtered query on an enum-like column (priority, state, risk_level, ...) returns 0 rows and you did not already confirm the exact stored values this session, run SELECT DISTINCT <column> FROM ... first before reporting a count -- a suspiciously round or zero number from an unverified value is a signal to double-check, not an answer to report.
 
 Out of Scope — Decline and Redirect:
 - Executing, approving, rejecting, or modifying any record
@@ -1695,7 +1697,7 @@ app.post('/api/v1/agent/chat', async (req, res) => {
 
     let apiKey = process.env.NVIDIA_API_KEY || '';
     let baseUrl = 'https://integrate.api.nvidia.com/v1';
-    let modelName = 'nvidia/nemotron-3.5-lightning-30b-a3b';
+    let modelName = 'nvidia/nemotron-3-super-120b-a12b'; // was lightning -- degraded/timed-out under real load, see AgentConfig fix
 
     try {
       const cfgRes = await pool.query(`SELECT config_data FROM sre_configs WHERE id = 'default'`);
@@ -1731,6 +1733,8 @@ Data You Can Answer Questions About:
 - Knowledge Base SOP matching: given an incident description or symptom, use search_knowledge_base_rag (NOT a query_itsm_database SQL LIKE query) -- it runs the actual hybrid semantic RAG search the autonomous agent uses, and returns ranked candidates by real similarity score, not keyword overlap.
 
 CRITICAL -- do not confuse these two concepts, they live in different databases with different valid values: "on hold" / "pending" / "in progress" etc. in a user's question almost always means an Incident's STATE (itsm_db, column "state", values: IN_PROGRESS, ON_HOLD, RESOLVED, CLOSED) -- NOT an approval's STATUS (agentic_sre_db, sre_approvals.status, values: PENDING, APPROVED, REJECTED, EXECUTED; there is no "ON_HOLD" approval status, ever). A query using a status/state value not in these exact lists is a real bug, not a valid empty result -- introspect via get_schema_overview rather than guessing a value that merely sounds plausible.
+
+CRITICAL -- itsm_db.Incident.priority values are the bare strings 'P1', 'P2', 'P3', 'P4' (plus a handful of dirty legacy rows: 'P1 - CRITICAL', 'HIGH', 'MODERATE' from inconsistent historical data entry) -- NOT ServiceNow's display convention ('1 - Critical', '2 - High', etc.). That display format only exists in the frontend UI layer, never in the database. Filtering on an assumed value like priority = '1 - Critical' will silently return 0 rows and is NOT proof the count is actually zero -- it is a wrong-value bug. If a filtered query on an enum-like column (priority, state, risk_level, ...) returns 0 rows and you did not already confirm the exact stored values this session, run SELECT DISTINCT <column> FROM ... first before reporting a count -- a suspiciously round or zero number from an unverified value is a signal to double-check, not an answer to report.
 
 Out of Scope — Decline and Redirect:
 - Executing, approving, rejecting, or modifying any record

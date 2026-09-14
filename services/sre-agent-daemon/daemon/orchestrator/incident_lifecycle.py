@@ -374,9 +374,16 @@ def _solve_in_progress_incident_internal(
     # SOP. Scoped to "down"/unreachable-style Nexacore tickets only -- 404
     # tickets are deliberately excluded, since there the app being up is the
     # known, expected state (see rag/judge.py's reasoning on 404 vs restart).
+    #
+    # Deliberately NOT gated on `is_user_mgmt_ticket` (unlike the CPU/Memory
+    # check above it was copied from) -- that gate is a bare substring match
+    # on "user", and the overwhelmingly common ITSM ticket phrasing "User
+    # reports <app> is down..." contains it, silently disabling this whole
+    # check for exactly the tickets it exists to protect (observed live on
+    # INC0001726: description text "User reports Nexacore Application is
+    # down..." suppressed the health probe entirely).
     is_nexacore_down_alert = (
-        not is_user_mgmt_ticket
-        and ("nexacore" in full_text or "8080" in full_text)
+        ("nexacore" in full_text or "8080" in full_text)
         and "404" not in full_text
         and any(k in full_text for k in ["down", "not responding", "unreachable", "connection refused", "crash", "outage", "502", "unavailable"])
     )

@@ -14,11 +14,12 @@ The platform automates enterprise helpdesk and Site Reliability Engineering oper
 5. [Quick Start & New Machine Setup](#-quick-start--new-machine-setup)
 6. [Step-by-Step Installation & Application Startup Directives](#-step-by-step-installation--application-startup-directives)
 7. [Slack Integration (Optional)](#-slack-integration-optional)
-8. [Production Hosting & Daemon Management](#-production-hosting--daemon-management)
-9. [Presentations & Product Pitch Decks](#-presentations--product-pitch-decks)
-10. [Database Architecture & Snapshot Management](#-database-architecture--snapshot-management)
-11. [Safety, Validation & Guardrails](#-safety-validation--guardrails)
-12. [License](#-license)
+8. [ServiceNow Integration (Optional)](#-servicenow-integration-optional)
+9. [Production Hosting & Daemon Management](#-production-hosting--daemon-management)
+10. [Presentations & Product Pitch Decks](#-presentations--product-pitch-decks)
+11. [Database Architecture & Snapshot Management](#-database-architecture--snapshot-management)
+12. [Safety, Validation & Guardrails](#-safety-validation--guardrails)
+13. [License](#-license)
 
 ---
 
@@ -41,6 +42,10 @@ The platform automates enterprise helpdesk and Site Reliability Engineering oper
 - **Decision Replay**: Every RAG candidate a matched/rejected SOP went through — score, margin, and judge reasoning — is posted to the incident timeline as an auditable trace, not just the final outcome.
 - **RAG Regression Eval Harness** (`services/sre-agent-daemon/tests/eval_rag.py`): Tiered evaluation of the SOP-matching pipeline — Tier 1 (retrieval-only Recall@K/MRR against real historical incidents) and Tier 2 (full pipeline accuracy + *selection precision*, the fraction of autonomous commits that are actually correct — the metric that matters most for safety, since a wrong RAG-miss just costs a slower human-approval path while a wrong commit is a wrong autonomous action). Not a startup gate — run manually or in CI after touching retrieval/judge/synthesis code.
 - **Emergency Containment & Kill Switch**: Immediate fleet-wide or per-CI shutdown toggle to instantly terminate active SSH sessions across target hosts.
+- **Conversational Service Desk Intake Portal** (`apps/service-desk`, `:5050`): A standalone, single-purpose chat surface for end users to report a problem in plain language instead of filling out a ticket form. The assistant asks one clarifying question at a time, then files the ticket itself via the same `POST /api/v1/incidents` the synthetic generator and ServiceNow webhook use — so it inherits identical validation, numbering, and automatic AI-Router pickup. Deliberately its own process/port rather than a page inside the staff app: it's the one place in the platform where untrusted end-user text becomes a write instead of just a read.
+- **Dual ITSM Backend Support (ServiceNow or Local)**: The daemon's `ITSM_PROVIDER` env var (`LOCAL_NESTJS` default or `SERVICENOW`) switches its entire data plane — incident queue, KB fetch, work notes, CI/CMDB lookups — between the built-in NestJS backend and a real ServiceNow instance's Table API, without touching orchestration logic. See [ServiceNow Integration](#-servicenow-integration-optional) below.
+- **Live SRE Assistant RAG Tool**: The Control Tower chat assistant can now actually query the same Hybrid RAG pipeline the resolver uses (`daemon/rag/search_api.py`, an internal-only FastAPI-style service on `:8008`) instead of only answering from structured SQL lookups — so "what SOPs exist for X" gets a real retrieval-grounded answer.
+- **Synthetic Incident Generator** (`workflows/n8n/itsm_periodic_incident_generator_workflow.json`): An n8n workflow that files realistic CPU/Memory/Nexacore-down incidents against `WorkerNode1HL` on a schedule, for demoing and load-testing the autonomous pipeline without needing real monitoring alerts wired up yet.
 
 ---
 
@@ -57,7 +62,18 @@ The platform automates enterprise helpdesk and Site Reliability Engineering oper
 
 ```mermaid
 flowchart TD
+    subgraph SOURCES["Incident Entry Points"]
+        SRC1["Service Desk Chat Portal (:5050)<br/>Conversational intake"]
+        SRC2["Synthetic Generator (n8n, :5678)<br/>Demo/load-test alerts"]
+        SRC3["ServiceNow Webhook / Table API"]
+        SRC4["Manual Entry (Helpdesk Console :3000)"]
+    end
+
     START(["1. Incident Ticket Created<br/>State = NEW, Group = UNASSIGNED"])
+    SRC1 --> START
+    SRC2 --> START
+    SRC3 --> START
+    SRC4 --> START
 
     subgraph FE["Core ITSM Platform (System of Record)"]
         UI["Helpdesk Console (Next.js :3000)"]
@@ -151,8 +167,11 @@ flowchart TD
 | **ServiceNow Core UI** | `3000` | Next.js 14 | `http://localhost:3000` | Core Helpdesk & Ticket Lifecycle Portal |
 | **ITSM Backend API** | `4000` | NestJS | `http://localhost:4000/api/docs` | System of Record REST API & Swagger Docs |
 | **SRE Control Tower** | `5173` | React + Vite + Node | `http://localhost:5173` | HITL Governance, SSE Streaming & Assistant |
+| **Service Desk Portal** | `5050` | Node + Express | `http://localhost:5050` | End-user conversational ticket intake |
+| **RAG Search API** | `8008` | Python (internal-only) | `http://127.0.0.1:8008/rag/search` | Backs the Control Tower assistant's RAG tool; not internet/LAN-facing |
 | **Python SRE Daemon** | Background | Python 3.10 | Daemon Process | Autonomous Auto-Resolver & Hybrid Vector RAG |
 | **ITSM MCP Server** | Background | Node.js | STDIO / SSE | Model Context Protocol Tool Interface |
+| **n8n (optional)** | `5678` | n8n | `http://localhost:5678` | Hosts the synthetic incident generator workflow |
 
 ---
 
@@ -211,10 +230,11 @@ cd apps/sre-control-tower && npm run build && cd ../..
 node apps/backend/dist/main.js &                  # :4000
 npm run dev:frontend &                             # :3000
 cd apps/sre-control-tower && node server.js &       # :5173
+cd apps/service-desk && node server.js &            # :5050
 cd services/sre-agent-daemon && rm -f daemon.lock && python -u continuous_itsm_agent_daemon.py &
 npm run start:mcp                                   # stdio MCP tool server (foreground; spawned by an MCP client, not a standalone daemon)
 ```
-See [Full Application Startup](#-full-application-startup-all-services) below for the platform-specific (PowerShell/Bash) version of this sequence, and [Slack Integration](#-slack-integration-optional) to also wire up approval cards and the SRE chatbot in Slack.
+See [Full Application Startup](#-full-application-startup-all-services) below for the platform-specific (PowerShell/Bash) version of this sequence, [Slack Integration](#-slack-integration-optional) to also wire up approval cards and the SRE chatbot in Slack, and [ServiceNow Integration](#-servicenow-integration-optional) to point the daemon at a real ServiceNow instance instead of the built-in backend.
 
 ### Restoring Later / Starting Fresh Again
 Once already set up, wiping back to a known-good state (e.g. after test data pollution) only needs Steps 3–4 re-run — `prisma migrate deploy` is a no-op if the schema is already current, and `restore_all_data.py` truncates and reloads both databases plus derived state (capability tags, vector index) from the snapshot every time it runs. No need to redo install/build/`.env`.
@@ -224,7 +244,7 @@ Once already set up, wiping back to a known-good state (e.g. after test data pol
 ## 🛠️ Step-by-Step Installation & Application Startup Directives
 
 ### 🟢 Full Application Startup (All Services)
-Follow this exact sequence to start all 6 service layers:
+Follow this exact sequence to start all 8 service layers:
 
 #### Windows (PowerShell):
 ```powershell
@@ -246,12 +266,16 @@ npm run dev:frontend
 cd apps/sre-control-tower
 node server.js
 
-# 6. Start Python Auto-Resolver Agent Daemon
+# 6. Start the Service Desk Portal (Port 5050)
+cd ../service-desk
+node server.js
+
+# 7. Start Python Auto-Resolver Agent Daemon (also starts the internal RAG Search API on :8008)
 cd ../../services/sre-agent-daemon
 Remove-Item "daemon.lock" -Force -ErrorAction SilentlyContinue
 python -u continuous_itsm_agent_daemon.py
 
-# 7. Start ITSM MCP Server
+# 8. Start ITSM MCP Server
 npm run start:mcp
 ```
 
@@ -274,12 +298,15 @@ npm run dev:frontend &
 # 5. Start SRE Control Tower (Port 5173)
 cd apps/sre-control-tower && node server.js &
 
-# 6. Start Python SRE Daemon
-cd services/sre-agent-daemon
+# 6. Start the Service Desk Portal (Port 5050)
+cd ../service-desk && node server.js &
+
+# 7. Start Python SRE Daemon (also starts the internal RAG Search API on :8008)
+cd ../../services/sre-agent-daemon
 rm -f daemon.lock
 python -u continuous_itsm_agent_daemon.py &
 
-# 7. Start MCP Server
+# 8. Start MCP Server
 npm run start:mcp
 ```
 
@@ -328,7 +355,27 @@ To cleanly stop all background services without corrupting state:
 ```bash
 cd services/slack-bridge && npm install && node index.js
 ```
-New pending approvals appear in the channel within `POLL_INTERVAL_MS` (default 15s); `@mention` the bot or DM it to ask questions.
+New pending approvals appear in the channel within `POLL_INTERVAL_MS` (default 15s); `@mention` the bot or DM it to ask questions and it streams its reply back token-by-token instead of a single blocking wait.
+
+---
+
+## 🔗 ServiceNow Integration (Optional)
+
+The daemon can run against a real ServiceNow instance instead of (or alongside) the built-in NestJS backend. This is a full provider abstraction, not a one-off webhook — incident queue polling, KB article fetch, work-note posting, and CI/CMDB lookups all switch backends together via one env var.
+
+### Daemon-side (Python)
+Set in `services/sre-agent-daemon/.env`:
+```env
+ITSM_PROVIDER="SERVICENOW"          # or "LOCAL_NESTJS" (default)
+SN_INSTANCE_URL="https://<your-instance>.service-now.com"
+SN_USERNAME="your-sn-username"
+SN_PASSWORD="your-sn-password"
+```
+All three `SN_*` values default to empty strings — the client fails closed (never silently talks to a placeholder instance) if `ITSM_PROVIDER=SERVICENOW` is set without real credentials. Under the hood (`daemon/itsm/servicenow_client.py`): paginated incident queue fetch via the Table API, automatic retry with backoff on 5xx/connection errors (not on 4xx), work-note de-duplication (ServiceNow's `sys_journal_field` is append-only, so a naive re-post would spam the same note every poll), and CMDB CI enrichment that only *augments* existing local `CI_CREDENTIALS` entries with live ServiceNow ip/os data rather than creating credential-less ones (ServiceNow's CMDB never has SSH credentials). New-SOP write-back to ServiceNow's `kb_knowledge` table is intentionally deferred — synthesized SOPs in `SERVICENOW` mode are logged, not persisted upstream, until that's explicitly wanted.
+
+### Backend-side (NestJS) — inbound + Table API proxy
+- `POST /servicenow/webhook`: real inbound integration — a ServiceNow business rule/outbound REST message posts here and it's persisted as a genuine incident via `IncidentService.create()` (not a stub), with the triggering comment logged as a correlated work note.
+- `GET/PATCH/POST /api/v1/servicenow/{queue,incidents/:sysId,incidents/:sysId/work-notes,cmdb/:ciName}`: JWT-protected internal routes that proxy to ServiceNow's own Table API (`SN_INSTANCE_URL`/`SN_USERNAME`/`SN_PASSWORD` from the backend's own env), exposed to the MCP server as `servicenow_fetch_queue`, `servicenow_update_incident`, `servicenow_add_work_note`, and `servicenow_get_ci_details` tools.
 
 ---
 
@@ -418,6 +465,8 @@ Whenever the backend is built (`npm run build:backend`), restarted, or compiled,
 5. **Autonomous Emergency Abort (Kill Switch)**:
    - Operators can instantly abort running executions via the Control Tower UI.
    - Daemon actively checks containment state and terminates execution in `< 1.5s`.
+6. **Live Pre-Action Health Checks (Act-Before-Verify Guard)**: Keyword-matched SOPs don't get to assume the incident text is still true by the time the daemon executes. Before running any Nexacore "app down" SOP's restart/start commands, the daemon SSHes in and runs a real HTTP probe (`curl` against the reported port) first — if the app already responds, the ticket resolves directly from that live evidence and the service is never touched, instead of restarting something that's already healthy on every alert.
+7. **Multi-Model Fallback Diversity**: The LLM model config's (Control Tower → Model Config page, backed by `AgentConfig`) shipped default assigns every agent role a genuinely different fallback chain instead of pinning router/resolver/synthesizer/governance *and* the entire fallback list to one single model — a real fallback chain to degrade to if the primary model times out, not the same model retried three times under a different name.
 
 ---
 

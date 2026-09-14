@@ -209,6 +209,8 @@ export default function DashboardPage() {
                         <span className="text-rose-600">1 - Critical</span>
                       ) : (inc.priority || '').includes('P2') ? (
                         <span className="text-orange-600">2 - High</span>
+                      ) : (inc.priority || '').includes('P4') ? (
+                        <span className="text-slate-500">4 - Low</span>
                       ) : (
                         <span className="text-amber-700">3 - Moderate</span>
                       )}

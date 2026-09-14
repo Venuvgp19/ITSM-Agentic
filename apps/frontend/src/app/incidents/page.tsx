@@ -700,6 +700,8 @@ export default function IncidentsPage() {
                         <span className="text-rose-700">1 - Critical</span>
                       ) : inc.priority.includes('2') ? (
                         <span className="text-orange-700">2 - High</span>
+                      ) : inc.priority.includes('4') ? (
+                        <span className="text-slate-500">4 - Low</span>
                       ) : (
                         <span className="text-amber-800">3 - Moderate</span>
                       )}

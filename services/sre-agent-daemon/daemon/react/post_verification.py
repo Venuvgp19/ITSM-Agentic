@@ -248,11 +248,40 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
         )
         svc = service_match.group(1) if service_match else None
         if not svc:
-            is_fixed = False
-            evidence_lines.append(
-                "❌ Could not identify a specific service/workload name from the executed restart command to verify — "
-                "refusing to assume success without live confirmation."
-            )
+            # No restart/start command in the log isn't automatically a failure --
+            # the ReAct loop may have investigated (systemctl status, ss -tulpn),
+            # found the service already healthy, and correctly executed nothing.
+            # Observed live on INC0001726: the loop concluded "the Nexacore
+            # application is actually running correctly on port 8080" and the
+            # earlier LLM verification step agreed, yet this branch escalated it
+            # anyway because it only knew how to check "restart ran, is it up",
+            # never "nothing ran, is it up anyway". Fall back to a live port probe
+            # on this guard's own SSH session before failing closed -- same
+            # "verify what's actually true right now" principle every other check
+            # in this function already applies, just reachable from the
+            # no-restart-needed path too instead of only the restart-happened one.
+            port_match = re.search(r"port\s+(\d{2,5})\b", full_text) or re.search(r":(\d{2,5})\b", full_text)
+            port = port_match.group(1) if port_match else None
+            if port:
+                ok, out = session.exec_command(f"curl -s -o /dev/null -w '%{{http_code}}' --max-time 5 http://localhost:{port}")
+                http_code = clean_ssh_stdout(out)
+                if http_code.isdigit() and 200 <= int(http_code) < 500:
+                    evidence_lines.append(
+                        f"✅ No restart command was executed, but a live probe confirms the application is already "
+                        f"responding on port {port} (HTTP {http_code}) — no action was needed."
+                    )
+                else:
+                    is_fixed = False
+                    evidence_lines.append(
+                        f"❌ No restart command was executed, and a live probe on port {port} got '{http_code or 'no response'}' "
+                        f"-- refusing to assume success without live confirmation."
+                    )
+            else:
+                is_fixed = False
+                evidence_lines.append(
+                    "❌ Could not identify a specific service/workload name from the executed restart command, nor a port "
+                    "to live-probe, to verify — refusing to assume success without live confirmation."
+                )
         else:
             matched_form = service_match.group(0)
             if "docker" in matched_form:

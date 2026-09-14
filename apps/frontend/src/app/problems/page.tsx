@@ -542,6 +542,8 @@ export default function ProblemsPage() {
                         <span className="text-rose-700">1 - Critical</span>
                       ) : item.priority === 'P2' ? (
                         <span className="text-orange-700">2 - High</span>
+                      ) : item.priority === 'P4' ? (
+                        <span className="text-slate-500">4 - Low</span>
                       ) : (
                         <span className="text-amber-800">3 - Moderate</span>
                       )}
