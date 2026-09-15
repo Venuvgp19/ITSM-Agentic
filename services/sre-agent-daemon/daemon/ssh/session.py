@@ -61,7 +61,20 @@ class PersistentSSHSession:
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             
             connected = False
-            retries = 3
+            # 5 retries with increasing backoff (1s, 2s, 3s, 4s -- ~10s total) rather than
+            # the previous 3 tries / 1s flat (~2s total). Seen live on INC0001737: the
+            # post-remediation verification connection hit "Error reading SSH protocol
+            # banner ([WinError 10054] forcibly closed)" just 1.3s after the *previous*
+            # persistent session to the same host had closed -- a transient
+            # remote-not-ready-for-reconnect-yet race, not real unreachability (the same
+            # host had just completed a full 9-turn ReAct session over that exact
+            # connection seconds earlier). 2s of patience wasn't enough to ride through
+            # it, so the connection fell to Resilient Demo Simulation Mode -- whose canned
+            # output can never satisfy this verification step's exact-match check (see
+            # post_verification.py's `systemctl is-active` branch), guaranteeing a false
+            # "verification failed" escalation on an incident that had, in fact, already
+            # been fixed correctly on the real host.
+            retries = 5
             for attempt in range(retries):
                 try:
                     client.connect(
@@ -77,8 +90,9 @@ class PersistentSSHSession:
                     break
                 except Exception as e:
                     if attempt < retries - 1:
-                        logger.warning(f"SSH connection attempt {attempt+1} to {self.ip} failed: {e}. Retrying in 1 second...")
-                        time.sleep(1)
+                        backoff = attempt + 1
+                        logger.warning(f"SSH connection attempt {attempt+1} to {self.ip} failed: {e}. Retrying in {backoff} second(s)...")
+                        time.sleep(backoff)
                     else:
                         if DEMO_FALLBACK_ON_ERROR:
                             logger.warning(f"⚠️ Physical SSH connection to {self.ip} failed. Falling back to Resilient Demo Simulation Mode.")

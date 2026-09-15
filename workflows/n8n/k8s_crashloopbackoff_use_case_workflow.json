@@ -1,0 +1,268 @@
+{
+  "id": "vvMlUXh1FGaKTvNH",
+  "name": "ITSM-Agentic: K8s CrashLoopBackOff Use Case (Induce + Ticket) - Worker1OL",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1e2b3c4-0001-4a1a-9b1a-000000000001",
+      "name": "Manual Trigger (Run Use Case)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "password",
+        "resource": "command",
+        "operation": "execute",
+        "command": "kubectl run crashloop-demo --image=busybox --restart=Always -n default --labels=run=crashloop-demo -- /bin/sh -c \"exit 1\"",
+        "cwd": "/"
+      },
+      "id": "a1e2b3c4-0002-4a1a-9b1a-000000000002",
+      "name": "Induce CrashLoopBackOff Pod (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        420,
+        300
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "ZXVQbVtXqvcIRU8B",
+          "name": "SSH Password account"
+        }
+      },
+      "notes": "Bare Pod, not a Deployment, per request. busybox exits 1 immediately on every start -- kubelet's restartPolicy: Always keeps restarting it, and after a few restarts kubernetes marks it CrashLoopBackOff."
+    },
+    {
+      "parameters": {
+        "authentication": "password",
+        "resource": "command",
+        "operation": "execute",
+        "command": "kubectl expose pod crashloop-demo --type=NodePort --port=8080 --target-port=8080 -n default",
+        "cwd": "/"
+      },
+      "id": "a1e2b3c4-0003-4a1a-9b1a-000000000003",
+      "name": "Expose Pod as NodePort Service (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        640,
+        300
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "ZXVQbVtXqvcIRU8B",
+          "name": "SSH Password account"
+        }
+      },
+      "notes": "NodePort (not ClusterIP) so the exposed service can be curled directly on the Worker1OL host for later validation, per request."
+    },
+    {
+      "parameters": {
+        "amount": 45,
+        "unit": "seconds"
+      },
+      "id": "a1e2b3c4-0004-4a1a-9b1a-000000000004",
+      "name": "Wait for Restart Backoff",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        860,
+        300
+      ],
+      "notes": "Gives kubelet time to cycle through enough crash/restart iterations for the status to actually reach CrashLoopBackOff (exponential backoff, not instantaneous)."
+    },
+    {
+      "parameters": {
+        "authentication": "password",
+        "resource": "command",
+        "operation": "execute",
+        "command": "echo '--- kubectl get pods ---'; kubectl get pods -n default -l run=crashloop-demo -o wide; echo '--- kubectl describe pod (tail) ---'; kubectl describe pod -n default -l run=crashloop-demo | tail -n 20; echo '--- nodeport ---'; kubectl get svc crashloop-demo -n default -o jsonpath='{.spec.ports[0].nodePort}'",
+        "cwd": "/"
+      },
+      "id": "a1e2b3c4-0005-4a1a-9b1a-000000000005",
+      "name": "Capture Live CrashLoopBackOff Proof (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        300
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "ZXVQbVtXqvcIRU8B",
+          "name": "SSH Password account"
+        }
+      },
+      "notes": "Live diagnostic evidence embedded into the ticket description below, same 'ground the ticket in real state' pattern the SRE daemon's own SOP synthesizer expects (see daemon/sop/synthesizer.py's diagnostic-context rules)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = ($input.first().json.stdout || '').trim();\nconst nodePortMatch = out.match(/---\\s*nodeport\\s*---\\s*\\n?(\\d+)/i);\nconst nodePort = nodePortMatch ? nodePortMatch[1] : 'unknown';\nconst restartsMatch = out.match(/crashloop-demo\\s+\\S+\\s+(\\S+)\\s+(\\d+)/);\nconst status = restartsMatch ? restartsMatch[1] : 'CrashLoopBackOff';\nconst restarts = restartsMatch ? restartsMatch[2] : 'multiple';\n\nconst shortDescription = `Pod 'crashloop-demo' is in CrashLoopBackOff on Worker1OL (namespace: default)`;\nconst description = `Pod 'crashloop-demo' in namespace 'default' on host Worker1OL is stuck in ${status} after ${restarts} restarts. The pod's container exits immediately on every start attempt and kubelet keeps restarting it per restartPolicy.\\n\\nIt is exposed as a NodePort Service 'crashloop-demo' on port ${nodePort} -- the service currently has no healthy backend to route to.\\n\\nLive diagnostic evidence (kubectl get pods / describe pod):\\n${out}`;\n\nreturn [{\n  json: {\n    shortDescription,\n    description,\n    configurationItem: 'Worker1OL',\n    priority: 'P2',\n    impact: 'DEPARTMENT',\n    urgency: 'HIGH',\n    callerName: 'n8n Telemetry Engine',\n    generatedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "a1e2b3c4-0006-4a1a-9b1a-000000000006",
+      "name": "Build Incident Payload From Live Proof",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:4000/api/v1/incidents",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "shortDescription",
+              "value": "={{ $json.shortDescription }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $json.description }}"
+            },
+            {
+              "name": "configurationItem",
+              "value": "={{ $json.configurationItem }}"
+            },
+            {
+              "name": "priority",
+              "value": "={{ $json.priority }}"
+            },
+            {
+              "name": "impact",
+              "value": "={{ $json.impact }}"
+            },
+            {
+              "name": "urgency",
+              "value": "={{ $json.urgency }}"
+            },
+            {
+              "name": "caller",
+              "value": "={{ $json.callerName }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "a1e2b3c4-0007-4a1a-9b1a-000000000007",
+      "name": "Create Incident (ITSM Backend API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nconst body = res.body || res;\n\nreturn [{\n  json: {\n    status: 'SUCCESS',\n    incidentNumber: body.number || body.id,\n    title: body.shortDescription,\n    configurationItem: body.configurationItem || body.configurationItemName,\n    priority: body.priority,\n    state: body.state,\n    createdAt: body.createdAt || new Date().toISOString(),\n    message: `[n8n] Filed ${body.priority} incident ${body.number || body.id} for CrashLoopBackOff pod 'crashloop-demo' on ${body.configurationItem || body.configurationItemName}`\n  }\n}];"
+      },
+      "id": "a1e2b3c4-0008-4a1a-9b1a-000000000008",
+      "name": "Format Incident Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1740,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger (Run Use Case)": {
+      "main": [
+        [
+          {
+            "node": "Induce CrashLoopBackOff Pod (SSH)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Induce CrashLoopBackOff Pod (SSH)": {
+      "main": [
+        [
+          {
+            "node": "Expose Pod as NodePort Service (SSH)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expose Pod as NodePort Service (SSH)": {
+      "main": [
+        [
+          {
+            "node": "Wait for Restart Backoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Restart Backoff": {
+      "main": [
+        [
+          {
+            "node": "Capture Live CrashLoopBackOff Proof (SSH)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Live CrashLoopBackOff Proof (SSH)": {
+      "main": [
+        [
+          {
+            "node": "Build Incident Payload From Live Proof",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Incident Payload From Live Proof": {
+      "main": [
+        [
+          {
+            "node": "Create Incident (ITSM Backend API)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Incident (ITSM Backend API)": {
+      "main": [
+        [
+          {
+            "node": "Format Incident Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

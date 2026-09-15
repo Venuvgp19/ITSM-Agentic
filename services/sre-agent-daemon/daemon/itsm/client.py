@@ -248,7 +248,7 @@ def save_new_kb_article_to_storage(new_article_data, vdb=None):
                     # same bar as before but on the boilerplate-stripped title), OR a
                     # weaker title match (>=0.60) corroborated by resolution-steps overlap
                     # (>=0.60) -- catches "same task, different phrasing" since the actual
-                    # commands (systemctl restart nexacore, curl check on 8080, ...) overlap
+                    # commands (systemctl restart nexacore, curl check on 9000, ...) overlap
                     # heavily even when the LLM-generated titles don't.
                     existing_title_core = _strip_title_boilerplate(existing_title)
                     existing_tokens = set(t for t in existing_title_core.split() if len(t) > 3)

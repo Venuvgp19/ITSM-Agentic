@@ -388,22 +388,22 @@ def _solve_in_progress_incident_internal(
     # check for exactly the tickets it exists to protect (observed live on
     # INC0001726: description text "User reports Nexacore Application is
     # down..." suppressed the health probe entirely).
-    # Word-boundary matches, not bare substring checks -- a bare "8080" in full_text
-    # would also match inside an unrelated ticket/ID number (e.g. "INC0008080") or a
+    # Word-boundary matches, not bare substring checks -- a bare "9000" in full_text
+    # would also match inside an unrelated ticket/ID number (e.g. "INC0009000") or a
     # metric value, and a bare "404" would match inside an unrelated number too.
     is_nexacore_down_alert = (
-        bool(re.search(r"\b(?:nexacore|8080)\b", full_text))
+        bool(re.search(r"\b(?:nexacore|9000)\b", full_text))
         and not re.search(r"\b404\b", full_text)
         and any(re.search(rf"\b{re.escape(k)}\b", full_text) for k in ["down", "not responding", "unreachable", "connection refused", "crash", "outage", "502", "unavailable"])
     )
     if is_nexacore_down_alert:
         logger.info(f"🌐 Nexacore Down Alert Detected — Verifying live application health on {ci_name} ({ip}) before any restart/start action...")
-        post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🌐 Autonomous Application Health Check", "RUNNING", f"Probing live HTTP response from {ci_name}:8080 before executing any restart/start action...")
+        post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "🌐 Autonomous Application Health Check", "RUNNING", f"Probing live HTTP response from {ci_name}:9000 before executing any restart/start action...")
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
             ssh.connect(ip, username=user, password=password, timeout=10)
-            stdin, stdout, stderr = ssh.exec_command("curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:8080")
+            stdin, stdout, stderr = ssh.exec_command("curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://localhost:9000")
             http_code = stdout.read().decode('utf-8', 'ignore').strip()
             ssh.close()
 
@@ -413,7 +413,7 @@ def _solve_in_progress_incident_internal(
                 res_notes = (
                     f"Autonomous Application Health Check completed (deterministic SSH probe -- no LLM invoked, no service restarted).\n"
                     f"Host: {ci_name} ({ip})\n"
-                    f"Result: Application already responding with HTTP {http_code} on port 8080. No stop/start/restart action was executed.\n"
+                    f"Result: Application already responding with HTTP {http_code} on port 9000. No stop/start/restart action was executed.\n"
                     f"Ticket auto-resolved directly from the live health probe; no SOP was applied."
                 )
                 add_work_note(token, inc_id,
@@ -422,7 +422,7 @@ def _solve_in_progress_incident_internal(
                     logger.info(f"🎉 Successfully RESOLVED IN_PROGRESS Incident [{number}] via direct health check (no SOP, no restart)!")
                     post_timeline_update(inc_id, number, short_desc, ci_name, "SUCCESS", "Incident Remediation Resolved", "SUCCESS", f"Application already healthy (HTTP {http_code}) — incident closed without touching the service.")
                     post_history_entry_to_dashboard(
-                        inc_id, short_desc, ci_name, ["curl http://localhost:8080"], f"Already responding (HTTP {http_code})",
+                        inc_id, short_desc, ci_name, ["curl http://localhost:9000"], f"Already responding (HTTP {http_code})",
                         f"Application already healthy: HTTP {http_code}",
                         "KB0000039",
                         status="AUTO_EXECUTED",
@@ -477,8 +477,23 @@ def _solve_in_progress_incident_internal(
                 destructive_findings.append((sc, cat_reason))
         is_destructive_sop = len(destructive_findings) > 0
 
-        # If it's a new use case OR contains destructive commands -> Mandatory Human-in-the-Loop Gate
-        if is_new_use_case or is_destructive_sop:
+        # P1/P2 incidents always require sign-off before autonomous execution,
+        # even on a confident RAG hit against a non-destructive SOP -- a high
+        # hybrid similarity score reflects corpus-relative ranking, not proof
+        # the match is safe to fire blind on a critical/high-impact ticket.
+        # Distinct from is_destructive_sop/is_new_use_case below so the
+        # approval card can say *why* it's here instead of miscasting a real
+        # SOP match as either "new use case" or "destructive".
+        incident_priority = str(incident.get("priority", "")).upper()
+        is_priority_gated = (
+            incident_priority in ("P1", "P2")
+            and not is_new_use_case
+            and not is_destructive_sop
+        )
+
+        # If it's a new use case OR contains destructive commands OR is a
+        # P1/P2 ticket -> Mandatory Human-in-the-Loop Gate
+        if is_new_use_case or is_destructive_sop or is_priority_gated:
             my_approval = None
             pending_appr = None
             rejected_appr = None
@@ -495,7 +510,13 @@ def _solve_in_progress_incident_internal(
             my_approval = approved_rec or pending_appr or rejected_appr
 
             if not my_approval and not state.has_submitted_approval(inc_id):
-                res_steps = sop_commands if is_destructive_sop else (new_sop_data or {}).get("resolution_steps", [])
+                # `sop_commands` is the one variable populated correctly by every
+                # path above (new-SOP synthesis, RAG match, or destructive) --
+                # `new_sop_data.get("resolution_steps")` only ever exists for the
+                # new-SOP branch, so pulling from it for a priority-gated RAG hit
+                # returned [] every time and the card below got refused as
+                # "hollow" before it could ever reach an operator.
+                res_steps = sop_commands
                 formatted_res_steps = []
                 for step in res_steps:
                     s = str(step).strip()
@@ -512,12 +533,25 @@ def _solve_in_progress_incident_internal(
                     logger.info(f"✅ SOP produced {len(res_steps)} steps for [{number}]: {res_steps[:3]}...")
 
                 risk_level = "CRITICAL_DESTRUCTIVE" if is_destructive_sop else "HIGH"
-                card_title = f"[DESTRUCTIVE COMMAND APPROVAL REQUIRED] {short_desc}" if is_destructive_sop else short_desc
-                ai_reason = (
-                    f"Security & Safety Policy Gate: SOP matched [{kb_num}] '{kb_title}', but contains high-risk destructive operations ({'; '.join([f'{c}: {r}' for c, r in destructive_findings])}). Autonomous execution is forbidden without explicit human operator sign-off in the Control Tower."
-                    if is_destructive_sop else
-                    (new_sop_data or {}).get("reasoning", "New use case requiring human review.")
-                )
+                if is_destructive_sop:
+                    card_title = f"[DESTRUCTIVE COMMAND APPROVAL REQUIRED] {short_desc}"
+                elif is_priority_gated:
+                    card_title = f"[{incident_priority} MANDATORY REVIEW] {short_desc}"
+                else:
+                    card_title = short_desc
+                if is_destructive_sop:
+                    ai_reason = (
+                        f"Security & Safety Policy Gate: SOP matched [{kb_num}] '{kb_title}', but contains high-risk destructive operations ({'; '.join([f'{c}: {r}' for c, r in destructive_findings])}). Autonomous execution is forbidden without explicit human operator sign-off in the Control Tower."
+                    )
+                elif is_priority_gated:
+                    ai_reason = (
+                        f"Priority Policy Gate: this is a {incident_priority} incident, which always requires human "
+                        f"sign-off before autonomous execution regardless of RAG match confidence -- a high hybrid "
+                        f"similarity score reflects corpus-relative ranking, not proof the match is safe to fire blind "
+                        f"on a critical/high-impact ticket. Matched SOP [{kb_num}] '{kb_title}'. {reasoning}"
+                    )
+                else:
+                    ai_reason = (new_sop_data or {}).get("reasoning", "New use case requiring human review.")
 
                 approval_payload = {
                     "incidentId": inc_id,
@@ -529,10 +563,16 @@ def _solve_in_progress_incident_internal(
                     "department": incident.get("department", "DevOps Team"),
                     "riskLevel": risk_level,
                     "confidenceScore": (lambda _mv: (85.0 if _mv.get("confidence") is None else float(_mv["confidence"]) * 100.0))((new_sop_data or {}).get("relevance", {})),
-                    "summary": f"Matched SOP [{kb_num}] '{kb_title}' contains destructive command(s). Mandatory human approval required." if is_destructive_sop else (new_sop_data or {}).get("summary", f"Synthesized new SOP for {short_desc}"),
+                    "summary": (
+                        f"Matched SOP [{kb_num}] '{kb_title}' contains destructive command(s). Mandatory human approval required."
+                        if is_destructive_sop else
+                        f"{incident_priority} incident matched SOP [{kb_num}] '{kb_title}' -- mandatory human approval required regardless of match confidence."
+                        if is_priority_gated else
+                        (new_sop_data or {}).get("summary", f"Synthesized new SOP for {short_desc}")
+                    ),
                     "proposedCommands": res_steps,
                     "aiReasoning": ai_reason,
-                    "relevanceAudit": (new_sop_data or {}).get("relevance", {"audit": "passed", "note": "High-risk destructive SOP requiring operator authorization"}),
+                    "relevanceAudit": (new_sop_data or {}).get("relevance", {"audit": "passed", "note": f"{incident_priority} priority requires operator authorization" if is_priority_gated else "High-risk destructive SOP requiring operator authorization"}),
                     "safetyChecks": [{"check": f"High Risk: {r}", "passed": False} for _, r in destructive_findings] if is_destructive_sop else [{"check": check, "passed": True} for check in (new_sop_data or {}).get("safety_checks", [])],
                     "kbArticleReference": kb_num or "KB_NEW",
                     "kbTitle": kb_title or (new_sop_data or {}).get("title", f"SOP: {short_desc}"),
@@ -541,7 +581,13 @@ def _solve_in_progress_incident_internal(
                         "kbTitle": kb_title or (new_sop_data or {}).get("title", f"SOP: {short_desc}"),
                         "synthesizedSolution": "\n".join(res_steps),
                         "resolutionSteps": res_steps,
-                        "trendInsight": f"High-risk destructive SOP execution requested for [{number}]. Contains commands: {', '.join([c for c, _ in destructive_findings])}." if is_destructive_sop else f"Synthesized SOP containing {len(res_steps)} resolution steps."
+                        "trendInsight": (
+                            f"High-risk destructive SOP execution requested for [{number}]. Contains commands: {', '.join([c for c, _ in destructive_findings])}."
+                            if is_destructive_sop else
+                            f"{incident_priority} incident matched SOP [{kb_num}] '{kb_title}'; held for mandatory review per priority policy."
+                            if is_priority_gated else
+                            f"Synthesized SOP containing {len(res_steps)} resolution steps."
+                        )
                     }
                 }
                 logger.info(f"📝 Submitting pending approval request for SOP on ticket [{number}] (is_destructive={is_destructive_sop})...")
@@ -554,28 +600,47 @@ def _solve_in_progress_incident_internal(
                         return
                     state.mark_submitted_approval(inc_id)
                     post_timeline_update(inc_id, number, short_desc, ci_name, "PENDING_APPROVAL", "🔐 Human-in-the-Loop Gate", "RUNNING", f"SOP {kb_title} requires human operator approval in Control Tower.")
-                    notice_note = (
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"⚠️ HIGH-RISK DESTRUCTIVE SOP DETECTED — MANDATORY HUMAN APPROVAL REQUIRED\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🔍 SOP Match: [{kb_num}] '{kb_title}'\n"
-                        f"🚨 Destructive Commands: {', '.join([f'`{c}` ({r})' for c, r in destructive_findings])}\n"
-                        f"📝 Action: Routed to Agent Control Tower (http://localhost:5173) for mandatory human operator review.\n"
-                        f"State: Incident placed ON_HOLD. Autonomous execution blocked until an operator reviews & approves.\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                        if is_destructive_sop else
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🧠 AI KNOWLEDGE SYNTHESIZER: NEW SOP SUBMITTED FOR APPROVAL\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"🔍 RAG Search: Miss (No matching SOP found in local Vector DB).\n"
-                        f"📝 Action: Synthesized a new SOP and requested Human-in-the-Loop review.\n"
-                        f"🎫 Ticket: [{number}] {short_desc}\n"
-                        f"Proposed SOP Title: {(new_sop_data or {}).get('title')}\n"
-                        f"Proposed Commands: {', '.join(res_steps) if res_steps else '(none qualified for approval)'}\n"
-                        f"State: Incident placed ON_HOLD awaiting human operator approval in Control Tower.\n"
-                        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    )
-                    add_work_note(token, inc_id, notice_note, author="🛡️ ITSM High-Risk Safety Guard" if is_destructive_sop else "🧠 AI Knowledge Synthesizer")
+                    if is_destructive_sop:
+                        notice_note = (
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"⚠️ HIGH-RISK DESTRUCTIVE SOP DETECTED — MANDATORY HUMAN APPROVAL REQUIRED\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"🔍 SOP Match: [{kb_num}] '{kb_title}'\n"
+                            f"🚨 Destructive Commands: {', '.join([f'`{c}` ({r})' for c, r in destructive_findings])}\n"
+                            f"📝 Action: Routed to Agent Control Tower (http://localhost:5173) for mandatory human operator review.\n"
+                            f"State: Incident placed ON_HOLD. Autonomous execution blocked until an operator reviews & approves.\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        )
+                        notice_author = "🛡️ ITSM High-Risk Safety Guard"
+                    elif is_priority_gated:
+                        notice_note = (
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"🎯 {incident_priority} INCIDENT — MANDATORY HUMAN APPROVAL REQUIRED\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"🔍 SOP Match: [{kb_num}] '{kb_title}' (RAG hit -- an existing SOP, not newly synthesized)\n"
+                            f"💡 Reasoning: {reasoning}\n"
+                            f"📋 Proposed Commands: {', '.join(res_steps) if res_steps else '(none qualified for approval)'}\n"
+                            f"📝 Action: Routed to Agent Control Tower (http://localhost:5173) for mandatory human operator review, "
+                            f"per policy that all {incident_priority} incidents require sign-off before autonomous execution regardless of match confidence.\n"
+                            f"State: Incident placed ON_HOLD. Autonomous execution blocked until an operator reviews & approves.\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        )
+                        notice_author = "🎯 ITSM Priority Policy Gate"
+                    else:
+                        notice_note = (
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"🧠 AI KNOWLEDGE SYNTHESIZER: NEW SOP SUBMITTED FOR APPROVAL\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"🔍 RAG Search: Miss (No matching SOP found in local Vector DB).\n"
+                            f"📝 Action: Synthesized a new SOP and requested Human-in-the-Loop review.\n"
+                            f"🎫 Ticket: [{number}] {short_desc}\n"
+                            f"Proposed SOP Title: {(new_sop_data or {}).get('title')}\n"
+                            f"Proposed Commands: {', '.join(res_steps) if res_steps else '(none qualified for approval)'}\n"
+                            f"State: Incident placed ON_HOLD awaiting human operator approval in Control Tower.\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        )
+                        notice_author = "🧠 AI Knowledge Synthesizer"
+                    add_work_note(token, inc_id, notice_note, author=notice_author)
                     update_incident_status(token, inc_id, "ON_HOLD", assigned_to="DevOps Team", session_state=state)
                     state.lock_session(inc_id)
                 else:

@@ -224,7 +224,7 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
     confident enough to skip the LLM RAG Judge entirely, which previously let these
     hardcoded 0.975-0.99 "confidences" slide through unscrutinized on exactly the
     ChromaDB-unavailable path where scrutiny matters most -- any ticket mentioning
-    "8080" or "web app" would auto-select the NexaCore recovery SOP at 0.99
+    "9000" or "web app" would auto-select the NexaCore recovery SOP at 0.99
     confidence with zero LLM review. Capping the score plus the source tag
     (belt-and-suspenders in case
     the requires_judge formula changes later) forces every match from this function
@@ -331,19 +331,19 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
             logger.info(f"🎯 Embedding-Free Intent Match: User Creation + Directory Access detected -> Matched SOP [{user_kb.get('number')}] '{user_kb.get('title')}' (Score: 0.6500, keyword_fallback) [ACL MODE]")
             return [{"number": user_kb.get("number"), "title": user_kb.get("title"), "score": 0.6500, "article": user_kb, "acl_mode": True, "source": "keyword_fallback"}]
 
-    # 2. Intent Detection for NexaCore Application / Port 8080 Issues
+    # 2. Intent Detection for NexaCore Application / Port 9000 Issues
     nexacore_patterns = [
-        "nexacore", "port 8080", "nexacore portal", "nexacore app",
+        "nexacore", "port 9000", "nexacore portal", "nexacore app",
         "application down", "app down", "app crash", "app not responding",
         "web app", "web server down", "python app", "nexacore down",
-        "http 8080", "workernode1hl app", "application recovery",
+        "http 9000", "workernode1hl app", "application recovery",
         "web service down", "application unreachable", "app unreachable"
     ]
-    # Bare "8080" used to be in the list above as a plain substring check --
+    # Bare "9000" used to be in the list above as a plain substring check --
     # it would match inside an unrelated number (an incident ID, a different
     # port, a timestamp) anywhere in the ticket text, not just a genuine port
-    # 8080 mention. Word-boundary regex instead.
-    is_nexacore = any(p in full_text for p in nexacore_patterns) or bool(re.search(r"\b8080\b", full_text))
+    # 9000 mention. Word-boundary regex instead.
+    is_nexacore = any(p in full_text for p in nexacore_patterns) or bool(re.search(r"\b9000\b", full_text))
 
     if is_nexacore:
         nexacore_kb = next(

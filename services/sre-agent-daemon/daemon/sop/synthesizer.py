@@ -482,11 +482,11 @@ Respond ONLY with valid JSON:
                         else:
                             formatted_steps.append(f'echo "{u} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/99-{u}" && chmod 440 "/etc/sudoers.d/99-{u}"')
                     formatted_steps.append("visudo -c")
-                elif "nexacore" in f_low or "8080" in f_low:
+                elif "nexacore" in f_low or "9000" in f_low:
                     formatted_steps = [
                         "systemctl restart firewalld 2>/dev/null || true",
                         "systemctl restart Nexacore",
-                        f"curl -s -o /dev/null -w '%{{http_code}}' http://{ip}:8080"
+                        f"curl -s -o /dev/null -w '%{{http_code}}' http://{ip}:9000"
                     ]
                 else:
                     if any(k in f_low for k in ["cpu", "mem", "memory", "ram", "performance", "load", "utilization"]):

@@ -6,6 +6,26 @@ from ..ssh.session import PersistentSSHSession
 from ..session_state import session_state as default_session_state
 from ..safety.validator import check_catastrophic_destructive_command
 
+# Node-health chains for Kubernetes tickets run 4+ layers deep (node status ->
+# kubelet -> containerd -> CNI pod -> the CNI pod's own crash reason), and the
+# first layer, `kubectl` itself, routinely dead-ends on a worker node with no
+# local kubeconfig (see the crictl fallback note in the system prompt below).
+# That's one turn burned discovering a dead end before real diagnosis even
+# starts, so 3 turns leaves no room to reach the actual root cause. Seen live
+# on INC0001732: turn 1 kubectl config view (dead end), turns 2-3 systemctl
+# status kubelet/containerd -- synthesized a fix without ever running
+# `crictl ps -a`, which would have shown the actual crash-looping CNI pod.
+_K8S_KEYWORDS = re.compile(
+    r"\b(kubernetes|kubectl|k8s|pod|pods|node|nodes|cluster|kubelet|containerd|"
+    r"crictl|cni|flannel|calico|deployment|daemonset|replicaset|namespace)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_kubernetes_ticket(short_desc, desc, ci_name):
+    combined = f"{short_desc} {desc} {ci_name}"
+    return bool(_K8S_KEYWORDS.search(combined))
+
 def run_read_only_diagnostic_react_loop(
     ip, user, password, short_desc, desc, number, ci_name,
     target_os="Linux/Unix",
@@ -24,7 +44,7 @@ def run_read_only_diagnostic_react_loop(
             "type": "function",
             "function": {
                 "name": "execute_ssh_command",
-                "description": "Executes a single READ-ONLY SSH diagnostic command on the target host (kubectl, systemctl status, journalctl, ss, ps, grep, cat, ls, id, getent) and returns stdout/stderr.",
+                "description": "Executes a single READ-ONLY SSH diagnostic command on the target host (kubectl, crictl, systemctl status, journalctl, ss, ps, grep, cat, ls, id, getent) and returns stdout/stderr.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -55,6 +75,8 @@ def run_read_only_diagnostic_react_loop(
         )
     user_content += "Please execute focused read-only diagnostic commands targeting the EXACT issue, pod, service, port, or user described above."
 
+    max_turns = 5 if _is_kubernetes_ticket(short_desc, desc, ci_name) else 3
+
     messages = [
         {
             "role": "system", 
@@ -63,17 +85,18 @@ def run_read_only_diagnostic_react_loop(
                 "Your SOLE OBJECTIVE is to inspect the SPECIFIC resources, processes, configurations, and errors directly mentioned in this incident ticket to gather context for automated SOP synthesis.\n\n"
                 "CRITICAL DIRECTIVE — PROBLEM-FIRST DIAGNOSTICS ONLY:\n"
                 "- GO STRAIGHT TO THE PROBLEM NAMED IN THE TICKET! DO NOT waste turns on generic system discovery like `uname -m`, `cat /etc/os-release`, `uptime`, or general package manager checks (`which apt-get`, `which yum`). The target OS and host environment are already known and provided below.\n"
-                "- KUBERNETES / POD / DEPLOYMENT TICKETS: Immediately inspect the specific pod, deployment, replica set, or namespace named in the ticket (`kubectl get pods -A`, `kubectl describe pod <name>`, `kubectl get deployments`, `kubectl get rs`, `kubectl logs <name> --tail=50`, `kubectl get events --sort-by='.metadata.creationTimestamp'`).\n"
+                "- KUBERNETES / POD / DEPLOYMENT TICKETS: Immediately inspect the specific pod, deployment, replica set, or namespace named in the ticket (`kubectl get pods -A`, `kubectl describe pod <name>`, `kubectl get deployments`, `kubectl get rs`, `kubectl logs <name> --tail=50`, `kubectl get events --sort-by='.metadata.creationTimestamp'`). "
+                "IMPORTANT KUBECTL FALLBACK: if `kubectl` errors with 'connection to the server localhost:8080 was refused', that means THIS HOST has no local kubeconfig -- common on worker nodes, which normally only get one on the control plane. Do NOT keep retrying kubectl variants on this host once you see that error. Immediately pivot to `crictl ps -a` (lists every container including exited/crash-looping ones with restart counts -- works on any node regardless of kubeconfig) and `crictl logs <container-id>` on whatever container shows a high restart count, since a crash-looping CNI pod (flannel/calico) is a common cause of a node showing NotReady from the control plane's view.\n"
                 "- SYSTEMD SERVICES / WEB APPS / PORTS: Immediately check the service and port named in the ticket (`systemctl status <service>`, `journalctl -u <service> -n 30 --no-pager`, `ss -tulpn | grep <port>`, `curl -Is http://localhost:<port>`).\n"
                 "- USER CREATION / PERMISSIONS / SUDO: Immediately check existing user accounts and sudo configurations (`id <user>`, `getent passwd <user>`, `ls -la /etc/sudoers.d/`, `cat /etc/sudoers.d/<user> 2>/dev/null`).\n"
                 "- DATABASES (DB2, PostgreSQL, MySQL): Immediately inspect database listeners and active instances.\n"
                 "- PERFORMANCE / RESOURCE ISSUES: Immediately inspect `free -m`, `df -h`, `ps aux --sort=-%mem | head -10`, `ps aux --sort=-%cpu | head -10`.\n\n"
                 "STRICT SAFETY & ACCESS RULES:\n"
                 "1. PERMISSION VS SERVICE RESTART RULE: If an incident ticket requests granting permission/access for a target command (e.g. 'permission to execute systemctl restart sshd'), DO NOT execute that target command (e.g. DO NOT run `systemctl restart sshd` or `systemctl stop sshd`) on the live host! The target command is a privilege specification for sudoers drop-in configuration, NOT a request to restart production services.\n"
-                "2. READ-ONLY COMMANDS ONLY: You may ONLY execute non-destructive diagnostic commands (e.g. `kubectl get/describe/logs`, `cat`, `grep`, `find`, `journalctl`, `ss`, `ps`, `ls`, `id`, `getent`, `systemctl status`, `which`, `curl`).\n"
+                "2. READ-ONLY COMMANDS ONLY: You may ONLY execute non-destructive diagnostic commands (e.g. `kubectl get/describe/logs`, `crictl ps/logs/inspect`, `cat`, `grep`, `find`, `journalctl`, `ss`, `ps`, `ls`, `id`, `getent`, `systemctl status`, `which`, `curl`).\n"
                 "3. NO MUTATING COMMANDS: ABSOLUTELY NO `kubectl delete`, `rm`, `userdel`, `useradd`, `systemctl restart`, `systemctl stop`, `kill`, `chmod`, `sed -i`, `echo >`.\n"
                 "4. OUTPUT FORMAT DIRECTIVE: Perform internal reasoning silently. Do NOT output internal `<thought>` or `<thinking>` tags or chain-of-thought blocks in your responses. Output ONLY direct tool calls and concise execution summaries.\n"
-                "5. EFFICIENT 1-3 TURNS: Execute 1-3 highly targeted diagnostic commands directly relevant to the incident problem, then summarize exact findings."
+                f"5. EFFICIENT {max_turns} TURNS: Execute up to {max_turns} highly targeted diagnostic commands directly relevant to the incident problem, then summarize exact findings. Kubernetes node-health tickets get a larger budget because the chain (node status -> kubelet -> containerd -> CNI pod -> the CNI pod's own crash reason) runs deeper than a typical single-service check."
             )
         },
         {
@@ -83,7 +106,6 @@ def run_read_only_diagnostic_react_loop(
     ]
 
     full_diag_log = ""
-    max_turns = 3
     turn = 0
 
     # This loop's contract is stricter than "not catastrophic" -- it's "read-only,

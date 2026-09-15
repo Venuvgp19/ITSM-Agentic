@@ -97,15 +97,41 @@ def post_synthesis_relevance_audit(steps, ticket_number, short_desc, desc, ci_na
         if any(e in sl for e in ent_lower):
             kept.append(step)
             continue
-        # Phase B: safe generic diagnostics / package-manager verbs
+        # Phase B: safe generic diagnostics / package-manager verbs / service
+        # lifecycle actions. `restart|start|stop|reload` belong here alongside
+        # the read-only verbs -- they're exactly the class of action this
+        # platform exists to propose under SOP+human-approval gating (a real
+        # safety boundary sits downstream in the catastrophic-command
+        # blacklist and per-SOP command allowlist, not here), so excluding
+        # them left every legitimate "systemctl restart <service>" fix
+        # unkeepable regardless of how correctly it targeted the root cause.
         if re.search(
-            r"\b(?:uptime|ps\s+|free\s+|journalctl|ss\s+|netstat|whoami|hostname|uname|cat\s+|tail\s+|grep\s+|echo\s+|touch\s+|mkdir\s+|chmod\s+|chown\s+|systemctl\s+(?:status|is-active|list-units|enable|daemon-reload)|yum\s+(?:install|update|check-update)|apt(?:-get)?\s+(?:install|update))(?=\s|-|:|$)",
+            r"\b(?:uptime|ps\s+|free\s+|journalctl|ss\s+|netstat|whoami|hostname|uname|cat\s+|tail\s+|grep\s+|echo\s+|touch\s+|mkdir\s+|chmod\s+|chown\s+|systemctl\s+(?:status|is-active|list-units|enable|daemon-reload|restart|start|stop|reload|reload-or-restart|restart-or-reload)|yum\s+(?:install|update|check-update)|apt(?:-get)?\s+(?:install|update))(?=\s|-|:|$)",
             sl
         ):
             kept.append(step)
             continue
-        # Phase C: recognized standalone verbs on a presumably-targeted subject
-        if re.search(r"\b(docker|podman|kubectl|node|npm|pip|java)\b", sl):
+        # Phase C: recognized standalone verbs/daemons on a presumably-targeted
+        # subject. containerd/kubelet/crio are the exact daemons whose failure
+        # commonly presents as "kubectl: connection refused" -- a surface
+        # symptom that will never literally name its own root cause, so entity
+        # matching against ticket text can never keep their restart commands
+        # without this explicit allowance (seen live: INC0001732 dropped both
+        # `systemctl restart containerd` and `systemctl restart kubelet`,
+        # leaving only a no-op `sleep 30 && kubectl get nodes` in the approval
+        # queue -- a command that cannot possibly fix the incident).
+        #
+        # `crictl` itself was missing here too -- its target is always a
+        # diagnostic-derived container/pod ID (e.g. `crictl rm 12b20a080ce12`),
+        # which can NEVER appear as a ticket-text entity by definition (the
+        # ticket was filed before that ID was even discovered), so any crictl
+        # command was unkeepable regardless of correctness. Seen live on
+        # INC0001733: the synthesizer proposed a genuinely correct 3-step fix
+        # (restart kubelet -> `crictl rm` the wedged crashed container ->
+        # restart kubelet again) and this filter deleted the one step in the
+        # middle that actually mattered, leaving two redundant restarts either
+        # side of nothing.
+        if re.search(r"\b(docker|podman|kubectl|crictl|kubelet|containerd|crio|dockerd|node|npm|pip|java)\b", sl):
             kept.append(step)
             continue
         dropped.append(step)
@@ -127,7 +153,12 @@ def post_synthesis_relevance_audit(steps, ticket_number, short_desc, desc, ci_na
                 '(no fences): {"verdicts":[{"command":"...","action":"KEEP|FIX|DROP","note":"..."}],"confidence":0.0-1.0}. '
                 "Use FIX only when the command is right but targets the wrong/undefined entity "
                 "and you can name the correct entity from the ticket. Do NOT invent entities "
-                "not in the ticket.\n"
+                "not in the ticket -- but a command that correctly names an underlying service/"
+                "daemon (e.g. restarting kubelet or containerd for a 'kubectl connection refused' "
+                "symptom) is NOT inventing an entity just because that service name isn't literally "
+                "quoted in the ticket text; a surface symptom will rarely name its own root cause, "
+                "so infer it from the diagnostic evidence and KEEP it. Only DROP a command if it "
+                "targets a genuinely unrelated or fabricated resource.\n"
                 f"Candidate commands: {steps}"
             )
             jcontent, _jmodel = invoke_llm_with_fallback(
