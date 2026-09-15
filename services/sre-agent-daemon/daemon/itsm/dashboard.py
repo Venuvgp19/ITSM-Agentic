@@ -34,14 +34,14 @@ def submit_approval_request_to_dashboard(incident_id, incident_title, ci_name, p
         logger.warning(f"Could not submit approval request to dashboard: {e}")
     return None
 
-def post_history_entry_to_dashboard(incident_id, incident_title, ci_name, commands, exec_log, outcome, kb_num, status="AUTO_EXECUTED", human_approver="Autonomous Policy (Low/Medium Risk)"):
+def post_history_entry_to_dashboard(incident_id, incident_title, ci_name, commands, exec_log, outcome, kb_num, status="AUTO_EXECUTED", human_approver="Autonomous Policy (Low/Medium Risk)", model_used=None):
     try:
         payload = {
             "incidentId": incident_id,
             "incidentTitle": incident_title,
             "agentId": "agent-unix-resolver-01",
             "agentName": "🤖 Unix Auto-Resolver Agent",
-            "model": MODEL_NAME,
+            "model": model_used or "🤖 Unknown Model (not captured at execution time)",
             "targetCi": ci_name,
             "department": "Unix",
             "riskLevel": "MEDIUM",

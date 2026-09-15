@@ -35,14 +35,12 @@ export class KnowledgeController {
     return this.knowledgeService.findOne(id);
   }
 
-  @Public()
   @Patch('articles/:id')
   @ApiOperation({ summary: 'Update & Save Knowledge Base Article' })
   async updateArticle(@Param('id') id: string, @Body() dto: any) {
     return this.knowledgeService.updateArticle(id, dto);
   }
 
-  @Public()
   @Delete('articles/:id')
   @ApiOperation({ summary: 'Delete Knowledge Base Article by ID or Number' })
   async deleteArticle(@Param('id') id: string) {
@@ -63,7 +61,6 @@ export class KnowledgeController {
     return this.knowledgeService.synthesizeAllIncidentsInBatches(tenantId);
   }
 
-  @Public()
   @Post('articles')
   @ApiOperation({ summary: 'Create a new Knowledge Base Article' })
   async createArticle(@Body() dto: any) {

@@ -333,13 +333,17 @@ def search_kb_without_embeddings(short_desc, desc, kb_articles):
 
     # 2. Intent Detection for NexaCore Application / Port 8080 Issues
     nexacore_patterns = [
-        "nexacore", "port 8080", "8080", "nexacore portal", "nexacore app",
+        "nexacore", "port 8080", "nexacore portal", "nexacore app",
         "application down", "app down", "app crash", "app not responding",
         "web app", "web server down", "python app", "nexacore down",
         "http 8080", "workernode1hl app", "application recovery",
         "web service down", "application unreachable", "app unreachable"
     ]
-    is_nexacore = any(p in full_text for p in nexacore_patterns)
+    # Bare "8080" used to be in the list above as a plain substring check --
+    # it would match inside an unrelated number (an incident ID, a different
+    # port, a timestamp) anywhere in the ticket text, not just a genuine port
+    # 8080 mention. Word-boundary regex instead.
+    is_nexacore = any(p in full_text for p in nexacore_patterns) or bool(re.search(r"\b8080\b", full_text))
 
     if is_nexacore:
         nexacore_kb = next(

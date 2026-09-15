@@ -212,7 +212,12 @@ def _solve_in_progress_incident_internal(
         logger.info(f"🔒 Incident [{number}] is already RESOLVED — locked from re-processing this session.")
         return
 
-    ci_info, ci_name = resolve_ci_credentials(incident)
+    # ci_info/ci_name are already resolved -- solve_in_progress_incident (the caller)
+    # resolved them once to compute the host lock this function runs inside of.
+    # Re-resolving here would (a) re-run a full ServiceNow CMDB enrichment loop on
+    # every incident when ITSM_PROVIDER == "SERVICENOW", and (b) risk the lock being
+    # keyed to a different host than the one actually executed against, if CMDB data
+    # changed between the two calls.
     if not ci_info:
         dept = incident.get("department", "Unix")
         team_member = get_team_member_for_department(dept)
@@ -346,7 +351,8 @@ def _solve_in_progress_incident_internal(
                         f"CPU/Memory utilization within threshold: {decision_summary}",
                         "KB0468210",
                         status="AUTO_EXECUTED",
-                        human_approver="Autonomous Policy (Threshold Check)"
+                        human_approver="Autonomous Policy (Threshold Check)",
+                        model_used="Deterministic SSH Probe (no LLM invoked)"
                     )
                     state.mark_resolved(inc_id)
                     return
@@ -382,10 +388,13 @@ def _solve_in_progress_incident_internal(
     # check for exactly the tickets it exists to protect (observed live on
     # INC0001726: description text "User reports Nexacore Application is
     # down..." suppressed the health probe entirely).
+    # Word-boundary matches, not bare substring checks -- a bare "8080" in full_text
+    # would also match inside an unrelated ticket/ID number (e.g. "INC0008080") or a
+    # metric value, and a bare "404" would match inside an unrelated number too.
     is_nexacore_down_alert = (
-        ("nexacore" in full_text or "8080" in full_text)
-        and "404" not in full_text
-        and any(k in full_text for k in ["down", "not responding", "unreachable", "connection refused", "crash", "outage", "502", "unavailable"])
+        bool(re.search(r"\b(?:nexacore|8080)\b", full_text))
+        and not re.search(r"\b404\b", full_text)
+        and any(re.search(rf"\b{re.escape(k)}\b", full_text) for k in ["down", "not responding", "unreachable", "connection refused", "crash", "outage", "502", "unavailable"])
     )
     if is_nexacore_down_alert:
         logger.info(f"🌐 Nexacore Down Alert Detected — Verifying live application health on {ci_name} ({ip}) before any restart/start action...")
@@ -417,7 +426,8 @@ def _solve_in_progress_incident_internal(
                         f"Application already healthy: HTTP {http_code}",
                         "KB0000039",
                         status="AUTO_EXECUTED",
-                        human_approver="Autonomous Policy (Health Check)"
+                        human_approver="Autonomous Policy (Health Check)",
+                        model_used="Deterministic SSH Probe (no LLM invoked)"
                     )
                     state.mark_resolved(inc_id)
                     return
@@ -514,7 +524,7 @@ def _solve_in_progress_incident_internal(
                     "incidentTitle": card_title,
                     "agentId": "agent-unix-resolver-01",
                     "agentName": "🤖 Unix Auto-Resolver Agent",
-                    "model": "nvidia/nemotron-3-ultra-550b-a55b",
+                    "model": (new_sop_data or {}).get("model_used") or "🤖 Unknown Model (not captured at synthesis/parameterization time)",
                     "targetCi": f"{ci_name} ({ip})",
                     "department": incident.get("department", "DevOps Team"),
                     "riskLevel": risk_level,
@@ -711,7 +721,7 @@ def _solve_in_progress_incident_internal(
                 "incidentTitle": f"[BINARY AUTHORIZATION REQUIRED] {short_desc}",
                 "agentId": "agent-unix-resolver-01",
                 "agentName": "🤖 Unix Auto-Resolver Agent",
-                "model": "nvidia/nemotron-3-super-120b-a12b",
+                "model": react_model_used or "🤖 Unknown Model (not captured -- deterministic fallback path)",
                 "targetCi": f"{ci_name} ({ip})",
                 "department": incident.get("department", "DevOps Team"),
                 "riskLevel": "HIGH",
@@ -958,7 +968,8 @@ Respond ONLY in valid JSON format:
             evaluation.get("proof_summary", "User created & verified operational."),
             kb_num,
             status="APPROVED" if is_new_use_case else "AUTO_EXECUTED",
-            human_approver="System Admin (Human in the Loop)" if is_new_use_case else "Autonomous Policy (Low/Medium Risk)"
+            human_approver="System Admin (Human in the Loop)" if is_new_use_case else "Autonomous Policy (Low/Medium Risk)",
+            model_used=react_model_used or "a deterministic fallback (no LLM turn completed; approved SOP commands executed directly)"
         )
         
         if is_new_use_case and is_human_authorized and new_sop_data:

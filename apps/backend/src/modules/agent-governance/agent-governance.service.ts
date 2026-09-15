@@ -103,7 +103,7 @@ export class AgentGovernanceService implements OnModuleInit {
       incidentTitle: details.incidentTitle || 'Autonomous Agent Remediation Request',
       agentId: details.agentId || 'agent-unix-resolver-01',
       agentName: details.agentName || '🤖 Unix Auto-Resolver Agent',
-      model: details.model || 'nvidia/nemotron-3-ultra-550b-a55b',
+      model: details.model || '🤖 Unknown Model (not captured at submission time)',
       targetCi: details.targetCi || 'Worker 1 (192.168.56.10)',
       department: details.department || 'Unix',
       riskLevel: details.riskLevel || 'HIGH',

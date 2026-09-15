@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import logging.handlers
 import threading
 from collections import defaultdict
 import urllib3
@@ -24,14 +25,19 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # Also writes to a stable file path (daemon.log, alongside daemon.lock) so
 # log tailing/watcher scripts have a fixed target that survives daemon
 # restarts -- unlike a background-task output file, whose path changes
-# every time the process is relaunched.
+# every time the process is relaunched. Rotating (not a plain FileHandler):
+# this environment restarts the daemon frequently, and a plain append-mode
+# handler would let daemon.log grow without bound forever.
 _log_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(os.path.join(_log_dir, "daemon.log"), encoding="utf-8"),
+        logging.handlers.RotatingFileHandler(
+            os.path.join(_log_dir, "daemon.log"), encoding="utf-8",
+            maxBytes=20 * 1024 * 1024, backupCount=5,
+        ),
     ]
 )
 logger = logging.getLogger("SelfLearningUnixResolverAgent")

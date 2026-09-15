@@ -358,7 +358,14 @@ def save_new_kb_article_to_storage(new_article_data, vdb=None):
             # runContinuousBackgroundSynthesis path, which posts nothing here).
             "isPublished": new_article_data.get("isPublished", True),
         }
-        res = requests.post(f"{ITSM_BASE_URL}/knowledge/articles", json=payload, timeout=5)
+        # POST /knowledge/articles requires auth (no longer @Public() -- an
+        # unauthenticated write into the exact KB the daemon later executes
+        # commands from was a real gap). GET stays public/unauthenticated above.
+        _write_token = get_auth_token()
+        res = requests.post(
+            f"{ITSM_BASE_URL}/knowledge/articles", json=payload,
+            headers={"Authorization": f"Bearer {_write_token}"}, timeout=5
+        )
         if res.status_code in [200, 201]:
             new_article = res.json()
             logger.info(f"✨ PERSISTED NEW SOP ARTICLE TO DATABASE VIA API: {new_article.get('number')} - {new_article.get('title')}")

@@ -260,7 +260,15 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
             # "verify what's actually true right now" principle every other check
             # in this function already applies, just reachable from the
             # no-restart-needed path too instead of only the restart-happened one.
-            port_match = re.search(r"port\s+(\d{2,5})\b", full_text) or re.search(r":(\d{2,5})\b", full_text)
+            # The bare ":(\d{2,5})" fallback previously matched ANY colon-digit run in
+            # the ticket text, including a plain timestamp like "escalated at 09:45" --
+            # producing a bogus "port" and probing the wrong endpoint entirely. Requiring
+            # a host-like token (an IP, or something starting with a letter) before the
+            # colon excludes "HH:MM" (which is pure digits on both sides) while still
+            # matching "workernode1hl:8080", "192.168.56.10:8080", "http://x:8080/", etc.
+            port_match = re.search(r"port\s+(\d{2,5})\b", full_text) or re.search(
+                r"\b(?:(?:\d{1,3}\.){1,3}\d{1,3}|[a-z][a-z0-9.\-]*):(\d{2,5})\b", full_text
+            )
             port = port_match.group(1) if port_match else None
             if port:
                 ok, out = session.exec_command(f"curl -s -o /dev/null -w '%{{http_code}}' --max-time 5 http://localhost:{port}")

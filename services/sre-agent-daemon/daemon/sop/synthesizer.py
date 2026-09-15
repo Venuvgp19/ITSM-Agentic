@@ -671,4 +671,9 @@ Respond ONLY in JSON:
             article=matched_kb,
         )
 
-        return False, top_match['number'], top_match['title'], reasoning, sop_commands, None
+        # Unlike the new-SOP branch above, an existing-SOP match never fully populates
+        # new_sop_data (there's no title/summary/resolution_steps to synthesize -- those
+        # already exist in the KB) -- but a real LLM parameterization call still happens
+        # above, and callers (e.g. incident_lifecycle.py's approval-card "model" field)
+        # need that model name rather than assuming "no LLM was involved" here.
+        return False, top_match['number'], top_match['title'], reasoning, sop_commands, {"model_used": used_model}

@@ -30,13 +30,20 @@ def _regex_recover_classification_fields(raw_text):
     if not raw_text:
         return {}
 
+    # A chained sequence of naive .replace() calls doesn't match real JSON escape
+    # semantics: each one re-scans the WHOLE string, including characters a prior
+    # step already substituted, so e.g. a literal backslash immediately followed by
+    # a literal "t" (JSON-encoded as the 2-char raw sequence \\t, decoding to the
+    # 2-char string "\t" -- backslash then letter t, as in a Windows path like
+    # "C:\temp") gets misread: the earlier `.replace("\\\\", ...)` step hasn't run
+    # yet, so the LATER `.replace("\\t", "\t")` step matches the backslash+t pair
+    # and turns it into a real tab character, corrupting the recovered text. A
+    # single left-to-right regex substitution consumes each backslash-escape
+    # exactly once, matching how JSON actually decodes escapes.
+    _ESCAPE_MAP = {'"': '"', '\\': '\\', '/': '/', 'n': '\n', 't': '\t', 'r': '\r', 'b': '\b', 'f': '\f'}
+
     def _unescape(s):
-        return (
-            s.replace('\\"', '"')
-             .replace("\\n", "\n")
-             .replace("\\t", "\t")
-             .replace("\\\\", "\\")
-        )
+        return re.sub(r'\\(.)', lambda m: _ESCAPE_MAP.get(m.group(1), '\\' + m.group(1)), s)
 
     out = {}
     for field in ("recommendedDepartment", "priority", "reasoningText", "thinkingTrace"):

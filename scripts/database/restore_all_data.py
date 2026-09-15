@@ -310,7 +310,12 @@ conn_sre.close()
 # no matter how long ago the snapshot was captured. See redistribute_timestamps.py.
 print("\n--- Redistributing incident timestamps to end at 'now' ---")
 redistribute_script = os.path.join(repo_root, "scripts", "database", "redistribute_timestamps.py")
-subprocess.run([sys.executable, redistribute_script], cwd=repo_root, check=False)
+redistribute_result = subprocess.run([sys.executable, redistribute_script], cwd=repo_root, check=False)
+if redistribute_result.returncode != 0:
+    print(
+        f"  WARNING: timestamp redistribution exited with code {redistribute_result.returncode} -- "
+        f"incident dates are still the frozen snapshot-export dates, not the last 4 months."
+    )
 
 # --- Derived state: capability tags + vector index --------------------------
 print("\n--- Re-deriving capability tags & vector index ---")

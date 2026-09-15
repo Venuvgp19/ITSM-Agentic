@@ -153,6 +153,7 @@ export default function KnowledgePage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: 'Bearer demo-jwt-access-token-itsm',
         },
         body: JSON.stringify(payload),
       });
@@ -178,7 +179,7 @@ export default function KnowledgePage() {
     try {
       const res = await fetch(`/api/v1/knowledge/articles/${article.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer demo-jwt-access-token-itsm' },
         body: JSON.stringify({ isPublished: true }),
       });
       if (res.ok) {
@@ -214,6 +215,7 @@ export default function KnowledgePage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: 'Bearer demo-jwt-access-token-itsm',
         },
         body: JSON.stringify(payload),
       });
