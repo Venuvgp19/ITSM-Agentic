@@ -18,6 +18,30 @@
         "authentication": "password",
         "resource": "command",
         "operation": "execute",
+        "command": "kubectl delete pod crashloop-demo -n default --grace-period=0 --force --ignore-not-found; kubectl delete svc crashloop-demo -n default --ignore-not-found; kubectl wait --for=delete pod/crashloop-demo -n default --timeout=30s 2>/dev/null; true",
+        "cwd": "/"
+      },
+      "id": "a1e2b3c4-0009-4a1a-9b1a-000000000009",
+      "name": "Reset Any Existing Demo Resources (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        310,
+        300
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "ZXVQbVtXqvcIRU8B",
+          "name": "SSH Password account"
+        }
+      },
+      "notes": "Idempotency guard -- `kubectl run` errors out (without failing the SSH node, since n8n doesn't check exit codes here) if a pod/service named crashloop-demo already exists from a previous run of this workflow, or from manual cleanup/investigation of an earlier incident. Without this, the induce step silently no-ops and the workflow files a ticket describing a crash state that was never actually created this run -- observed live: a healthy leftover 'sleep 86400' pod from a prior manual fix caused exactly this."
+    },
+    {
+      "parameters": {
+        "authentication": "password",
+        "resource": "command",
+        "operation": "execute",
         "command": "kubectl run crashloop-demo --image=busybox --restart=Always -n default --labels=run=crashloop-demo -- /bin/sh -c \"exit 1\"",
         "cwd": "/"
       },
@@ -184,6 +208,17 @@
   ],
   "connections": {
     "Manual Trigger (Run Use Case)": {
+      "main": [
+        [
+          {
+            "node": "Reset Any Existing Demo Resources (SSH)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reset Any Existing Demo Resources (SSH)": {
       "main": [
         [
           {

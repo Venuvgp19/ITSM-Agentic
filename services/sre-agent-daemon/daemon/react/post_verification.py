@@ -93,6 +93,52 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
                 "refusing to assume success without live confirmation."
             )
 
+    # --- Kubernetes Deployment / Workload Creation check ---
+    # Triggered on exec_log ground truth (an actual `kubectl create deployment`
+    # or `kubectl run` was executed), not ticket text -- unlike the Azure Web App
+    # branch further below, which matched on the bare phrase "web app" in the
+    # ticket and so misfired on tickets like "create a simple web app on
+    # Kubernetes worker1OL" whose SOP correctly ran kubectl, not `az webapp
+    # create`. Observed live: that ticket got escalated with "Could not identify
+    # a specific Azure Web App name" despite the k8s deployment/service/pod
+    # having been created successfully and confirmed by the earlier LLM
+    # evaluation step. Checked before the generic Service/Application branch and
+    # the Azure Web App branch so a real k8s creation is verified on its own
+    # terms instead of falling through to either.
+    elif re.search(r'kubectl\s+create\s+deployment\s+(\S+)', exec_log) or re.search(r'kubectl\s+run\s+(\S+)', exec_log):
+        dep_match = re.search(r'kubectl\s+create\s+deployment\s+(\S+)', exec_log)
+        run_match = re.search(r'kubectl\s+run\s+(\S+)', exec_log)
+        workload = (dep_match or run_match).group(1) if (dep_match or run_match) else None
+        ns_match = re.search(r'-n\s+(\S+)|--namespace[=\s](\S+)', exec_log)
+        namespace = next((g for g in (ns_match.groups() if ns_match else ()) if g), "default")
+        if not workload:
+            is_fixed = False
+            evidence_lines.append(
+                "❌ Could not identify a specific Kubernetes deployment/workload name from the executed commands to verify — "
+                "refusing to assume success without live confirmation."
+            )
+        elif dep_match:
+            ok, out = session.exec_command(f"kubectl rollout status deployment/{workload} -n {namespace} --timeout=20s 2>&1")
+            body = clean_ssh_stdout(out).lower()
+            if "successfully rolled out" in body:
+                evidence_lines.append(f"✅ Deployment '{workload}' rolled out and confirmed live via 'kubectl rollout status'.")
+            else:
+                is_fixed = False
+                evidence_lines.append(f"❌ Deployment '{workload}' did not report a successful rollout live: {clean_ssh_stdout(out)[:300]}")
+        else:
+            # `kubectl run` creates a bare Pod, not a Deployment -- rollout status
+            # doesn't apply. Pod phase is the equivalent live signal; ContainerCreating
+            # is expected immediately after creation and is not itself a failure (the
+            # daemon's own diagnostic evaluation step already accounts for this), so
+            # only a clearly-broken phase counts as unverified here.
+            ok, out = session.exec_command(f"kubectl get pod {workload} -n {namespace} -o jsonpath='{{.status.phase}}' 2>&1")
+            phase = clean_ssh_stdout(out).upper()
+            if phase in ("RUNNING", "SUCCEEDED", "PENDING", "CONTAINERCREATING", ""):
+                evidence_lines.append(f"✅ Pod '{workload}' phase after creation: '{phase or 'starting'}' — confirmed live via kubectl.")
+            else:
+                is_fixed = False
+                evidence_lines.append(f"❌ Pod '{workload}' is in unexpected phase '{phase}' after creation.")
+
     # --- Linux User Account check ---
     # NOTE: "permission" was previously in this trigger list on its own, broad enough
     # to misroute unrelated tickets (e.g. a file-share "permission denied" issue) into
@@ -317,7 +363,7 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
     # report its own "provisioningState": "Succeeded" in the log while the actual
     # requested Web App never got created (e.g. blocked by quota) -- so the specific
     # target resource must be confirmed live, not inferred from a log substring.
-    elif any(k in full_text for k in ["web app", "webapp", "app service", "appservice"]):
+    elif "kubectl" not in exec_log.lower() and any(k in full_text for k in ["web app", "webapp", "app service", "appservice"]):
         webapp_names = set(re.findall(r'az\s+webapp\s+create\s+.*?(?:-n|--name)\s+([^\s]+)', exec_log))
         webapp_names |= set(re.findall(r'az\s+webapp\s+(?:show|config|deploy)\s+.*?(?:-n|--name)\s+([^\s]+)', exec_log))
         if not webapp_names:
