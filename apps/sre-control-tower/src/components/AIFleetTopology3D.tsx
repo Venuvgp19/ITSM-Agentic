@@ -180,15 +180,37 @@ function distToSegment(px: number, py: number, ax: number, ay: number, bx: numbe
 export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [yaw, setYaw] = useState(0.5);
-  const [pitch, setPitch] = useState(-0.15);
+  // Camera angles live as refs, not state: the render loop below updates them on
+  // every animation frame (auto-rotate, drag, fly-to-focus), and they used to be
+  // useState -- which meant every frame called setYaw/setPitch, and because yaw/
+  // pitch were also in the render effect's dependency array, React tore down and
+  // rebuilt the ENTIRE requestAnimationFrame loop (cancel + re-run the whole
+  // effect from scratch) on every single frame instead of running one continuous
+  // loop. That's what made the auto-rotate (the default mode) visibly stutter --
+  // refs can be mutated freely without triggering a re-render or an effect re-run.
+  const yawRef = useRef(0.5);
+  const pitchRef = useRef(-0.15);
   const [autoRotate, setAutoRotate] = useState(true);
   const [zoom, setZoom] = useState(1);
   const isDragging = useRef(false);
   const draggedThisPress = useRef(false);
   const lastMousePos = useRef({ x: 0, y: 0 });
+  // hoveredId/tooltip stay real state too (the tooltip renders as an actual DOM
+  // element below, which needs React to re-render when it appears/moves/changes)
+  // -- but the render loop reads them through these parallel refs instead of
+  // closing over the state directly, and they're deliberately NOT in the render
+  // effect's dependency array. tooltip in particular is a freshly-allocated
+  // object on every mousemove (new x/y as the cursor moves across an edge), so
+  // it's never reference-equal to its previous value and React never bails out
+  // of the update -- with it in the deps, every pixel of hover motion tore down
+  // and rebuilt the whole requestAnimationFrame loop (same class of bug as the
+  // yaw/pitch fix above, just event-driven instead of frame-driven), which also
+  // reset startTime and made the star-twinkle background visibly jump/restart
+  // on every hover move -- the "stuck and reloading" look.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const hoveredIdRef = useRef<string | null>(null);
+  const tooltipRef = useRef<{ x: number; y: number; text: string } | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const wasAutoRotating = useRef(autoRotate);
   const [history, setHistory] = useState<any[]>([]);
@@ -513,11 +535,15 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
     if (!ctx) return;
 
     let animationId: number;
-    let localYaw = yaw;
-    let localPitch = pitch;
     const startTime = Date.now();
 
     const render = () => {
+      // Re-synced from the refs every frame (not just once at effect-start) so an
+      // external mutation -- a drag in progress, a fly-to-focus target changing --
+      // is picked up immediately regardless of what triggered this particular run
+      // of the effect.
+      let localYaw = yawRef.current;
+      let localPitch = pitchRef.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const cx = canvas.width / 2;
       const cy = canvas.height / 2;
@@ -610,7 +636,7 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
           (a.n.status === 'CONTAINED' && a.n.kind !== 'host' && a.n.kind !== 'database' && a.n.kind !== 'backend') ||
           (b.n.status === 'CONTAINED' && b.n.kind !== 'host' && b.n.kind !== 'database' && b.n.kind !== 'backend');
         const heat = Math.max(heatById[edge.from] || 0, heatById[edge.to] || 0);
-        const isHoveredEdge = tooltip && tooltip.text === edge.label;
+        const isHoveredEdge = tooltipRef.current && tooltipRef.current.text === edge.label;
 
         // Slight perpendicular bow through the midpoint -- straight lines from
         // a rotating camera read as flat wireframe; a curve reads as depth.
@@ -710,7 +736,7 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
 
       projected.forEach((p) => {
         const { n, sx, sy, scale, zDepth } = p;
-        const isHovered = hoveredId === n.id;
+        const isHovered = hoveredIdRef.current === n.id;
         const isContained = n.status === 'CONTAINED';
         const heat = heatById[n.id] || 0;
         const baseColor = isContained ? '#f43f5e' : n.color;
@@ -862,14 +888,20 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      if (!isDragging.current && !focusId) setYaw(localYaw);
-      if (!isDragging.current && !focusId) setPitch(localPitch);
+      // Always write back (no drag/focus guard) -- localYaw only actually changed
+      // this frame via the auto-rotate or fly-to-focus easing branches above; while
+      // dragging or idle it's an unchanged no-op. Guarding this used to matter when
+      // it fed setState (skip re-rendering mid-drag/mid-flight for other reasons),
+      // but now it's the only place the fly-to-focus easing's progress is persisted
+      // between frames, so it must run unconditionally or the flight never advances.
+      yawRef.current = localYaw;
+      pitchRef.current = localPitch;
       animationId = requestAnimationFrame(render);
     };
 
     render();
     return () => cancelAnimationFrame(animationId);
-  }, [nodes, nodeById, heatById, yaw, pitch, autoRotate, zoom, hoveredId, tooltip, focusId, onSelectAsset, stars, nebulaLayer, pendingApprovals, replayMode]);
+  }, [nodes, nodeById, heatById, autoRotate, zoom, focusId, onSelectAsset, stars, nebulaLayer, pendingApprovals, replayMode]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
@@ -893,8 +925,8 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
       const deltaX = e.clientX - lastMousePos.current.x;
       const deltaY = e.clientY - lastMousePos.current.y;
       if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) draggedThisPress.current = true;
-      setYaw((y) => y + deltaX * 0.007);
-      setPitch((p) => Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, p + deltaY * 0.007)));
+      yawRef.current += deltaX * 0.007;
+      pitchRef.current = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitchRef.current + deltaY * 0.007));
       lastMousePos.current = { x: e.clientX, y: e.clientY };
       return;
     }
@@ -902,10 +934,10 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
     const { mx, my } = getCanvasCoords(e);
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
-    const cosY = Math.cos(yaw);
-    const sinY = Math.sin(yaw);
-    const cosX = Math.cos(pitch);
-    const sinX = Math.sin(pitch);
+    const cosY = Math.cos(yawRef.current);
+    const sinY = Math.sin(yawRef.current);
+    const cosX = Math.cos(pitchRef.current);
+    const sinX = Math.sin(pitchRef.current);
     const fov = 400;
 
     const projections = nodes.map((n) => {
@@ -928,9 +960,11 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
     }
 
     canvas.style.cursor = hitId ? 'pointer' : 'grab';
+    hoveredIdRef.current = hitId;
     setHoveredId(hitId);
 
     if (hitId) {
+      tooltipRef.current = null;
       setTooltip(null);
       return;
     }
@@ -952,12 +986,15 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
     if (hitEdge) {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
-      setTooltip({
+      const nextTooltip = {
         x: (e.clientX - rect.left) / scaleX,
         y: (e.clientY - rect.top) / scaleX,
         text: hitEdge.label,
-      });
+      };
+      tooltipRef.current = nextTooltip;
+      setTooltip(nextTooltip);
     } else {
+      tooltipRef.current = null;
       setTooltip(null);
     }
   };
