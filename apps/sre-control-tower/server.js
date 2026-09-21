@@ -580,7 +580,17 @@ app.post('/api/v1/agent/approvals/:id/consume', async (req, res) => {
 // Audit History
 app.get('/api/v1/agent/history', async (req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM sre_history ORDER BY executed_at DESC LIMIT 200`);
+    // Was LIMIT 200 -- the frontend derives "Total Audit Traces" and every other
+    // KPI tile (Auto-Executed/Approved/Rejected counts, Avg Duration) from this
+    // array's own .length/contents (see HistoricalActivityView.tsx), not a
+    // separate COUNT(*) query, so a low cap here silently mislabeled a truncated
+    // page as the true total -- it read exactly "200" forever regardless of how
+    // many rows actually existed or were deleted. Raised well above realistic
+    // table growth so those derived stats are accurate again; a real COUNT(*)-
+    // backed total would be more correct long-term but touches every consumer
+    // of this endpoint's array-shaped response (AIFleetTopology3D.tsx,
+    // VectorSpace3D.tsx also fetch it directly).
+    const result = await pool.query(`SELECT * FROM sre_history ORDER BY executed_at DESC LIMIT 5000`);
     const mapped = result.rows.map(row => ({
       id: row.id,
       approvalId: row.approval_id,

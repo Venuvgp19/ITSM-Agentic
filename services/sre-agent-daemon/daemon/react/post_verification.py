@@ -274,8 +274,18 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
         # created "Venkata redddy" account as a useradd failure. Uses the ORIGINAL
         # short_desc/desc (not the lowercased full_text) so the extracted name keeps
         # its real casing -- `id`/`useradd` are case-sensitive.
+        # "account" alone (without "named"/"called" after it) must ALSO be
+        # skippable -- "Create Linux user account Shreya on Worker1OL" is at
+        # least as common a phrasing as "user account named Shreya", but the
+        # previous pattern only skipped "account" when "named"/"called"
+        # immediately followed it. Since the skip-group as a whole is
+        # optional, requiring the literal word "named"/"called" meant it
+        # simply failed to match at all on the bare "account <NAME>" form,
+        # and the capture group greedily absorbed "account" into the
+        # username itself -- observed live: "account Shreya" reported as a
+        # failed useradd for a user that had actually been created correctly.
         ticket_name_match = re.search(
-            r'\buser\s+(?:account\s+(?:named|called)\s+)?([A-Za-z][A-Za-z0-9_\-]*(?:\s[A-Za-z0-9_\-]+)*?)(?=\s+(?:on|with|in|for|to)\b|[.,]|$)',
+            r'\buser\s+(?:account\s+(?:named\s+|called\s+)?)?([A-Za-z][A-Za-z0-9_\-]*(?:\s[A-Za-z0-9_\-]+)*?)(?=\s+(?:on|with|in|for|to|from)\b|[.,]|$)',
             f"{short_desc} {desc}"
         )
         if ticket_name_match:

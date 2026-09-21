@@ -218,24 +218,43 @@ async function answerQuestion({ text, channel, thread_ts, say }) {
     }
   };
 
-  try {
-    await streamChat(question, async (eventName, data) => {
-      if (eventName === 'token' && data.delta) {
-        accumulated += data.delta;
-        await updateMessage(`${accumulated} ▌`);
-      } else if (eventName === 'checkpoint' && data.message) {
-        await updateMessage(`🤔 ${data.message}`, true);
-      } else if (eventName === 'error') {
-        throw new Error(data.error || 'Unknown error from SRE Assistant');
+  // One raw fetch, zero retry, was surfacing every transient blip straight to
+  // the user as a hard failure -- both a bare network-level "fetch failed"
+  // and a one-off upstream 500 from the LLM provider (already observed
+  // happening intermittently and self-recovering on retry elsewhere in this
+  // codebase, e.g. server.js's own fetchWithRetry). Retry up to 3 attempts
+  // total, but ONLY while nothing has streamed yet -- once real answer tokens
+  // have started arriving, a transient failure mid-stream must not silently
+  // restart the whole answer from scratch and confuse the user with a second,
+  // unrelated attempt appended to a partial one.
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    accumulated = '';
+    try {
+      await streamChat(question, async (eventName, data) => {
+        if (eventName === 'token' && data.delta) {
+          accumulated += data.delta;
+          await updateMessage(`${accumulated} ▌`);
+        } else if (eventName === 'checkpoint' && data.message) {
+          await updateMessage(`🤔 ${data.message}`, true);
+        } else if (eventName === 'error') {
+          throw new Error(data.error || 'Unknown error from SRE Assistant');
+        }
+        // tool_start / tool_done fire per DB query the assistant runs -- not
+        // surfaced to Slack, only the accumulating answer text is.
+      });
+      const finalText = accumulated.trim() || 'Sorry, I could not generate a response.';
+      await updateMessage(finalText, true);
+      return;
+    } catch (err) {
+      console.error(`[slack-bridge] chat error (attempt ${attempt}/${MAX_ATTEMPTS}):`, err.message);
+      if (accumulated || attempt === MAX_ATTEMPTS) {
+        await updateMessage(`⚠️ Failed to reach the SRE Assistant: ${err.message}`, true);
+        return;
       }
-      // tool_start / tool_done fire per DB query the assistant runs -- not
-      // surfaced to Slack, only the accumulating answer text is.
-    });
-    const finalText = accumulated.trim() || 'Sorry, I could not generate a response.';
-    await updateMessage(finalText, true);
-  } catch (err) {
-    console.error('[slack-bridge] chat error:', err.message);
-    await updateMessage(`⚠️ Failed to reach the SRE Assistant: ${err.message}`, true);
+      await updateMessage(`🤔 Thinking… (retrying after a transient error)`, true);
+      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    }
   }
 }
 

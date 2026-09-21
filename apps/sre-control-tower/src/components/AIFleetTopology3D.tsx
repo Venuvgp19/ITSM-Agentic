@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Radio, Activity, Terminal, Play, Pause, X } from 'lucide-react';
+import { Radio, Activity, Terminal, X } from 'lucide-react';
 import { AIAsset } from './AIAssetInventoryView';
 
 interface AIFleetTopology3DProps {
@@ -220,14 +220,6 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
   const burstsRef = useRef<Burst[]>([]);
   const seenHistoryIdsRef = useRef<Set<string>>(new Set());
 
-  // Decision Replay -- scrubs through real past sre_history events in
-  // chronological order, re-using the same burst/camera-flight machinery as
-  // live events instead of a separate rendering path.
-  const [replayMode, setReplayMode] = useState(false);
-  const [replayPlaying, setReplayPlaying] = useState(false);
-  const [replayIndex, setReplayIndex] = useState(0);
-  const replaySeqRef = useRef<any[]>([]);
-
   // Live activity feed -- powers the "recent activity" glow/pulse weighting,
   // and (below) real-time burst/ticker events. Polled fairly aggressively
   // since this is a lightweight GET and the whole point of this view is to
@@ -260,12 +252,11 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
   }, []);
 
   // Detect genuinely NEW history rows (not just a re-fetch of the same 200)
-  // and turn each one into a traveling burst + ticker line. Skipped while
-  // replaying so the two event streams never mix, and the very first load
-  // just marks everything as "seen" instead of flooding the view with a
+  // and turn each one into a traveling burst + ticker line. The very first
+  // load just marks everything as "seen" instead of flooding the view with a
   // burst per row in the existing backlog.
   useEffect(() => {
-    if (replayMode || !history.length) return;
+    if (!history.length) return;
     if (seenHistoryIdsRef.current.size === 0) {
       history.forEach((h) => h.id && seenHistoryIdsRef.current.add(h.id));
       return;
@@ -294,69 +285,7 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         ].slice(0, 20)
       );
     });
-  }, [history, replayMode]);
-
-  // Replay playback: advance one event every 1.2s while playing.
-  useEffect(() => {
-    if (!replayMode || !replayPlaying) return;
-    const seq = replaySeqRef.current;
-    if (!seq.length) return;
-    const timer = setInterval(() => {
-      setReplayIndex((i) => {
-        if (i + 1 >= seq.length) {
-          setReplayPlaying(false);
-          return i;
-        }
-        return i + 1;
-      });
-    }, 1200);
-    return () => clearInterval(timer);
-  }, [replayMode, replayPlaying]);
-
-  // Replay step: fire the same burst/camera-flight treatment as a live event
-  // for whichever historical row the scrubber is currently on.
-  useEffect(() => {
-    if (!replayMode) return;
-    const ev = replaySeqRef.current[replayIndex];
-    if (!ev) return;
-    const fromId = matchEventToAssetNode(ev);
-    const toId = matchEventToHostNode(ev);
-    burstsRef.current.push({
-      id: `replay-${ev.id}-${replayIndex}`,
-      fromId,
-      toId,
-      startTime: Date.now(),
-      color: ev.status === 'REJECTED' ? '#f43f5e' : '#38bdf8',
-    });
-    setFocusId(fromId);
-    setTicker((t) =>
-      [
-        {
-          id: `replay-${replayIndex}`,
-          text: `REPLAY ${new Date(ev.executedAt).toLocaleTimeString()} · ${ev.incidentId || ''} ${ev.agentName || 'Agent'} → ${ev.targetCi || 'target'}: ${ev.actionType || ev.commandExecuted || ''}`,
-        },
-        ...t,
-      ].slice(0, 20)
-    );
-  }, [replayIndex, replayMode]);
-
-  const toggleReplay = () => {
-    if (!replayMode) {
-      const seq = [...history]
-        .filter((h) => h.executedAt)
-        .sort((a, b) => new Date(a.executedAt).getTime() - new Date(b.executedAt).getTime());
-      replaySeqRef.current = seq;
-      setReplayIndex(0);
-      setReplayPlaying(false);
-      setAutoRotate(false);
-      setReplayMode(true);
-    } else {
-      setReplayMode(false);
-      setReplayPlaying(false);
-      setFocusId(null);
-      setAutoRotate(true);
-    }
-  };
+  }, [history]);
 
   const terminalEvents = useMemo(() => {
     if (!terminalNodeId) return [] as any[];
@@ -580,9 +509,9 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         localYaw += (desiredYaw - localYaw) * 0.06;
         localPitch += (desiredPitch - localPitch) * 0.06;
         if (Math.abs(desiredYaw - localYaw) < 0.02 && Math.abs(desiredPitch - localPitch) < 0.02) {
-          if (target.asset && !replayMode) onSelectAsset(target.asset);
+          if (target.asset) onSelectAsset(target.asset);
           setFocusId(null);
-          if (!replayMode) setAutoRotate(wasAutoRotating.current);
+          setAutoRotate(wasAutoRotating.current);
         }
       } else if (autoRotate && !isDragging.current) {
         localYaw += 0.0025;
@@ -693,11 +622,11 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         }
       });
 
-      // Live/replay event bursts -- a real sre_history row (new activity, or
-      // the current replay-scrubber position) traveling as a bright comet
-      // from its source AI asset to the host it targeted, distinct from the
-      // ambient heat-based comet trail on ALL_EDGES above. Falls back to a
-      // pulsing ring on the source node alone when no host was matched.
+      // Live event bursts -- a real sre_history row (new activity) traveling
+      // as a bright comet from its source AI asset to the host it targeted,
+      // distinct from the ambient heat-based comet trail on ALL_EDGES above.
+      // Falls back to a pulsing ring on the source node alone when no host
+      // was matched.
       const BURST_LIFESPAN = 2200;
       burstsRef.current = burstsRef.current.filter((b) => Date.now() - b.startTime < BURST_LIFESPAN);
       burstsRef.current.forEach((b) => {
@@ -901,7 +830,7 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
 
     render();
     return () => cancelAnimationFrame(animationId);
-  }, [nodes, nodeById, heatById, autoRotate, zoom, focusId, onSelectAsset, stars, nebulaLayer, pendingApprovals, replayMode]);
+  }, [nodes, nodeById, heatById, autoRotate, zoom, focusId, onSelectAsset, stars, nebulaLayer, pendingApprovals]);
 
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
@@ -1029,19 +958,7 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         </div>
         <div className="flex items-center gap-3 text-xs">
           <button
-            onClick={toggleReplay}
-            className={`px-3 py-1.5 rounded-lg border font-bold transition cursor-pointer flex items-center gap-1.5 ${
-              replayMode
-                ? 'bg-violet-600/20 border-violet-500/30 text-violet-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5" />
-            {replayMode ? 'Exit Replay' : 'Decision Replay'}
-          </button>
-          <button
             onClick={() => setAutoRotate(!autoRotate)}
-            disabled={replayMode}
             className={`px-3 py-1.5 rounded-lg border font-bold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               autoRotate
                 ? 'bg-cyan-600/20 border-cyan-500/30 text-cyan-300'
@@ -1068,35 +985,6 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         </div>
       </div>
 
-      {replayMode && (
-        <div className="flex items-center gap-3 px-3 py-2 rounded-xl border border-violet-500/30 bg-violet-950/20 text-xs">
-          <button
-            onClick={() => setReplayPlaying((p) => !p)}
-            disabled={replaySeqRef.current.length === 0}
-            className="p-1.5 rounded-lg bg-violet-600/30 border border-violet-500/40 text-violet-200 hover:bg-violet-600/50 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {replayPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={Math.max(0, replaySeqRef.current.length - 1)}
-            value={replayIndex}
-            onChange={(e) => {
-              setReplayPlaying(false);
-              setReplayIndex(Number(e.target.value));
-            }}
-            disabled={replaySeqRef.current.length === 0}
-            className="flex-1 accent-violet-500"
-          />
-          <span className="font-mono text-violet-300 whitespace-nowrap">
-            {replaySeqRef.current.length === 0
-              ? 'No recorded events to replay'
-              : `${replayIndex + 1} / ${replaySeqRef.current.length}`}
-          </span>
-        </div>
-      )}
-
       <div ref={containerRef} className="relative">
         <canvas
           ref={canvasRef}
@@ -1118,13 +1006,13 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
           </div>
         )}
 
-        {/* Live event ticker -- real sre_history rows as they land, or the
-            replay scrubber's current position, instead of only an ambient
-            heat glow with no textual record of what actually happened. */}
+        {/* Live event ticker -- real sre_history rows as they land, instead
+            of only an ambient heat glow with no textual record of what
+            actually happened. */}
         <div className="absolute bottom-3 left-3 w-72 max-h-36 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/85 backdrop-blur-sm p-2.5 text-[10px] font-mono space-y-1 pointer-events-none z-10">
           <div className="text-slate-500 font-bold mb-1 flex items-center gap-1.5">
             <Activity className="w-3 h-3 text-amber-400" />
-            {replayMode ? 'Replay Feed' : 'Live Event Feed'}
+            Live Event Feed
           </div>
           {ticker.length === 0 ? (
             <div className="text-slate-600">Listening for fleet activity…</div>

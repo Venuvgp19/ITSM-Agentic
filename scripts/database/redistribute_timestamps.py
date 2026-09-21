@@ -78,9 +78,99 @@ def shift_activity_timestamp(ts_str, delta):
     return ts_str
 
 
+def fix_chronology_violations(itsm):
+    """
+    Guards against exactly the bug found live on INC0001737: resolvedAt/closedAt
+    written as raw local wall-clock digits into a naive `timestamp` column
+    (whatever process wrote it didn't convert to the same timezone convention
+    createdAt uses -- e.g. a manual correction using a bare `datetime.now()`),
+    landing hours "before" createdAt and producing a negative resolution time.
+
+    This shift script preserves whatever relative ordering already exists (see
+    module docstring) -- it CANNOT fix bad chronology on its own, only move it
+    to a new absolute date. So this runs first: repair the source data, then
+    the per-incident delta shift below propagates the now-valid chronology
+    instead of faithfully preserving a bug.
+
+    Two distinct fixes, not one -- they have different signatures and need
+    different corrections:
+      1. resolvedAt/closedAt < createdAt by something close to a whole number
+         of hours (a timezone-offset-sized gap) -- add whole hours until the
+         ordering is valid. This is a real, different-timezone-write bug, not
+         noise, so it's corrected by undoing the apparent offset rather than
+         just clamped to createdAt (which would fabricate a duration).
+      2. closedAt < resolvedAt (you can't close before resolving, regardless
+         of timezone) -- not an offset artifact, just two fields going out of
+         sync. Clamped to closedAt = resolvedAt.
+    Anything that doesn't fit either shape is clamped to createdAt + 1 minute
+    with a loud warning -- this script must never silently ship invalid
+    chronology, even for a shape of bad data it doesn't specifically recognize.
+    """
+    cur = itsm.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute('SELECT id, number, "createdAt", "openedAt", "resolvedAt", "closedAt" FROM "Incident"')
+    rows = cur.fetchall()
+
+    # openedAt is a THIRD, separate bug shape from the two above: it isn't a
+    # timezone-offset artifact and it isn't a two-fields-out-of-sync slip --
+    # across the bulk of the seed dataset it's simply unrelated to createdAt
+    # entirely (observed live: 1035 of 1751 incidents differ by more than 30
+    # days, only 81 land within a minute of createdAt as the schema's own
+    # `@default(now())` on both fields implies they should). There's no
+    # signal worth preserving in a value that's effectively random relative
+    # to its own incident's createdAt, so this resets it to match createdAt
+    # outright rather than trying to detect/repair it case by case.
+    opened_reset = 0
+    for row in rows:
+        if row["openedAt"] != row["createdAt"]:
+            cur.execute('UPDATE "Incident" SET "openedAt"=%s WHERE id=%s', (row["createdAt"], row["id"]))
+            opened_reset += 1
+    if opened_reset:
+        print(f"Chronology guard: reset openedAt to createdAt on {opened_reset} incident(s) (openedAt carried no reliable signal).")
+
+    fixed = 0
+    for row in rows:
+        created, resolved, closed = row["createdAt"], row["resolvedAt"], row["closedAt"]
+        new_resolved, new_closed = resolved, closed
+
+        if resolved is not None and resolved < created:
+            hours = 1
+            while hours <= 14 and resolved + timedelta(hours=hours) < created:
+                hours += 1
+            candidate = resolved + timedelta(hours=hours)
+            if candidate < created:
+                print(f"  WARN: {row['number']} resolvedAt ({resolved}) is before createdAt ({created}) "
+                      f"by more than 14h -- not a plausible timezone-offset error. Clamping to createdAt + 1min.")
+                candidate = created + timedelta(minutes=1)
+            new_resolved = candidate
+            fixed += 1
+
+        if closed is not None and closed < created:
+            new_closed = new_resolved if new_resolved is not None else created + timedelta(minutes=1)
+            fixed += 1
+        elif closed is not None and new_resolved is not None and closed < new_resolved:
+            new_closed = new_resolved
+            fixed += 1
+
+        if new_resolved != resolved or new_closed != closed:
+            cur.execute(
+                'UPDATE "Incident" SET "resolvedAt"=%s, "closedAt"=%s WHERE id=%s',
+                (new_resolved, new_closed, row["id"]),
+            )
+            print(f"  Fixed {row['number']}: resolvedAt {resolved} -> {new_resolved}, closedAt {closed} -> {new_closed}")
+
+    itsm.commit()
+    cur.close()
+    if fixed:
+        print(f"Chronology guard: corrected {fixed} field(s) with invalid resolvedAt/closedAt ordering.")
+    else:
+        print("Chronology guard: no violations found.")
+
+
 def main():
     itsm = psycopg2.connect(ITSM_DSN)
     sre = psycopg2.connect(SRE_DSN)
+
+    fix_chronology_violations(itsm)
 
     with itsm.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
