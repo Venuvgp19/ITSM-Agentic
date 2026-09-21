@@ -5,6 +5,60 @@ _LAST_CMD_BLOCK_RE = re.compile(
     r'=== \[CMD:\s*(.*?)\]\s*===\s*STDOUT:\s*(.*?)STDERR:\s*(.*?)(?=(?:=== \[CMD:)|\Z)',
     re.DOTALL,
 )
+# Isolates just the command text of every "=== [CMD: <cmd>] ===" block (see
+# ssh/session.py's exec_command) -- used when a check needs to scan ONLY what
+# was actually typed, not the STDOUT/STDERR that follows on the same block.
+# Scanning the raw, un-isolated exec_log for a command verb is unsafe: an error
+# message can echo the verb back too (e.g. STDERR "useradd: invalid user name
+# ..."), and a naive "grab everything after the verb up to the next command"
+# approach would then capture fragments of THAT error text as if they were
+# part of the command.
+_CMD_TEXT_RE = re.compile(r'=== \[CMD:\s*(.*?)\]\s*===', re.DOTALL)
+
+
+def _extract_trailing_arg_candidates(cmd_verb, exec_log):
+    """For every isolated command invoking cmd_verb (useradd/userdel), returns
+    its final argument -- the target username -- preferring a quoted value
+    (which preserves internal spaces, e.g. "Venkata redddy") over a bare
+    whitespace-delimited token. The username is always the last positional
+    argument to useradd/userdel regardless of how many flags precede it, so
+    anchoring on the END of the command's own isolated text sidesteps having
+    to enumerate every possible flag/flag-with-value combination that could
+    precede it.
+    """
+    results = []
+    for cmd_text in _CMD_TEXT_RE.findall(exec_log or ""):
+        seg_match = re.search(rf'\b{cmd_verb}\b[^;&]*', cmd_text)
+        if not seg_match:
+            continue
+        m = re.search(r'(?:"([^"]+)"|\'([^\']+)\'|(\S+))\s*$', seg_match.group(0).strip())
+        if m:
+            val = next((g for g in m.groups() if g), None)
+            if val:
+                results.append(val)
+    return results
+
+
+def _dedupe_username_fragments(candidates):
+    """Drops any single-word candidate that is really just a word-fragment of
+    a longer, multi-word candidate also present in the set. Fragile shell-text
+    parsing (across several LLM retry attempts with inconsistent quoting) can
+    produce both the correct full candidate (e.g. "Venkata redddy", a username
+    containing a space) AND a truncated word-fragment of it (e.g. "Venkata" or
+    "redddy") from a differently-quoted or malformed attempt at the same
+    command. Checking the fragment separately via `id <fragment>` always fails
+    -- it was never a real, independent account -- which used to report a
+    false post-remediation failure for a remediation that actually succeeded.
+    """
+    result = set(candidates)
+    for c in list(result):
+        if len(c.split()) > 1:
+            continue
+        for other in list(result):
+            if other != c and len(other.split()) > 1 and c in other.split():
+                result.discard(c)
+                break
+    return result
 _HARD_ERROR_MARKERS = (
     "error", "traceback", "command not found", "permission denied",
     "not found", "resourcenotfound", "cannot be completed", "denied",
@@ -106,11 +160,32 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
     # the Azure Web App branch so a real k8s creation is verified on its own
     # terms instead of falling through to either.
     elif re.search(r'kubectl\s+create\s+deployment\s+(\S+)', exec_log) or re.search(r'kubectl\s+run\s+(\S+)', exec_log):
-        dep_match = re.search(r'kubectl\s+create\s+deployment\s+(\S+)', exec_log)
-        run_match = re.search(r'kubectl\s+run\s+(\S+)', exec_log)
-        workload = (dep_match or run_match).group(1) if (dep_match or run_match) else None
-        ns_match = re.search(r'-n\s+(\S+)|--namespace[=\s](\S+)', exec_log)
-        namespace = next((g for g in (ns_match.groups() if ns_match else ()) if g), "default")
+        # [^\s\]]+ (not \S+) throughout this block -- ssh/session.py wraps every
+        # executed command as "=== [CMD: <cmd>] ===" with the closing "]" sitting
+        # directly against the command text with no separating space, so a plain
+        # \S+ token capture can swallow that "]" into the match (e.g. a command
+        # ending "...-n prod" becomes "prod]").
+        dep_match = re.search(r'kubectl\s+create\s+deployment\s+([^\s\]]+)', exec_log)
+        run_match = re.search(r'kubectl\s+run\s+([^\s\]]+)', exec_log)
+        _wl_match = dep_match or run_match
+        workload = _wl_match.group(1) if _wl_match else None
+        # Scope the namespace lookup to the matched kubectl command's own line,
+        # not the whole multi-turn exec_log -- a bare "-n <token>" anywhere else
+        # in the log (e.g. an unrelated `... | head -n 10` diagnostic command
+        # from an earlier turn) would otherwise be picked up as a bogus
+        # namespace, and the later `kubectl rollout status -n <bogus>` /
+        # `kubectl get pod -n <bogus>` verification would fail against a
+        # namespace the workload was never created in.
+        namespace = "default"
+        if _wl_match:
+            line_start = exec_log.rfind("\n", 0, _wl_match.start()) + 1
+            line_end = exec_log.find("\n", _wl_match.end())
+            if line_end == -1:
+                line_end = len(exec_log)
+            cmd_line = exec_log[line_start:line_end]
+            ns_match = re.search(r'-n\s+([^\s\]]+)|--namespace[=\s]([^\s\]]+)', cmd_line)
+            if ns_match:
+                namespace = next((g for g in ns_match.groups() if g), "default")
         if not workload:
             is_fixed = False
             evidence_lines.append(
@@ -153,6 +228,27 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
 
         candidates = set()
 
+        # Isolated *command text only* -- never STDOUT/STDERR -- for every
+        # regex-based extraction check below that isn't already scoped this way.
+        # This SSH target is a long-lived shared demo host that has accumulated
+        # leftover users/sudoers files from many past, unrelated incidents. A
+        # read-only diagnostic/listing step run during THIS incident's own
+        # verification (e.g. enumerating /etc/sudoers.d or /home) can legitimately
+        # print dozens of those old names in its STDOUT -- and scanning the raw,
+        # un-isolated exec_log for username-shaped patterns can't tell that STDOUT
+        # apart from a command the agent actually typed. Restricting to the
+        # isolated `=== [CMD: ...] ===` command text (what was actually TYPED, not
+        # what the remote host printed back) means a read-only listing command
+        # contributes zero candidates, since its own command text never names the
+        # users it happens to enumerate at runtime. Observed live on INC0002502
+        # (bulk-creating Newrelic01-10): this guard pulled in "suorathy3/7/8",
+        # "Asha", "Nexacore09", and six "UserNN-nexacore-restart" placeholder
+        # names left over from earlier, unrelated demo incidents -- none of which
+        # this ticket ever touched -- then failed all of them as "does NOT exist"
+        # and escalated a remediation that had actually fully succeeded for every
+        # account it was actually asked to create.
+        isolated_cmd_text = "\n".join(_CMD_TEXT_RE.findall(exec_log or ""))
+
         def is_valid_username_candidate(name_str):
             if not name_str or len(name_str) < 2:
                 return False
@@ -160,10 +256,35 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
                 return False
             if name_str.lower() in ignore_terms:
                 return False
-            return bool(re.match(r'^[a-zA-Z0-9_][a-zA-Z0-9_\-]*$', name_str))
+            # Allows internal single spaces (e.g. "Venkata redddy") -- some tickets
+            # ask for a person's full name to be used directly as the username, and
+            # this platform's SOPs do create such accounts (via useradd --badname).
+            # Still rejects leading/trailing spaces and runs of multiple spaces.
+            return bool(re.match(r'^[a-zA-Z0-9_][a-zA-Z0-9_\-]*(?: [a-zA-Z0-9_\-]+)*$', name_str))
+
+        # 0. From the ticket's own text: "user <NAME> on/with/...". The single most
+        # direct, human-authored statement of intent, immune to the shell-quoting
+        # noise across multiple LLM retry attempts that checks 1/3/4/4b below parse.
+        # Needed specifically for a multi-word username (e.g. a ticket asking to
+        # create account "Venkata redddy"): every exec_log-based check below can
+        # only ever recover word-FRAGMENTS of such a name, because a shell command
+        # echoes it with inconsistent quoting across retries (unquoted, quoted,
+        # quoted+escaped) -- observed live on INC0002501, where this guard extracted
+        # "Venkata" as its own bogus candidate and reported the real, successfully
+        # created "Venkata redddy" account as a useradd failure. Uses the ORIGINAL
+        # short_desc/desc (not the lowercased full_text) so the extracted name keeps
+        # its real casing -- `id`/`useradd` are case-sensitive.
+        ticket_name_match = re.search(
+            r'\buser\s+(?:account\s+(?:named|called)\s+)?([A-Za-z][A-Za-z0-9_\-]*(?:\s[A-Za-z0-9_\-]+)*?)(?=\s+(?:on|with|in|for|to)\b|[.,]|$)',
+            f"{short_desc} {desc}"
+        )
+        if ticket_name_match:
+            ticket_candidate = ticket_name_match.group(1).strip()
+            if is_valid_username_candidate(ticket_candidate):
+                candidates.add(ticket_candidate)
 
         # 1. From bash for loops: for u in user1 user2 ...;
-        loop_matches = re.findall(r'for\s+\w+\s+in\s+([^;]+);', exec_log)
+        loop_matches = re.findall(r'for\s+\w+\s+in\s+([^;]+);', isolated_cmd_text)
         for l_body in loop_matches:
             for token in l_body.split():
                 clean_t = token.strip('"\';$(){}[]')
@@ -176,10 +297,19 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
             if is_valid_username_candidate(pu):
                 candidates.add(pu)
 
-        # 3. From explicit useradd/userdel commands
-        raw_created = re.findall(r'useradd\s+(?:-[a-zA-Z0-9\-]+\s+|\"[^\"]*\"\s+|\'[^\']*\'\s+)*\"?([a-zA-Z0-9_\-]+)\"?', exec_log)
-        raw_deleted = re.findall(r'userdel\s+(?:-[a-zA-Z0-9\-]+\s+|\"[^\"]*\"\s+|\'[^\']*\'\s+)*\"?([a-zA-Z0-9_\-]+)\"?', exec_log)
-        raw_sudoers = re.findall(r'/etc/sudoers\.d/(?:99-|90-)?([a-zA-Z0-9_\-]+)', exec_log)
+        # 3. From explicit useradd/userdel commands -- the username is always the
+        # LAST positional argument, so _extract_trailing_arg_candidates anchors on
+        # the end of each isolated command rather than trying to skip over every
+        # possible flag/flag-with-value combination that could precede it (the old
+        # skip-then-capture regex here silently truncated a quoted, space-containing
+        # username at its first word, e.g. "Venkata redddy" -> "Venkata").
+        raw_created = _extract_trailing_arg_candidates("useradd", exec_log)
+        raw_deleted = _extract_trailing_arg_candidates("userdel", exec_log)
+        # Allows internal spaces in the captured path segment too, same reasoning as
+        # is_valid_username_candidate above -- a sudoers.d filename derived from a
+        # multi-word username (e.g. /etc/sudoers.d/99-Venkata redddy) previously got
+        # truncated the same way.
+        raw_sudoers = re.findall(r'/etc/sudoers\.d/(?:99-|90-)?([a-zA-Z0-9_\-]+(?:\s[a-zA-Z0-9_\-]+)*)', isolated_cmd_text)
 
         for raw in raw_created + raw_deleted + raw_sudoers:
             clean_r = raw.strip('"\';$(){}[]')
@@ -199,7 +329,7 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
         # HITL-approved bulk userdel used exactly this pattern and left
         # users_to_check empty despite the deletion having actually run.
         brace_loop_re = re.compile(r'for\s+(\w+)\s+in\s+\{(\d+)\.\.(\d+)\}\s*;?\s*do\s+(.*?)done', re.DOTALL)
-        for loop_var, range_start, range_end, loop_body in brace_loop_re.findall(exec_log):
+        for loop_var, range_start, range_end, loop_body in brace_loop_re.findall(isolated_cmd_text):
             width = len(range_start)
             prefixes = re.findall(rf'([a-zA-Z][a-zA-Z0-9_\-]*)\$\{{?{re.escape(loop_var)}\}}?', loop_body)
             for prefix in set(prefixes):
@@ -217,17 +347,23 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
         # the identical request -- both are common, interchangeable ways to
         # write "loop over N numbered names" and neither is specific to any
         # one naming scheme.
-        for prefix, range_start, range_end in re.findall(r'in\s+([a-zA-Z][a-zA-Z0-9_\-]*)\{(\d+)\.\.(\d+)\}', exec_log):
+        for prefix, range_start, range_end in re.findall(r'in\s+([a-zA-Z][a-zA-Z0-9_\-]*)\{(\d+)\.\.(\d+)\}', isolated_cmd_text):
             width = len(range_start)
             for n in range(int(range_start), int(range_end) + 1):
                 candidates.add(f"{prefix}{str(n).zfill(width)}")
+
+        candidates = _dedupe_username_fragments(candidates)
 
         is_deletion = any(k in full_text for k in ["delete", "remove", "offboard", "userdel", "deprovision"])
         users_to_check = list(candidates)
 
         if users_to_check:
             for u in users_to_check[:15]:
-                ok, out = session.exec_command(f"id {u} 2>&1")
+                # Quoted: u can now contain a space (see is_valid_username_candidate
+                # above) -- an unquoted `id {u}` would pass "Venkata" and "redddy" as
+                # two separate positional args to `id`, the exact same shell mistake
+                # the ReAct loop itself made and had to retry past.
+                ok, out = session.exec_command(f'id "{u}" 2>&1')
                 # User exists if output contains 'uid=' and does not contain 'no such user'
                 exists = "uid=" in out and "no such user" not in out.lower()
                 if is_deletion:

@@ -1369,7 +1369,7 @@ Safety:
             properties: {
               short_desc: {
                 type: 'string',
-                description: 'A short incident-style summary of the problem (e.g. "Nexacore application down, connection refused on port 8080").'
+                description: 'A short incident-style summary of the problem (e.g. "Nexacore application down, connection refused on port 9000").'
               },
               desc: {
                 type: 'string',
@@ -1818,7 +1818,7 @@ Safety:
             properties: {
               short_desc: {
                 type: 'string',
-                description: 'A short incident-style summary of the problem (e.g. "Nexacore application down, connection refused on port 8080").'
+                description: 'A short incident-style summary of the problem (e.g. "Nexacore application down, connection refused on port 9000").'
               },
               desc: {
                 type: 'string',

@@ -70,8 +70,10 @@ Ground your decision primarily on the retrieved Historical Precedents and the pl
 ### Priority Levels:
 - P1 (Critical): Complete service outage or critical production control plane failure.
 - P2 (High): Major application degraded or high CPU/Memory saturation on active nodes.
-- P3 (Moderate): Standard operational requests (user accounts, software installation, package upgrades, resource provisioning).
+- P3 (Moderate): Standard operational requests (Linux user account creation/deletion, password resets, software installation, package upgrades, resource provisioning).
 - P4 (Low): Informational queries, logs inspection, non-urgent maintenance.
+
+Linux user account creation and password reset requests are routine operational work and must NEVER be classified P1 or P2, regardless of urgent-sounding language in the ticket text -- use P3 (or P4 if clearly low-urgency/informational).
 
 ### Input Incident:
 Ticket Number: {number}
@@ -250,25 +252,43 @@ class ControlTowerAIRouter:
         combined_text = f"{short_desc} {desc}".strip().lower()
 
         # Policy Rule A: Linux OS User Administration, Provisioning & Sudoers Permissions -> Unix
+        # The second alternative (create/delete/... + "account(s)") exists because
+        # requesters often phrase Linux user-account tickets as "accounts" rather
+        # than literally "user" (e.g. "Delete New Relic accounts Newrelic01-10 from
+        # workernode1HL") -- the first alternative alone doesn't match that phrasing
+        # at all, so the ticket fell through to the LLM+historical-precedent path,
+        # which is not reliable enough on its own: observed live on INC0002503, it
+        # misclassified to "DevOps Ops" reasoning about "az CLI-based resource
+        # deletions" that have nothing to do with this ticket, because the one
+        # genuinely relevant precedent (INC0002502, the sibling ticket that created
+        # these exact same accounts) was sitting ON_HOLD/unresolved at classification
+        # time and so invisible to the precedent lookup (which only considers
+        # RESOLVED/CLOSED tickets) -- even INC0002502 itself only reached Unix via a
+        # 90%-confidence LLM guess, not this deterministic rule, for the same reason.
+        # Excludes cloud/DB "account" language so this doesn't also swallow Azure
+        # storage-account or DB2/CloudBeaver account tickets, which belong elsewhere.
         is_user_mgmt = bool(re.search(
             r'\b(user\s*id|user\s*ids|create\s+user|delete\s+user|remove\s+user|add\s+user|useradd|userdel|usermod|sudoers?|passwd|password\s+reset|offboard(?:ing)?|onboard(?:ing)?)\b',
             combined_text
-        ))
+        )) or (
+            bool(re.search(r'\b(create|delete|remove|add|provision|deprovision|offboard(?:ing)?|onboard(?:ing)?)\b.*\baccounts?\b', combined_text))
+            and not bool(re.search(r'\b(azure|storage\s+account|resource\s+group|az\s+cli|service\s+principal|db2|cloudbeaver|billing)\b', combined_text))
+        )
         if is_user_mgmt:
             audit_entry = {
                 "incidentId": incident.get("id"),
                 "number": number,
                 "shortDescription": short_desc,
                 "recommendedDepartment": "Unix",
-                "priority": "P2",
+                "priority": "P3",
                 "confidenceScore": 99,
-                "reasoningText": "Deterministic Policy Rule: Linux OS user provisioning, deprovisioning, and sudoers permissions are strictly routed to Unix Administration.",
-                "thinkingTrace": f"Enforced deterministic platform routing policy: User administration / sudoers request routed to Unix (P2) with 99% confidence.",
+                "reasoningText": "Deterministic Policy Rule: Linux OS user provisioning, deprovisioning, and sudoers permissions are routine operational requests, strictly routed to Unix Administration at P3 or lower (never P1/P2).",
+                "thinkingTrace": f"Enforced deterministic platform routing policy: User administration / sudoers request routed to Unix (P3) with 99% confidence.",
                 "historicalPrecedentsCount": len(precedents),
                 "autoAssigned": True
             }
             self.routing_history.append(audit_entry)
-            logger.info(f"🤖 [Agentic AI Router] Classified [{number}] -> Unix (P2) with 99% confidence (OS User Mgmt Policy Rule).")
+            logger.info(f"🤖 [Agentic AI Router] Classified [{number}] -> Unix (P3) with 99% confidence (OS User Mgmt Policy Rule).")
             return audit_entry
 
         # Policy Rule B: Nexacore application downtime, service crashes, and portal alerts -> App Support
