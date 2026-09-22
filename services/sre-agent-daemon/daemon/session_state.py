@@ -17,6 +17,7 @@ class SessionStateManager:
         self._processed_in_progress_incidents = set()
         self._unspecified_ci_incidents = set()
         self._posted_sn_work_notes = set()
+        self._flagged_low_confidence_incidents = set()
         self._host_execution_locks = defaultdict(threading.Lock)
         self._token_usage = {
             "calls": [],
@@ -28,6 +29,20 @@ class SessionStateManager:
     def is_unspecified_ci(self, inc_id: str) -> bool:
         with self._lock:
             return inc_id in self._unspecified_ci_incidents
+
+    # --- AI Router low-confidence hold ---
+    # A ticket left genuinely unassigned (department/state untouched) stays in
+    # poll_and_route_unassigned_queue()'s own "unassigned" scan filter forever
+    # -- without this, it would get reclassified and re-warn/re-notify every
+    # 15s poll cycle indefinitely instead of once, until a human manually
+    # assigns it out of the unassigned pool.
+    def has_flagged_low_confidence(self, inc_id: str) -> bool:
+        with self._lock:
+            return inc_id in self._flagged_low_confidence_incidents
+
+    def mark_flagged_low_confidence(self, inc_id: str):
+        with self._lock:
+            self._flagged_low_confidence_incidents.add(inc_id)
 
     def mark_unspecified_ci(self, inc_id: str):
         with self._lock:

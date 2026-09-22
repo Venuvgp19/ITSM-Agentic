@@ -13,6 +13,7 @@ from ..config import logger, MODEL_NAME
 from ..llm import invoke_llm_with_fallback, safe_json_parse
 from ..itsm.client import add_work_note, update_incident_status, fetch_incident_queue, get_team_member_for_department
 from ..notifications.slack_notifier import notify_router_failure, reset_router_failure_notice
+from ..session_state import default_session_state
 
 
 def _regex_recover_classification_fields(raw_text):
@@ -436,28 +437,47 @@ class ControlTowerAIRouter:
         trace = classification.get("thinkingTrace", "")
         prec_count = classification.get("historicalPrecedentsCount", 0)
 
-        # `confidence_threshold` was computed into the audit record's `autoAssigned`
-        # field but never actually gated anything below -- department/priority/state
-        # were PATCHed unconditionally regardless of confidence, so a 10%-confidence
-        # classification was applied identically to a 99%-confidence one. `department`
-        # feeds directly into evaluate_and_get_sop()'s department-scoped RAG search
-        # (hybrid_search.py), so a low-confidence misroute can search the wrong
-        # department's KB subset. Actually re-scoping the search on low confidence
-        # would need a schema change on the ITSM backend to carry a confidence flag
-        # through to the incident record (out of scope here); at minimum, make a
-        # low-confidence classification loudly visible in ops instead of silently
-        # indistinguishable from a confident one.
+        # Previously logged a loud warning on low confidence but PATCHed
+        # department/priority/state unconditionally anyway -- a 10%-confidence
+        # guess was dispatched to IN_PROGRESS identically to a 99%-confidence
+        # one, just with a warning nobody but ops-log-watchers would ever see.
+        # `department` feeds directly into evaluate_and_get_sop()'s
+        # department-scoped RAG search (hybrid_search.py), so a low-confidence
+        # misroute doesn't just mislabel a ticket, it searches the wrong
+        # department's KB subset. Now genuinely left unassigned instead: no
+        # PATCH at all, so it stays out of IN_PROGRESS/resolver dispatch and
+        # sits in poll_and_route_unassigned_queue()'s own "unassigned" scan
+        # for a human to triage. Guarded by session_state so this only warns/
+        # notifies/work-notes ONCE per ticket -- otherwise, since the ticket
+        # deliberately never leaves the unassigned pool, every 15s poll cycle
+        # would reclassify and re-fire the same low-confidence alert forever.
         if conf < self.confidence_threshold:
-            logger.warning(
-                f"⚠️ [Agentic AI Router] LOW-CONFIDENCE classification for [{num}]: "
-                f"{conf}% < {self.confidence_threshold}% threshold -- routed to '{dept}' "
-                f"on a low-confidence guess. Reasoning: {reasoning}"
-            )
-            notify_router_failure(
-                num,
-                f"Low-confidence classification ({conf}% < {self.confidence_threshold}% threshold) -- "
-                f"guessed department '{dept}' without reliable grounding. Reasoning: {reasoning}"
-            )
+            if not default_session_state.has_flagged_low_confidence(inc_id):
+                default_session_state.mark_flagged_low_confidence(inc_id)
+                logger.warning(
+                    f"⚠️ [Agentic AI Router] LOW-CONFIDENCE classification for [{num}]: "
+                    f"{conf}% < {self.confidence_threshold}% threshold -- leaving UNASSIGNED "
+                    f"for manual triage instead of guessing '{dept}'. Reasoning: {reasoning}"
+                )
+                notify_router_failure(
+                    num,
+                    f"Low-confidence classification ({conf}% < {self.confidence_threshold}% threshold) -- "
+                    f"left unassigned for manual triage instead of guessing department '{dept}'. Reasoning: {reasoning}"
+                )
+                hold_note = (
+                    f"🤖 **Autonomous Agentic AI Router (Historical Precedent Grounding)**\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"• **Status:** Held unassigned -- confidence below threshold\n"
+                    f"• **Confidence Score:** {conf}% (threshold: {self.confidence_threshold}%)\n"
+                    f"• **Best Guess (not applied):** {dept} / {prio}\n"
+                    f"• **Historical Precedents Referenced:** {prec_count} resolved cases\n\n"
+                    f"**Reasoning:**\n{reasoning}\n\n"
+                    f"**Diagnostic Trace:**\n{trace}\n\n"
+                    f"This ticket needs a human to assign it manually -- the router's own confidence in this "
+                    f"guess is too low to auto-dispatch."
+                )
+                add_work_note(token, inc_id, hold_note, author="🤖 Agentic AI Router (15s Loop)")
+            return False
 
         from ..config import ITSM_BASE_URL
         import requests
