@@ -365,21 +365,21 @@ export function AIAssetInventoryView() {
     switch (category) {
       case 'react_agent':
         return (
-          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
-            <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-400" />
+          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40 flex items-center gap-1">
+            <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-600 dark:text-amber-400" />
             <span>ReAct Loop Agent</span>
           </span>
         );
       case 'agent':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">Agent</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-300 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/40">Agent</span>;
       case 'model':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">Foundation Model</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-300 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/40">Foundation Model</span>;
       case 'mcp_tool':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">Tool / MCP</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40">Tool / MCP</span>;
       case 'vector_dataset':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40">Vector Dataset</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/40">Vector Dataset</span>;
       case 'prompt_guardrail':
-        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">Guardrail</span>;
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40">Guardrail</span>;
       default:
         return null;
     }
@@ -391,25 +391,25 @@ export function AIAssetInventoryView() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-              <Layers className="w-5 h-5 text-cyan-400" />
+            <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <Layers className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
               <span>AI ASSET INVENTORY (CMDB FOR AI)</span>
             </h1>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30">
               {filteredAssets.length} Assets Registered
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Single pane of glass tracking all enterprise AI ReAct loop agents, foundation models, MCP tools, vector datasets, and guardrails as Configuration Items.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-xl border border-slate-800 bg-slate-950/80 overflow-hidden">
+          <div className="flex items-center rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/80 overflow-hidden">
             <button
               onClick={() => setViewMode('grid')}
               className={`px-3 py-1.5 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                viewMode === 'grid' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                viewMode === 'grid' ? 'bg-cyan-500 text-slate-950' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
@@ -418,7 +418,7 @@ export function AIAssetInventoryView() {
             <button
               onClick={() => setViewMode('3d')}
               className={`px-3 py-1.5 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                viewMode === '3d' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                viewMode === '3d' ? 'bg-cyan-500 text-slate-950' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
               }`}
             >
               <Box className="w-3.5 h-3.5" />
@@ -427,19 +427,19 @@ export function AIAssetInventoryView() {
           </div>
           <button
             onClick={() => setAssets(mockAIAssets)}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold transition flex items-center gap-1.5 border border-slate-800 cursor-pointer shadow-sm"
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1.5 border border-slate-200 dark:border-slate-800 cursor-pointer shadow-sm"
           >
-            <RefreshCw className="w-3.5 h-3.5 text-cyan-400" />
+            <RefreshCw className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
             <span>Discover Assets</span>
           </button>
         </div>
       </div>
 
       {/* 2. Filters & Search */}
-      <div className="pro-card rounded-2xl p-4 border border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-md">
+      <div className="pro-card rounded-2xl p-4 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-md">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5 mr-1 font-mono">
-            <Filter className="w-3.5 h-3.5 text-cyan-400" /> Asset Type:
+          <span className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mr-1 font-mono">
+            <Filter className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" /> Asset Type:
           </span>
           {[
             { id: 'ALL', label: 'All AI Assets' },
@@ -456,7 +456,7 @@ export function AIAssetInventoryView() {
               className={`px-3 py-1 rounded-xl text-xs font-semibold transition cursor-pointer ${
                 categoryFilter === cat.id
                   ? 'bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20'
-                  : 'bg-slate-950/80 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800'
+                  : 'bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-900 border border-slate-200 dark:bg-slate-950/80 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-white dark:border-slate-800'
               }`}
             >
               {cat.label}
@@ -471,7 +471,7 @@ export function AIAssetInventoryView() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search ReAct loops, models, CIs..."
-            className="focus-ring bg-slate-950 border border-slate-800 focus:border-cyan-500 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 w-64 transition"
+            className="focus-ring bg-white border border-slate-200 focus:border-cyan-500 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 dark:bg-slate-950 dark:border-slate-800 dark:text-white dark:placeholder-slate-500 w-64 transition"
           />
         </div>
       </div>
@@ -491,10 +491,10 @@ export function AIAssetInventoryView() {
               onClick={() => setSelectedAsset(asset)}
               className={`pro-card rounded-2xl p-5 border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between group ${
                 isContained
-                  ? 'border-rose-500/50 bg-rose-950/20'
+                  ? 'border-rose-300 bg-rose-50 dark:border-rose-500/50 dark:bg-rose-950/20'
                   : isReactLoop
-                  ? 'border-amber-500/30 hover:border-amber-400 bg-slate-900/90 hover:bg-slate-900'
-                  : 'border-slate-800 hover:border-cyan-500/50 hover:bg-slate-900/90'
+                  ? 'border-amber-300 hover:border-amber-400 bg-amber-50/60 hover:bg-amber-50 dark:border-amber-500/30 dark:hover:border-amber-400 dark:bg-slate-900/90 dark:hover:bg-slate-900'
+                  : 'border-slate-200 hover:border-cyan-400 hover:bg-slate-50 dark:border-slate-800 dark:hover:border-cyan-500/50 dark:hover:bg-slate-900/90'
               }`}
             >
               <div>
@@ -502,8 +502,8 @@ export function AIAssetInventoryView() {
                 <div className="flex items-center justify-between mb-2.5">
                   <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
                     isReactLoop
-                      ? 'text-amber-300 bg-amber-950/40 border-amber-500/40'
-                      : 'text-cyan-400 bg-cyan-950/40 border-cyan-500/30'
+                      ? 'text-amber-700 bg-amber-50 border-amber-300 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-500/40'
+                      : 'text-cyan-600 bg-cyan-50 border-cyan-300 dark:text-cyan-400 dark:bg-cyan-950/40 dark:border-cyan-500/30'
                   }`}>
                     {asset.ciId}
                   </span>
@@ -512,8 +512,8 @@ export function AIAssetInventoryView() {
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full font-mono ${
                         isContained
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
-                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          ? 'bg-rose-50 text-rose-700 border border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40 animate-pulse'
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40'
                       }`}
                     >
                       {asset.status}
@@ -522,43 +522,43 @@ export function AIAssetInventoryView() {
                 </div>
 
                 {/* Title */}
-                <h3 className="text-sm font-extrabold text-white group-hover:text-cyan-300 transition line-clamp-1 flex items-center gap-1.5">
-                  {isReactLoop && <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                <h3 className="text-sm font-extrabold text-slate-900 group-hover:text-cyan-700 dark:text-white dark:group-hover:text-cyan-300 transition line-clamp-1 flex items-center gap-1.5">
+                  {isReactLoop && <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />}
                   <span>{asset.name}</span>
                 </h3>
-                <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
                   {asset.description}
                 </p>
 
                 {/* Telemetry Pills */}
                 <div className="mt-4 grid grid-cols-2 gap-2 text-[10px] font-mono">
-                  <div className="p-2 rounded-lg bg-slate-950/80 border border-slate-800/80">
-                    <span className="text-slate-500 block">Risk Tier</span>
-                    <strong className={asset.riskTier.includes('High') ? 'text-amber-300' : 'text-slate-300'}>
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 dark:bg-slate-950/80 dark:border-slate-800/80">
+                    <span className="text-slate-600 dark:text-slate-500 block">Risk Tier</span>
+                    <strong className={asset.riskTier.includes('High') ? 'text-amber-700 dark:text-amber-300' : 'text-slate-600 dark:text-slate-300'}>
                       {asset.riskTier}
                     </strong>
                   </div>
-                  <div className="p-2 rounded-lg bg-slate-950/80 border border-slate-800/80">
-                    <span className="text-slate-500 block">Latency / Rate</span>
-                    <strong className="text-emerald-400">{asset.latency}</strong>
+                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 dark:bg-slate-950/80 dark:border-slate-800/80">
+                    <span className="text-slate-600 dark:text-slate-500 block">Latency / Rate</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400">{asset.latency}</strong>
                   </div>
                 </div>
 
                 {/* If ReAct Loop, show turn specs */}
                 {asset.reactLoopSpecs && (
-                  <div className="mt-2.5 p-2 rounded-lg bg-amber-950/20 border border-amber-500/30 text-[10px] font-mono text-amber-300 flex items-center justify-between">
-                    <span className="text-slate-400">Max Horizon:</span>
-                    <strong className="text-amber-300">{asset.reactLoopSpecs.maxTurns} Turns Max</strong>
+                  <div className="mt-2.5 p-2 rounded-lg bg-amber-50 border border-amber-300 dark:bg-amber-950/20 dark:border-amber-500/30 text-[10px] font-mono text-amber-700 dark:text-amber-300 flex items-center justify-between">
+                    <span className="text-slate-500 dark:text-slate-400">Max Horizon:</span>
+                    <strong className="text-amber-700 dark:text-amber-300">{asset.reactLoopSpecs.maxTurns} Turns Max</strong>
                   </div>
                 )}
               </div>
 
               {/* Bottom Actions */}
-              <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                <span className="text-slate-500 text-[10px] truncate max-w-[150px]">
-                  Owner: <strong className="text-slate-300">{asset.owner.split(' ')[0]}</strong>
+              <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+                <span className="text-slate-600 dark:text-slate-500 text-[10px] truncate max-w-[150px]">
+                  Owner: <strong className="text-slate-700 dark:text-slate-300">{asset.owner.split(' ')[0]}</strong>
                 </span>
-                <span className="text-cyan-400 font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition text-[11px]">
+                <span className="text-cyan-600 dark:text-cyan-400 font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition text-[11px]">
                   <span>Inspect CI</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </span>
@@ -571,27 +571,27 @@ export function AIAssetInventoryView() {
 
       {/* 4. Asset Detail Drawer */}
       {selectedAsset && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
-          <div className="w-full max-w-xl bg-slate-900 border-l border-slate-800 h-full p-6 overflow-y-auto space-y-6 flex flex-col justify-between shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-200">
+          <div className="w-full max-w-xl bg-white border-l border-slate-200 dark:bg-slate-900 dark:border-slate-800 h-full p-6 overflow-y-auto space-y-6 flex flex-col justify-between shadow-2xl">
             <div className="space-y-6">
               {/* Drawer Header */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
                 <div className="flex items-center gap-2.5">
                   <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
                     selectedAsset.category === 'react_agent'
-                      ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400'
-                      : 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-400'
+                      ? 'bg-amber-50 border border-amber-300 text-amber-600 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-400'
+                      : 'bg-cyan-50 border border-cyan-300 text-cyan-600 dark:bg-cyan-500/10 dark:border-cyan-500/30 dark:text-cyan-400'
                   }`}>
                     {selectedAsset.category === 'react_agent' ? <Workflow className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                   </div>
                   <div>
-                    <span className="text-[10px] font-mono text-cyan-400 font-bold">{selectedAsset.ciId}</span>
-                    <h2 className="text-base font-black text-white">{selectedAsset.name}</h2>
+                    <span className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 font-bold">{selectedAsset.ciId}</span>
+                    <h2 className="text-base font-black text-slate-900 dark:text-white">{selectedAsset.name}</h2>
                   </div>
                 </div>
                 <button
                   onClick={() => setSelectedAsset(null)}
-                  className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                  className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -600,20 +600,20 @@ export function AIAssetInventoryView() {
               {/* Status & Containment Banner */}
               <div className={`p-4 rounded-xl border flex items-center justify-between ${
                 selectedAsset.status === 'CONTAINED'
-                  ? 'bg-rose-950/30 border-rose-500/40 text-rose-300'
-                  : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
+                  ? 'bg-rose-50 border-rose-300 text-rose-700 dark:bg-rose-950/30 dark:border-rose-500/40 dark:text-rose-300'
+                  : 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-500/40 dark:text-emerald-300'
               }`}>
                 <div className="flex items-center gap-2">
                   {selectedAsset.status === 'CONTAINED' ? (
-                    <AlertTriangle className="w-5 h-5 text-rose-400" />
+                    <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
                   ) : (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                   )}
                   <div>
                     <div className="text-xs font-bold">
                       {selectedAsset.status === 'CONTAINED' ? 'ASSET CONTAINED / ISOLATED' : 'ACTIVE IN PRODUCTION'}
                     </div>
-                    <div className="text-[11px] text-slate-400">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
                       {selectedAsset.status === 'CONTAINED'
                         ? 'Kill Switch active — All autonomous executions blocked.'
                         : 'Operating under least-privilege active governance.'}
@@ -636,75 +636,75 @@ export function AIAssetInventoryView() {
 
               {/* ReAct Specific Lifecycle Box */}
               {selectedAsset.reactLoopSpecs && (
-                <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/40 space-y-3">
-                  <div className="flex items-center gap-2 text-amber-300 text-xs font-bold font-mono">
-                    <Workflow className="w-4 h-4 text-amber-400" />
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 dark:bg-amber-950/20 dark:border-amber-500/40 space-y-3">
+                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 text-xs font-bold font-mono">
+                    <Workflow className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                     <span>ReAct Multi-Turn Loop Specifications</span>
                   </div>
                   <div className="space-y-2 text-[11px] font-mono">
-                    <div className="bg-slate-950/80 p-2.5 rounded-lg border border-amber-500/20">
-                      <span className="text-slate-400 block mb-1">Reasoning Execution Pattern:</span>
-                      <strong className="text-amber-200">{selectedAsset.reactLoopSpecs.pattern}</strong>
+                    <div className="bg-white p-2.5 rounded-lg border border-amber-200 dark:bg-slate-950/80 dark:border-amber-500/20">
+                      <span className="text-slate-500 dark:text-slate-400 block mb-1">Reasoning Execution Pattern:</span>
+                      <strong className="text-amber-700 dark:text-amber-200">{selectedAsset.reactLoopSpecs.pattern}</strong>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800">
-                        <span className="text-slate-500 block">Max Turns Horizon:</span>
-                        <strong className="text-white">{selectedAsset.reactLoopSpecs.maxTurns} Iterations</strong>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200 dark:bg-slate-950/80 dark:border-slate-800">
+                        <span className="text-slate-600 dark:text-slate-500 block">Max Turns Horizon:</span>
+                        <strong className="text-slate-900 dark:text-white">{selectedAsset.reactLoopSpecs.maxTurns} Iterations</strong>
                       </div>
-                      <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800">
-                        <span className="text-slate-500 block">Turn Timeout:</span>
-                        <strong className="text-white">{selectedAsset.reactLoopSpecs.timeoutSec}s per command</strong>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200 dark:bg-slate-950/80 dark:border-slate-800">
+                        <span className="text-slate-600 dark:text-slate-500 block">Turn Timeout:</span>
+                        <strong className="text-slate-900 dark:text-white">{selectedAsset.reactLoopSpecs.timeoutSec}s per command</strong>
                       </div>
                     </div>
-                    <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800">
-                      <span className="text-slate-500 block">Self-Healing Logic:</span>
-                      <strong className="text-emerald-300">{selectedAsset.reactLoopSpecs.errorRecovery}</strong>
+                    <div className="bg-white p-2 rounded-lg border border-slate-200 dark:bg-slate-950/80 dark:border-slate-800">
+                      <span className="text-slate-600 dark:text-slate-500 block">Self-Healing Logic:</span>
+                      <strong className="text-emerald-700 dark:text-emerald-300">{selectedAsset.reactLoopSpecs.errorRecovery}</strong>
                     </div>
                   </div>
                 </div>
               )}
 
               {/* Metadata Key-Values */}
-              <div className="pro-card rounded-xl p-4 border border-slate-800 space-y-3 text-xs">
-                <h4 className="text-[11px] font-mono font-bold text-slate-400 uppercase border-b border-slate-800 pb-2">
+              <div className="pro-card rounded-xl p-4 border border-slate-200 dark:border-slate-800 space-y-3 text-xs">
+                <h4 className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400 uppercase border-b border-slate-200 dark:border-slate-800 pb-2">
                   CI Configuration Specifications
                 </h4>
                 <div className="grid grid-cols-2 gap-3 font-mono text-[11px]">
                   <div>
-                    <span className="text-slate-500 block">Category</span>
-                    <strong className="text-white">{selectedAsset.category.toUpperCase()}</strong>
+                    <span className="text-slate-600 dark:text-slate-500 block">Category</span>
+                    <strong className="text-slate-900 dark:text-white">{selectedAsset.category.toUpperCase()}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-500 block">Version</span>
-                    <strong className="text-cyan-300">{selectedAsset.version}</strong>
+                    <span className="text-slate-600 dark:text-slate-500 block">Version</span>
+                    <strong className="text-cyan-700 dark:text-cyan-300">{selectedAsset.version}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-500 block">Risk Tier</span>
-                    <strong className="text-amber-300">{selectedAsset.riskTier}</strong>
+                    <span className="text-slate-600 dark:text-slate-500 block">Risk Tier</span>
+                    <strong className="text-amber-700 dark:text-amber-300">{selectedAsset.riskTier}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-500 block">Provider</span>
-                    <strong className="text-white">{selectedAsset.provider}</strong>
+                    <span className="text-slate-600 dark:text-slate-500 block">Provider</span>
+                    <strong className="text-slate-900 dark:text-white">{selectedAsset.provider}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-500 block">Owner / Lead</span>
-                    <strong className="text-slate-200">{selectedAsset.owner}</strong>
+                    <span className="text-slate-600 dark:text-slate-500 block">Owner / Lead</span>
+                    <strong className="text-slate-700 dark:text-slate-200">{selectedAsset.owner}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-500 block">Latency SLA</span>
-                    <strong className="text-emerald-400">{selectedAsset.latency}</strong>
+                    <span className="text-slate-600 dark:text-slate-500 block">Latency SLA</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400">{selectedAsset.latency}</strong>
                   </div>
                 </div>
               </div>
 
               {/* Target Fleet Hosts */}
-              <div className="pro-card rounded-xl p-4 border border-slate-800 space-y-2 text-xs">
-                <h4 className="text-[11px] font-mono font-bold text-slate-400 uppercase">
+              <div className="pro-card rounded-xl p-4 border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+                <h4 className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400 uppercase">
                   Connected Target Host Nodes
                 </h4>
                 <div className="flex flex-wrap gap-1.5">
                   {selectedAsset.targetHosts.map((h) => (
-                    <span key={h} className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-cyan-300">
+                    <span key={h} className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 dark:bg-slate-950 dark:border-slate-800 text-[11px] font-mono text-cyan-700 dark:text-cyan-300">
                       {h}
                     </span>
                   ))}
@@ -712,14 +712,14 @@ export function AIAssetInventoryView() {
               </div>
 
               {/* Capabilities */}
-              <div className="pro-card rounded-xl p-4 border border-slate-800 space-y-2 text-xs">
-                <h4 className="text-[11px] font-mono font-bold text-slate-400 uppercase">
+              <div className="pro-card rounded-xl p-4 border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+                <h4 className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400 uppercase">
                   Audited Functional Capabilities
                 </h4>
-                <div className="space-y-1 text-slate-300 text-[11px]">
+                <div className="space-y-1 text-slate-600 dark:text-slate-300 text-[11px]">
                   {selectedAsset.capabilities.map((c) => (
                     <div key={c} className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                       <span>{c}</span>
                     </div>
                   ))}
@@ -727,10 +727,10 @@ export function AIAssetInventoryView() {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-800 flex justify-end">
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end">
               <button
                 onClick={() => setSelectedAsset(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer"
               >
                 Close Inspector
               </button>

@@ -4,8 +4,46 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   THEME TOKENS
+   :root holds the LIGHT theme (the default, Tailwind's `dark:`
+   convention). `.dark` on <html> (toggled in App.tsx, persisted to
+   localStorage, defaults to dark on first visit so existing users see
+   no change) overrides with the ORIGINAL dark-theme values, unchanged.
+   ============================================================ */
 @layer base {
   :root {
+    --bg-dark: #f8fafc;
+    --bg-card: rgba(255, 255, 255, 0.85);
+    --bg-card-hover: rgba(255, 255, 255, 0.97);
+    --border-subtle: rgba(15, 23, 42, 0.1);
+    --border-highlight: rgba(8, 145, 178, 0.35);
+    --primary-cyan: #0891b2;
+    --primary-emerald: #059669;
+    --primary-amber: #d97706;
+    --primary-rose: #e11d48;
+    --primary-violet: #7c3aed;
+
+    /* Semantic risk scale (shared by every status/risk badge in the app) */
+    --risk-low: var(--primary-emerald);
+    --risk-medium: var(--primary-amber);
+    --risk-high: #ea580c;
+    --risk-critical: var(--primary-rose);
+
+    /* Text scale */
+    --text-primary: #0f172a;
+    --text-secondary: #334155;
+    --text-muted: #64748b;
+
+    /* Decorative-layer intensities -- lower in light mode, where the same
+       alpha values used on a dark ground would just look like dirt. */
+    --mesh-line-alpha: 0.045;
+    --ambient-glow-alpha: 0.06;
+    --scrollbar-thumb: rgba(100, 116, 139, 0.3);
+    --scrollbar-thumb-hover: rgba(100, 116, 139, 0.5);
+  }
+
+  .dark {
     --bg-dark: #06080e;
     --bg-card: rgba(13, 17, 28, 0.7);
     --bg-card-hover: rgba(22, 28, 45, 0.85);
@@ -17,27 +55,38 @@
     --primary-rose: #f43f5e;
     --primary-violet: #8b5cf6;
 
-    /* Semantic risk scale (shared by every status/risk badge in the app) */
     --risk-low: var(--primary-emerald);
     --risk-medium: var(--primary-amber);
     --risk-high: #fb923c;
     --risk-critical: var(--primary-rose);
 
-    /* Text scale */
     --text-primary: #f1f5f9;
     --text-secondary: #cbd5e1;
     --text-muted: #94a3b8;
+
+    --mesh-line-alpha: 0.03;
+    --ambient-glow-alpha: 0.15;
+    --scrollbar-thumb: rgba(148, 163, 184, 0.2);
+    --scrollbar-thumb-hover: rgba(148, 163, 184, 0.4);
+  }
+
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
   }
 
   body {
     background-color: var(--bg-dark);
-    color: #f1f5f9;
+    color: var(--text-primary);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     overflow-x: hidden;
     -webkit-user-select: text;
     -moz-user-select: text;
     -ms-user-select: text;
     user-select: text;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   * {
@@ -57,13 +106,18 @@
 /* Background Grids & Ambient Lights */
 .bg-mesh-grid {
   background-size: 40px 40px;
-  background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, var(--mesh-line-alpha)) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, var(--mesh-line-alpha)) 1px, transparent 1px);
+}
+.dark .bg-mesh-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, var(--mesh-line-alpha)) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, var(--mesh-line-alpha)) 1px, transparent 1px);
 }
 
 .bg-ambient-radial {
-  background: radial-gradient(circle 800px at 50% -100px, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.05) 40%, transparent 70%);
+  background: radial-gradient(circle 800px at 50% -100px, rgba(6, 182, 212, var(--ambient-glow-alpha)), rgba(139, 92, 246, calc(var(--ambient-glow-alpha) / 3)) 40%, transparent 70%);
 }
 
 /* Glassmorphism & High-End Card Containers */
@@ -73,34 +127,60 @@
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--border-subtle);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.dark .pro-card {
+  box-shadow: none;
 }
 
 .pro-card:hover {
   background: var(--bg-card-hover);
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 12px 28px -12px rgba(15, 23, 42, 0.18), 0 0 20px -8px rgba(8, 145, 178, 0.08);
+}
+.dark .pro-card:hover {
   border-color: rgba(255, 255, 255, 0.16);
   box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 25px -5px rgba(6, 182, 212, 0.12);
 }
 
 .pro-card-active {
+  background: rgba(240, 249, 255, 0.9);
+  border: 1px solid var(--border-highlight);
+  box-shadow: 0 0 0 1px rgba(8, 145, 178, 0.08), 0 8px 20px -10px rgba(8, 145, 178, 0.2);
+}
+.dark .pro-card-active {
   background: rgba(18, 26, 46, 0.9);
   border-color: var(--border-highlight);
   box-shadow: 0 0 30px -5px rgba(6, 182, 212, 0.2);
 }
 
-/* Micro Neon Glow Utilities */
+/* Micro Neon Glow Utilities -- softened in light mode, where a saturated
+   glow against white reads as a harsh drop shadow rather than a neon rim. */
 .glow-cyan {
+  box-shadow: 0 0 16px -4px rgba(8, 145, 178, 0.25);
+}
+.dark .glow-cyan {
   box-shadow: 0 0 20px -2px rgba(6, 182, 212, 0.3);
 }
 
 .glow-emerald {
+  box-shadow: 0 0 16px -4px rgba(5, 150, 105, 0.25);
+}
+.dark .glow-emerald {
   box-shadow: 0 0 20px -2px rgba(16, 185, 129, 0.3);
 }
 
 .glow-amber {
+  box-shadow: 0 0 16px -4px rgba(217, 119, 6, 0.25);
+}
+.dark .glow-amber {
   box-shadow: 0 0 20px -2px rgba(245, 158, 11, 0.3);
 }
 
 .glow-rose {
+  box-shadow: 0 0 16px -4px rgba(225, 29, 72, 0.25);
+}
+.dark .glow-rose {
   box-shadow: 0 0 20px -2px rgba(244, 63, 94, 0.3);
 }
 
@@ -113,11 +193,11 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: var(--scrollbar-thumb);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Animations */

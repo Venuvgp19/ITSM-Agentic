@@ -330,11 +330,11 @@ export function IncidentAnalysisView() {
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .map(([state, count]) => {
-        let pill = 'bg-slate-700/50 text-slate-400 border border-slate-600/40';
-        if (state === 'CLOSED') pill = 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
-        else if (state === 'RESOLVED') pill = 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40';
-        else if (state === 'ON_HOLD') pill = 'bg-amber-500/20 text-amber-300 border border-amber-500/40';
-        else if (state === 'IN_PROGRESS' || state === 'NEW') pill = 'bg-blue-500/20 text-blue-300 border border-blue-500/40';
+        let pill = 'bg-slate-200/50 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 border border-slate-300/40 dark:border-slate-600/40';
+        if (state === 'CLOSED') pill = 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40';
+        else if (state === 'RESOLVED') pill = 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40';
+        else if (state === 'ON_HOLD') pill = 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40';
+        else if (state === 'IN_PROGRESS' || state === 'NEW') pill = 'bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/40';
 
         return {
           state,
@@ -491,31 +491,31 @@ export function IncidentAnalysisView() {
   const secondTopHost = topHostsByVolume[1]?.host || 'postgres-prod-01';
 
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-8 max-w-7xl mx-auto w-full text-slate-200">
+    <div className="flex flex-col gap-6 p-4 md:p-8 max-w-7xl mx-auto w-full text-slate-700 dark:text-slate-200">
       {/* 1. Header & Navigation Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 via-teal-500 to-emerald-400 flex items-center justify-center text-slate-950 font-bold shadow-lg shadow-cyan-950/50">
               <Brain className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
+              <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                 Incident Analysis Report
               </h1>
-              <p className="text-sm font-medium text-cyan-400/90">
+              <p className="text-sm font-medium text-cyan-600/90 dark:text-cyan-400/90">
                 {dateSpan.start} – {dateSpan.end} ({periodsData.length} Period Cycles)
               </p>
             </div>
           </div>
-          <p className="text-xs text-slate-400 font-mono">
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
             Generated: {formatDateTime(new Date())} | {totalCount} database incidents | {periodsData.length} period(s) | Audience: SRE & Engineering Leadership
           </p>
         </div>
 
         {/* Global Controls */}
         <div className="flex items-center flex-wrap gap-2.5">
-          <div className="flex items-center bg-slate-900/80 border border-slate-800 rounded-lg p-1">
+          <div className="flex items-center bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-lg p-1">
             {(['all', '30d', '14d', '7d'] as const).map((t) => (
               <button
                 key={t}
@@ -523,7 +523,7 @@ export function IncidentAnalysisView() {
                 className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
                   timeFilter === t
                     ? 'bg-cyan-500 text-slate-950 shadow-md font-bold'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 hover:dark:text-slate-200 hover:bg-slate-100/50 hover:dark:bg-slate-800/50'
                 }`}
               >
                 {t === 'all' ? `All (${dateSpan.days}d)` : t.toUpperCase()}
@@ -534,9 +534,9 @@ export function IncidentAnalysisView() {
           <button
             onClick={fetchAll}
             disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100/80 dark:bg-slate-800/80 hover:bg-slate-200 hover:dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 transition-all shadow-sm"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-cyan-400' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-cyan-600 dark:text-cyan-400' : ''}`} />
             Refresh
           </button>
 
@@ -551,7 +551,10 @@ export function IncidentAnalysisView() {
       </div>
 
       {/* 2. Executive Summary Box (Dynamic Data from ITSM Tool) */}
-      <div className="bg-gradient-to-r from-[#1a5276] via-[#1b4f72] to-[#154360] text-white rounded-xl p-5 md:p-6 shadow-xl border border-cyan-500/30">
+      {/* Deliberately keeps its vivid blue gradient in BOTH themes -- it's an
+          accent banner, not a surface, so its text stays white either way
+          rather than flipping to dark (which would be unreadable on blue). */}
+      <div className="bg-gradient-to-r from-[#1a5276] via-[#1b4f72] to-[#154360] text-white rounded-xl p-5 md:p-6 shadow-xl border border-cyan-500/30 [&_p]:text-white [&_strong]:text-white">
         <div className="flex items-center gap-2 mb-3">
           <Sparkles className="w-5 h-5 text-cyan-300" />
           <h2 className="text-xs font-extrabold uppercase tracking-widest text-cyan-200">
@@ -566,99 +569,99 @@ export function IncidentAnalysisView() {
             <strong className="text-white">{highPriorityCount} high-priority tickets</strong> ({highPriorityPct}% of total fleet volume).
           </li>
           <li>
-            <strong className="text-white">Top host CIs by volume</strong>: <code className="bg-slate-900/40 px-1.5 py-0.5 rounded text-cyan-200">{primaryTopHost}</code> ({primaryTopHostCount} incidents, {primaryTopHostPct}) & <code className="bg-slate-900/40 px-1.5 py-0.5 rounded text-cyan-200">{secondTopHost}</code>.
+            <strong className="text-white">Top host CIs by volume</strong>: <code className="bg-white/40 dark:bg-slate-900/40 px-1.5 py-0.5 rounded text-cyan-200">{primaryTopHost}</code> ({primaryTopHostCount} incidents, {primaryTopHostPct}) & <code className="bg-white/40 dark:bg-slate-900/40 px-1.5 py-0.5 rounded text-cyan-200">{secondTopHost}</code>.
           </li>
           <li>
             <strong className="text-white">Top telemetry categories</strong>: Database ({categoryContributors.find(c => c.category === 'Database')?.total || 0}), Network Ops ({categoryContributors.find(c => c.category === 'Network Ops')?.total || 0}), Compute & Unix ({categoryContributors.find(c => c.category === 'Compute & Unix')?.total || 0}).
           </li>
           <li>
-            <strong className="text-white">Repeat offender analysis</strong>: <code className="bg-slate-900/40 px-1.5 py-0.5 rounded text-cyan-200">{primaryTopHost}</code> and <code className="bg-slate-900/40 px-1.5 py-0.5 rounded text-cyan-200">{secondTopHost}</code> appear persistently across all {periodsData.length} periods.
+            <strong className="text-white">Repeat offender analysis</strong>: <code className="bg-white/40 dark:bg-slate-900/40 px-1.5 py-0.5 rounded text-cyan-200">{primaryTopHost}</code> and <code className="bg-white/40 dark:bg-slate-900/40 px-1.5 py-0.5 rounded text-cyan-200">{secondTopHost}</code> appear persistently across all {periodsData.length} periods.
           </li>
         </ul>
       </div>
 
       {/* 3. Smart Narrative Section (Dynamic Data from ITSM Tool) */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-6 shadow-xl">
-        <h2 className="text-base font-bold text-cyan-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-cyan-400" />
+      <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-xl">
+        <h2 className="text-base font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
           Smart Narrative & Strategic Intelligence
         </h2>
-        <div className="space-y-3 text-xs md:text-sm leading-relaxed text-slate-300">
-          <div className="bg-slate-950/60 border border-slate-800 border-l-4 border-l-cyan-500 rounded-lg p-3.5">
-            <strong className="text-cyan-300">[1] VOLUME TRAJECTORY:</strong> Incident volume is tracked across <strong>{periodsData.length} consecutive periods</strong>. Autonomous resolution daemon execution and SOP grounded runbooks resolve {closedList.length} tickets with zero downtime.
+        <div className="space-y-3 text-xs md:text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+          <div className="bg-white/60 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 border-l-4 border-l-cyan-500 rounded-lg p-3.5">
+            <strong className="text-cyan-700 dark:text-cyan-300">[1] VOLUME TRAJECTORY:</strong> Incident volume is tracked across <strong>{periodsData.length} consecutive periods</strong>. Autonomous resolution daemon execution and SOP grounded runbooks resolve {closedList.length} tickets with zero downtime.
           </div>
 
-          <div className="bg-slate-950/60 border border-slate-800 border-l-4 border-l-amber-500 rounded-lg p-3.5">
-            <strong className="text-amber-300">[2] RESOLUTION CLASSIFICATION & TRIAGE:</strong> <strong>{resolutionCodes[0]?.count || 0} tickets ({resolutionCodes[0]?.pct || '0.0%'})</strong> resolved via <code className="text-cyan-200">{resolutionCodes[0]?.code}</code> and <strong>{resolutionCodes[1]?.count || 0} tickets ({resolutionCodes[1]?.pct || '0.0%'})</strong> in <code className="text-cyan-200">{resolutionCodes[1]?.code}</code>.
+          <div className="bg-white/60 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 border-l-4 border-l-amber-500 rounded-lg p-3.5">
+            <strong className="text-amber-700 dark:text-amber-300">[2] RESOLUTION CLASSIFICATION & TRIAGE:</strong> <strong>{resolutionCodes[0]?.count || 0} tickets ({resolutionCodes[0]?.pct || '0.0%'})</strong> resolved via <code className="text-cyan-700 dark:text-cyan-200">{resolutionCodes[0]?.code}</code> and <strong>{resolutionCodes[1]?.count || 0} tickets ({resolutionCodes[1]?.pct || '0.0%'})</strong> in <code className="text-cyan-700 dark:text-cyan-200">{resolutionCodes[1]?.code}</code>.
           </div>
 
-          <div className="bg-slate-950/60 border border-slate-800 border-l-4 border-l-emerald-500 rounded-lg p-3.5">
-            <strong className="text-emerald-300">[3] SLA EXCELLENCE:</strong> <strong>{slaMetPct} SLA compliance rate</strong> — autonomous agent runbooks execute in 18s median SLA for RAG grounded remediations.
+          <div className="bg-white/60 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 border-l-4 border-l-emerald-500 rounded-lg p-3.5">
+            <strong className="text-emerald-700 dark:text-emerald-300">[3] SLA EXCELLENCE:</strong> <strong>{slaMetPct} SLA compliance rate</strong> — autonomous agent runbooks execute in 18s median SLA for RAG grounded remediations.
           </div>
 
-          <div className="bg-slate-950/60 border border-slate-800 border-l-4 border-l-rose-500 rounded-lg p-3.5">
-            <strong className="text-rose-300">[4] CHRONIC OFFENDER CIs:</strong> <code className="text-rose-200">{primaryTopHost}</code> and <code className="text-rose-200">{secondTopHost}</code> account for the majority of volume across all {periodsData.length} operational cycles.
+          <div className="bg-white/60 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 border-l-4 border-l-rose-500 rounded-lg p-3.5">
+            <strong className="text-rose-700 dark:text-rose-300">[4] CHRONIC OFFENDER CIs:</strong> <code className="text-rose-700 dark:text-rose-200">{primaryTopHost}</code> and <code className="text-rose-700 dark:text-rose-200">{secondTopHost}</code> account for the majority of volume across all {periodsData.length} operational cycles.
           </div>
 
-          <div className="bg-slate-950/60 border border-slate-800 border-l-4 border-l-cyan-500 rounded-lg p-3.5">
-            <strong className="text-cyan-300">[5] CORRELATED RESOURCE LOAD:</strong> Database ({categoryContributors.find(c => c.category === 'Database')?.total || 0}) and Compute ({categoryContributors.find(c => c.category === 'Compute & Unix')?.total || 0}) incidents exhibit tight coupling across node cluster restarts.
+          <div className="bg-white/60 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 border-l-4 border-l-cyan-500 rounded-lg p-3.5">
+            <strong className="text-cyan-700 dark:text-cyan-300">[5] CORRELATED RESOURCE LOAD:</strong> Database ({categoryContributors.find(c => c.category === 'Database')?.total || 0}) and Compute ({categoryContributors.find(c => c.category === 'Compute & Unix')?.total || 0}) incidents exhibit tight coupling across node cluster restarts.
           </div>
 
-          <div className="bg-slate-950/60 border border-slate-800 border-l-4 border-l-teal-500 rounded-lg p-3.5">
-            <strong className="text-teal-300">[6] INFRASTRUCTURE CAPACITY:</strong> Network interfaces on <code className="text-teal-200">{primaryTopHost}</code> and storage volumes remain within safe operating thresholds.
+          <div className="bg-white/60 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 border-l-4 border-l-teal-500 rounded-lg p-3.5">
+            <strong className="text-teal-700 dark:text-teal-300">[6] INFRASTRUCTURE CAPACITY:</strong> Network interfaces on <code className="text-teal-700 dark:text-teal-200">{primaryTopHost}</code> and storage volumes remain within safe operating thresholds.
           </div>
 
-          <div className="bg-slate-950/60 border border-slate-800 border-l-4 border-l-indigo-500 rounded-lg p-3.5">
-            <strong className="text-indigo-300">[7] AUTONOMOUS RESOLUTION AGILITY:</strong> {closedPct}% of incidents are in closed state, indicating healthy queue processing without human backlog accumulation.
+          <div className="bg-white/60 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 border-l-4 border-l-indigo-500 rounded-lg p-3.5">
+            <strong className="text-indigo-700 dark:text-indigo-300">[7] AUTONOMOUS RESOLUTION AGILITY:</strong> {closedPct}% of incidents are in closed state, indicating healthy queue processing without human backlog accumulation.
           </div>
 
           {/* Executive Takeaway */}
-          <div className="bg-gradient-to-r from-cyan-950/80 to-slate-900 border border-cyan-500/40 rounded-lg p-4 mt-4 text-slate-200">
-            <div className="text-xs font-bold uppercase tracking-wider text-cyan-300 mb-1">
+          <div className="bg-gradient-to-r from-cyan-50 to-slate-50 dark:from-cyan-950/80 dark:to-slate-900 border border-cyan-500/40 rounded-lg p-4 mt-4 text-slate-700 dark:text-slate-200">
+            <div className="text-xs font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-300 mb-1">
               Executive Takeaway
             </div>
-            Operations are stable with {totalCount} total incidents in database. SLA performance is <strong>{slaMetPct} (optimal)</strong>. Key focus: maintain automated playbooks for <code className="text-cyan-300">{primaryTopHost}</code> and <code className="text-cyan-300">{secondTopHost}</code>.
+            Operations are stable with {totalCount} total incidents in database. SLA performance is <strong>{slaMetPct} (optimal)</strong>. Key focus: maintain automated playbooks for <code className="text-cyan-700 dark:text-cyan-300">{primaryTopHost}</code> and <code className="text-cyan-700 dark:text-cyan-300">{secondTopHost}</code>.
           </div>
         </div>
       </div>
 
       {/* 4. Insights Section (Dynamic Data from ITSM Tool) */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-6 shadow-xl">
-        <h2 className="text-base font-bold text-cyan-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Info className="w-4 h-4 text-cyan-400" />
+      <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-xl">
+        <h2 className="text-base font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <Info className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
           Structured SRE Insights (2)
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-slate-950/80 border border-slate-800 border-l-4 border-l-blue-500 rounded-lg p-4 space-y-2 text-xs">
-            <div className="flex items-center justify-between pb-1 border-b border-slate-800/80">
+          <div className="bg-white/80 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 border-l-4 border-l-blue-500 rounded-lg p-4 space-y-2 text-xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-200/80 dark:border-slate-800/80">
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/40">
                   Info
                 </span>
-                <span className="font-semibold text-slate-400 uppercase">Process</span>
+                <span className="font-semibold text-slate-500 dark:text-slate-400 uppercase">Process</span>
               </div>
               <span className="font-mono text-slate-500">#1</span>
             </div>
-            <p><strong className="text-cyan-300">Observation:</strong> {resolutionCodes[0]?.count || 0} tickets ({resolutionCodes[0]?.pct || '0%'} of volume) resolved via {resolutionCodes[0]?.code}.</p>
-            <p><strong className="text-cyan-300">Evidence:</strong> Total database incidents: {totalCount}. Automated runbook resolutions: {resolutionCodes[0]?.count || 0}.</p>
-            <p><strong className="text-cyan-300">Likely cause:</strong> Systemic kernel sysctl tuning and OS patching automated via SSH SOP runbooks.</p>
-            <p><strong className="text-cyan-300">Recommendation:</strong> Continue expanding automated RAG vector playbooks for all recurring node maintenance.</p>
+            <p><strong className="text-cyan-700 dark:text-cyan-300">Observation:</strong> {resolutionCodes[0]?.count || 0} tickets ({resolutionCodes[0]?.pct || '0%'} of volume) resolved via {resolutionCodes[0]?.code}.</p>
+            <p><strong className="text-cyan-700 dark:text-cyan-300">Evidence:</strong> Total database incidents: {totalCount}. Automated runbook resolutions: {resolutionCodes[0]?.count || 0}.</p>
+            <p><strong className="text-cyan-700 dark:text-cyan-300">Likely cause:</strong> Systemic kernel sysctl tuning and OS patching automated via SSH SOP runbooks.</p>
+            <p><strong className="text-cyan-700 dark:text-cyan-300">Recommendation:</strong> Continue expanding automated RAG vector playbooks for all recurring node maintenance.</p>
           </div>
 
-          <div className="bg-slate-950/80 border border-slate-800 border-l-4 border-l-cyan-500 rounded-lg p-4 space-y-2 text-xs">
-            <div className="flex items-center justify-between pb-1 border-b border-slate-800/80">
+          <div className="bg-white/80 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 border-l-4 border-l-cyan-500 rounded-lg p-4 space-y-2 text-xs">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-200/80 dark:border-slate-800/80">
               <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40">
                   Info
                 </span>
-                <span className="font-semibold text-slate-400 uppercase">Infrastructure</span>
+                <span className="font-semibold text-slate-500 dark:text-slate-400 uppercase">Infrastructure</span>
               </div>
               <span className="font-mono text-slate-500">#2</span>
             </div>
-            <p><strong className="text-cyan-300">Observation:</strong> <code className="text-cyan-200">{primaryTopHost}</code> and <code className="text-cyan-200">{secondTopHost}</code> drive {((primaryTopHostCount + (topHostsByVolume[1]?.count || 0)) / (totalCount || 1) * 100).toFixed(1)}% of total ITSM incident volume.</p>
-            <p><strong className="text-cyan-300">Evidence:</strong> {primaryTopHost}: {primaryTopHostCount} incidents; {secondTopHost}: {topHostsByVolume[1]?.count || 0} incidents.</p>
-            <p><strong className="text-cyan-300">Likely cause:</strong> High transactional throughput on core routing interfaces and primary PostgreSQL database node.</p>
-            <p><strong className="text-cyan-300">Recommendation:</strong> Maintain dedicated connection pooling and BGP peer route health verification daemons.</p>
+            <p><strong className="text-cyan-700 dark:text-cyan-300">Observation:</strong> <code className="text-cyan-700 dark:text-cyan-200">{primaryTopHost}</code> and <code className="text-cyan-700 dark:text-cyan-200">{secondTopHost}</code> drive {((primaryTopHostCount + (topHostsByVolume[1]?.count || 0)) / (totalCount || 1) * 100).toFixed(1)}% of total ITSM incident volume.</p>
+            <p><strong className="text-cyan-700 dark:text-cyan-300">Evidence:</strong> {primaryTopHost}: {primaryTopHostCount} incidents; {secondTopHost}: {topHostsByVolume[1]?.count || 0} incidents.</p>
+            <p><strong className="text-cyan-700 dark:text-cyan-300">Likely cause:</strong> High transactional throughput on core routing interfaces and primary PostgreSQL database node.</p>
+            <p><strong className="text-cyan-700 dark:text-cyan-300">Recommendation:</strong> Maintain dedicated connection pooling and BGP peer route health verification daemons.</p>
           </div>
         </div>
       </div>
@@ -666,33 +669,33 @@ export function IncidentAnalysisView() {
       {/* 5. Key Metrics & Priority Breakdown Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Key Metrics Table */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-xl">
-          <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Target className="w-4 h-4 text-cyan-400" />
+        <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xl">
+          <h3 className="text-sm font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <Target className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             Key Governance Metrics
           </h3>
-          <div className="overflow-hidden border border-slate-800 rounded-lg">
+          <div className="overflow-hidden border border-slate-200 dark:border-slate-800 rounded-lg">
             <table className="w-full text-xs text-left">
-              <tbody className="divide-y divide-slate-800">
-                <tr className="bg-slate-950/60">
-                  <th className="py-2.5 px-4 font-medium text-slate-400">Total Incidents Analyzed</th>
-                  <td className="py-2.5 px-4 font-bold text-cyan-300 text-right text-sm">{totalCount}</td>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                <tr className="bg-white/60 dark:bg-slate-950/60">
+                  <th className="py-2.5 px-4 font-medium text-slate-500 dark:text-slate-400">Total Incidents Analyzed</th>
+                  <td className="py-2.5 px-4 font-bold text-cyan-700 dark:text-cyan-300 text-right text-sm">{totalCount}</td>
                 </tr>
                 <tr>
-                  <th className="py-2.5 px-4 font-medium text-slate-400">Closed Rate</th>
-                  <td className="py-2.5 px-4 font-bold text-emerald-400 text-right text-sm">{closedPct}%</td>
+                  <th className="py-2.5 px-4 font-medium text-slate-500 dark:text-slate-400">Closed Rate</th>
+                  <td className="py-2.5 px-4 font-bold text-emerald-600 dark:text-emerald-400 text-right text-sm">{closedPct}%</td>
                 </tr>
-                <tr className="bg-slate-950/60">
-                  <th className="py-2.5 px-4 font-medium text-slate-400">High-Priority Ratio (P1/P2)</th>
-                  <td className="py-2.5 px-4 font-bold text-amber-400 text-right text-sm">{highPriorityPct}%</td>
+                <tr className="bg-white/60 dark:bg-slate-950/60">
+                  <th className="py-2.5 px-4 font-medium text-slate-500 dark:text-slate-400">High-Priority Ratio (P1/P2)</th>
+                  <td className="py-2.5 px-4 font-bold text-amber-600 dark:text-amber-400 text-right text-sm">{highPriorityPct}%</td>
                 </tr>
                 <tr>
-                  <th className="py-2.5 px-4 font-medium text-slate-400">Volume Trend Across Periods</th>
-                  <td className="py-2.5 px-4 font-bold text-emerald-400 text-right text-sm">{volumeChangePct}</td>
+                  <th className="py-2.5 px-4 font-medium text-slate-500 dark:text-slate-400">Volume Trend Across Periods</th>
+                  <td className="py-2.5 px-4 font-bold text-emerald-600 dark:text-emerald-400 text-right text-sm">{volumeChangePct}</td>
                 </tr>
-                <tr className="bg-slate-950/60">
-                  <th className="py-2.5 px-4 font-medium text-slate-400">SLA Met Compliance</th>
-                  <td className="py-2.5 px-4 font-bold text-emerald-400 text-right text-sm">{slaMetPct}</td>
+                <tr className="bg-white/60 dark:bg-slate-950/60">
+                  <th className="py-2.5 px-4 font-medium text-slate-500 dark:text-slate-400">SLA Met Compliance</th>
+                  <td className="py-2.5 px-4 font-bold text-emerald-600 dark:text-emerald-400 text-right text-sm">{slaMetPct}</td>
                 </tr>
               </tbody>
             </table>
@@ -700,14 +703,14 @@ export function IncidentAnalysisView() {
         </div>
 
         {/* Priority Distribution */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-xl">
-          <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-cyan-400" />
+        <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xl">
+          <h3 className="text-sm font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             Priority Distribution
           </h3>
-          <div className="overflow-hidden border border-slate-800 rounded-lg">
+          <div className="overflow-hidden border border-slate-200 dark:border-slate-800 rounded-lg">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+              <thead className="bg-white dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-2.5 px-3">Priority Tier</th>
                   <th className="py-2.5 px-3 text-right">Count</th>
@@ -715,14 +718,14 @@ export function IncidentAnalysisView() {
                   <th className="py-2.5 px-3">Visual Ratio</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {priorityBreakdown.map((p) => (
-                  <tr key={p.name} className="hover:bg-slate-800/40">
-                    <td className="py-2.5 px-3 font-semibold text-slate-200">{p.name}</td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-cyan-300">{p.count}</td>
-                    <td className="py-2.5 px-3 text-right font-mono text-slate-300">{p.pct}%</td>
+                  <tr key={p.name} className="hover:bg-slate-100/40 hover:dark:bg-slate-800/40">
+                    <td className="py-2.5 px-3 font-semibold text-slate-700 dark:text-slate-200">{p.name}</td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-cyan-700 dark:text-cyan-300">{p.count}</td>
+                    <td className="py-2.5 px-3 text-right font-mono text-slate-600 dark:text-slate-300">{p.pct}%</td>
                     <td className="py-2.5 px-3">
-                      <div className="w-24 bg-slate-800 rounded-full h-2 overflow-hidden">
+                      <div className="w-24 bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
                         <div className={`h-full ${p.color}`} style={{ width: `${Math.min(100, parseFloat(p.pct))}%` }} />
                       </div>
                     </td>
@@ -735,14 +738,14 @@ export function IncidentAnalysisView() {
       </div>
 
       {/* 6. Incident Volume by Period Table (Dynamic from ITSM DB) */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-xl">
-        <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-cyan-400" />
+      <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xl">
+        <h3 className="text-sm font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
           Incident Volume by Period ({periodsData.length} Period Cycles in Database)
         </h3>
-        <div className="overflow-x-auto border border-slate-800 rounded-lg">
+        <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-lg">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+            <thead className="bg-white dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th className="py-2.5 px-3">Period Date Range</th>
                 <th className="py-2.5 px-3 text-right">Total</th>
@@ -753,21 +756,21 @@ export function IncidentAnalysisView() {
                 <th className="py-2.5 px-3 text-right">Delta vs Prev</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono">
+            <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60 font-mono">
               {periodsData.map((row, idx) => (
                 <tr
                   key={row.period}
-                  className={`hover:bg-slate-800/40 transition-colors ${
-                    parseFloat(row.highPct) > 50 ? 'bg-rose-950/20' : idx % 2 === 0 ? 'bg-slate-950/30' : ''
+                  className={`hover:bg-slate-100/40 hover:dark:bg-slate-800/40 transition-colors ${
+                    parseFloat(row.highPct) > 50 ? 'bg-rose-50 dark:bg-rose-950/20' : idx % 2 === 0 ? 'bg-white/30 dark:bg-slate-950/30' : ''
                   }`}
                 >
-                  <td className="py-2 px-3 font-sans font-medium text-slate-300">{row.period}</td>
-                  <td className="py-2 px-3 text-right font-bold text-cyan-300">{row.total}</td>
-                  <td className="py-2 px-3 text-right text-emerald-400">{row.closed}</td>
-                  <td className="py-2 px-3 text-right text-blue-400">{row.resolved}</td>
-                  <td className="py-2 px-3 text-right text-rose-400 font-bold">{row.high}</td>
-                  <td className="py-2 px-3 text-right text-slate-300">{row.highPct}</td>
-                  <td className={`py-2 px-3 text-right font-bold ${row.delta.startsWith('+') ? 'text-rose-400' : row.delta.startsWith('-') ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  <td className="py-2 px-3 font-sans font-medium text-slate-600 dark:text-slate-300">{row.period}</td>
+                  <td className="py-2 px-3 text-right font-bold text-cyan-700 dark:text-cyan-300">{row.total}</td>
+                  <td className="py-2 px-3 text-right text-emerald-600 dark:text-emerald-400">{row.closed}</td>
+                  <td className="py-2 px-3 text-right text-blue-600 dark:text-blue-400">{row.resolved}</td>
+                  <td className="py-2 px-3 text-right text-rose-600 dark:text-rose-400 font-bold">{row.high}</td>
+                  <td className="py-2 px-3 text-right text-slate-600 dark:text-slate-300">{row.highPct}</td>
+                  <td className={`py-2 px-3 text-right font-bold ${row.delta.startsWith('+') ? 'text-rose-600 dark:text-rose-400' : row.delta.startsWith('-') ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'}`}>
                     {row.delta}
                   </td>
                 </tr>
@@ -780,30 +783,30 @@ export function IncidentAnalysisView() {
       {/* 7. State Distribution & Top Resolution Codes Grid (Dynamic from ITSM DB) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* State Distribution */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-xl">
-          <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+        <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xl">
+          <h3 className="text-sm font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             State Distribution
           </h3>
-          <div className="overflow-hidden border border-slate-800 rounded-lg">
+          <div className="overflow-hidden border border-slate-200 dark:border-slate-800 rounded-lg">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+              <thead className="bg-white dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-2.5 px-3">State</th>
                   <th className="py-2.5 px-3 text-right">Count</th>
                   <th className="py-2.5 px-3 text-right">%</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {stateBreakdown.map((s) => (
-                  <tr key={s.state} className="hover:bg-slate-800/40">
+                  <tr key={s.state} className="hover:bg-slate-100/40 hover:dark:bg-slate-800/40">
                     <td className="py-2.5 px-3">
                       <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${s.pill}`}>
                         {s.state}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-200">{s.count}</td>
-                    <td className="py-2.5 px-3 text-right font-mono text-cyan-400 font-semibold">{s.pct}%</td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-700 dark:text-slate-200">{s.count}</td>
+                    <td className="py-2.5 px-3 text-right font-mono text-cyan-600 dark:text-cyan-400 font-semibold">{s.pct}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -812,26 +815,26 @@ export function IncidentAnalysisView() {
         </div>
 
         {/* Top Resolution Codes */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-xl">
-          <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Zap className="w-4 h-4 text-cyan-400" />
+        <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xl">
+          <h3 className="text-sm font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <Zap className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             Top Resolution Codes
           </h3>
-          <div className="overflow-hidden border border-slate-800 rounded-lg">
+          <div className="overflow-hidden border border-slate-200 dark:border-slate-800 rounded-lg">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+              <thead className="bg-white dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-2.5 px-3">Resolution Code</th>
                   <th className="py-2.5 px-3 text-right">Count</th>
                   <th className="py-2.5 px-3 text-right">%</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {resolutionCodes.map((r) => (
-                  <tr key={r.code} className="hover:bg-slate-800/40">
-                    <td className="py-2.5 px-3 font-medium text-slate-300">{r.code}</td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-200">{r.count}</td>
-                    <td className="py-2.5 px-3 text-right font-mono text-cyan-400 font-semibold">{r.pct}</td>
+                  <tr key={r.code} className="hover:bg-slate-100/40 hover:dark:bg-slate-800/40">
+                    <td className="py-2.5 px-3 font-medium text-slate-600 dark:text-slate-300">{r.code}</td>
+                    <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-700 dark:text-slate-200">{r.count}</td>
+                    <td className="py-2.5 px-3 text-right font-mono text-cyan-600 dark:text-cyan-400 font-semibold">{r.pct}</td>
                   </tr>
                 ))}
               </tbody>
@@ -843,14 +846,14 @@ export function IncidentAnalysisView() {
       {/* 8. Top Hosts by Volume & High-Priority Grid (Real CIs from ITSM DB) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Hosts by Volume */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-xl">
-          <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Server className="w-4 h-4 text-cyan-400" />
+        <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xl">
+          <h3 className="text-sm font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <Server className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
             Top Hosts by Volume
           </h3>
-          <div className="overflow-x-auto border border-slate-800 rounded-lg">
+          <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-lg">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+              <thead className="bg-white dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-2 px-2.5">Configuration Item (CI)</th>
                   <th className="py-2 px-2 text-right">Count</th>
@@ -860,15 +863,15 @@ export function IncidentAnalysisView() {
                   <th className="py-2 px-2 text-right">Periods</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
+              <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60 font-mono">
                 {topHostsByVolume.map((h) => (
-                  <tr key={h.host} className="hover:bg-slate-800/40">
-                    <td className="py-2 px-2.5 font-sans font-semibold text-cyan-300 truncate max-w-[140px]">{h.host}</td>
-                    <td className="py-2 px-2 text-right font-bold text-white">{h.count}</td>
-                    <td className="py-2 px-2 text-right text-slate-400">{h.pct}</td>
-                    <td className="py-2 px-2 text-right text-rose-400">{h.high}</td>
-                    <td className="py-2 px-2 text-right text-slate-300">{h.highPct}</td>
-                    <td className="py-2 px-2 text-right text-slate-400">{h.periods}</td>
+                  <tr key={h.host} className="hover:bg-slate-100/40 hover:dark:bg-slate-800/40">
+                    <td className="py-2 px-2.5 font-sans font-semibold text-cyan-700 dark:text-cyan-300 truncate max-w-[140px]">{h.host}</td>
+                    <td className="py-2 px-2 text-right font-bold text-slate-900 dark:text-white">{h.count}</td>
+                    <td className="py-2 px-2 text-right text-slate-500 dark:text-slate-400">{h.pct}</td>
+                    <td className="py-2 px-2 text-right text-rose-600 dark:text-rose-400">{h.high}</td>
+                    <td className="py-2 px-2 text-right text-slate-600 dark:text-slate-300">{h.highPct}</td>
+                    <td className="py-2 px-2 text-right text-slate-500 dark:text-slate-400">{h.periods}</td>
                   </tr>
                 ))}
               </tbody>
@@ -877,14 +880,14 @@ export function IncidentAnalysisView() {
         </div>
 
         {/* Top Hosts by High-Priority */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-xl">
-          <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-400" />
+        <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xl">
+          <h3 className="text-sm font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
             Top Hosts by High-Priority (P1 / P2)
           </h3>
-          <div className="overflow-x-auto border border-slate-800 rounded-lg">
+          <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-lg">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+              <thead className="bg-white dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-2 px-3">Configuration Item (CI)</th>
                   <th className="py-2 px-3 text-right">High-Priority</th>
@@ -892,13 +895,13 @@ export function IncidentAnalysisView() {
                   <th className="py-2 px-3 text-right">High %</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
+              <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60 font-mono">
                 {topHostsByHighPriority.map((h) => (
-                  <tr key={h.host} className="hover:bg-slate-800/40">
-                    <td className="py-2 px-3 font-sans font-semibold text-rose-300 truncate max-w-[160px]">{h.host}</td>
-                    <td className="py-2 px-3 text-right font-bold text-rose-400">{h.highCount}</td>
-                    <td className="py-2 px-3 text-right text-slate-300">{h.totalCount}</td>
-                    <td className="py-2 px-3 text-right font-bold text-amber-400">{h.highPct}</td>
+                  <tr key={h.host} className="hover:bg-slate-100/40 hover:dark:bg-slate-800/40">
+                    <td className="py-2 px-3 font-sans font-semibold text-rose-700 dark:text-rose-300 truncate max-w-[160px]">{h.host}</td>
+                    <td className="py-2 px-3 text-right font-bold text-rose-600 dark:text-rose-400">{h.highCount}</td>
+                    <td className="py-2 px-3 text-right text-slate-600 dark:text-slate-300">{h.totalCount}</td>
+                    <td className="py-2 px-3 text-right font-bold text-amber-600 dark:text-amber-400">{h.highPct}</td>
                   </tr>
                 ))}
               </tbody>
@@ -908,30 +911,30 @@ export function IncidentAnalysisView() {
       </div>
 
       {/* 9. Category Top Contributors (Real Telemetry from ITSM DB) */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-xl">
-        <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-          <Layers className="w-4 h-4 text-cyan-400" />
+      <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xl">
+        <h3 className="text-sm font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Layers className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
           Category Top Contributors (Real Telemetry Groupings)
         </h3>
-        <div className="overflow-x-auto border border-slate-800 rounded-lg">
+        <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-lg">
           <table className="w-full text-xs text-left">
-            <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+            <thead className="bg-white dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th className="py-2.5 px-3 w-44">Category (Total)</th>
                 <th className="py-2.5 px-3">Top Contributors (Target CIs)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60">
+            <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
               {categoryContributors.map((c) => (
-                <tr key={c.category} className="hover:bg-slate-800/40">
-                  <td className="py-2.5 px-3 font-bold text-cyan-300">
-                    {c.category} <span className="text-slate-400 font-normal">({c.total})</span>
+                <tr key={c.category} className="hover:bg-slate-100/40 hover:dark:bg-slate-800/40">
+                  <td className="py-2.5 px-3 font-bold text-cyan-700 dark:text-cyan-300">
+                    {c.category} <span className="text-slate-500 dark:text-slate-400 font-normal">({c.total})</span>
                   </td>
                   <td className="py-2.5 px-3 flex flex-wrap gap-1.5">
                     {c.contributors.map((contrib) => (
                       <span
                         key={contrib}
-                        className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700 text-[11px] font-mono"
+                        className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded border border-slate-300 dark:border-slate-700 text-[11px] font-mono"
                       >
                         {contrib}
                       </span>
@@ -946,14 +949,14 @@ export function IncidentAnalysisView() {
 
       {/* 10. Open / Triage Incident Queue (Live Tickets from ITSM DB) */}
       {openList.length > 0 && (
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-xl">
-          <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-amber-400" />
+        <div className="bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xl">
+          <h3 className="text-sm font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             Active Open & On-Hold Incident Queue ({openList.length})
           </h3>
-          <div className="overflow-x-auto border border-slate-800 rounded-lg">
+          <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-lg">
             <table className="w-full text-xs text-left">
-              <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+              <thead className="bg-white dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-2.5 px-3">Ticket</th>
                   <th className="py-2.5 px-3">Summary</th>
@@ -963,23 +966,23 @@ export function IncidentAnalysisView() {
                   <th className="py-2.5 px-3">Opened</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
                 {openList.map((inc) => (
-                  <tr key={inc.id} className="hover:bg-slate-800/40">
-                    <td className="py-2.5 px-3 font-mono font-bold text-cyan-300">{inc.number}</td>
-                    <td className="py-2.5 px-3 font-medium text-slate-200">{inc.shortDescription}</td>
+                  <tr key={inc.id} className="hover:bg-slate-100/40 hover:dark:bg-slate-800/40">
+                    <td className="py-2.5 px-3 font-mono font-bold text-cyan-700 dark:text-cyan-300">{inc.number}</td>
+                    <td className="py-2.5 px-3 font-medium text-slate-700 dark:text-slate-200">{inc.shortDescription}</td>
                     <td className="py-2.5 px-3">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
                         {inc.priority || 'P2'}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 font-mono text-slate-300">{inc.configurationItemName || 'Unspecified CI'}</td>
+                    <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-slate-300">{inc.configurationItemName || 'Unspecified CI'}</td>
                     <td className="py-2.5 px-3">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/40">
                         {inc.state}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 text-slate-400 font-mono">
+                    <td className="py-2.5 px-3 text-slate-500 dark:text-slate-400 font-mono">
                       {formatDateTime(inc.openedAt || inc.createdAt)}
                     </td>
                   </tr>
@@ -991,7 +994,7 @@ export function IncidentAnalysisView() {
       )}
 
       {/* Footer Meta */}
-      <div className="border-t border-slate-800 pt-4 text-center text-xs text-slate-500">
+      <div className="border-t border-slate-200 dark:border-slate-800 pt-4 text-center text-xs text-slate-500">
         Enterprise Incident Analysis Engine • Data-driven SRE Telemetry • Connected to PostgreSQL ITSM Database
       </div>
     </div>

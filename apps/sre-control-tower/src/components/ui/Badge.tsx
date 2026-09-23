@@ -4,14 +4,14 @@ import { cx } from './cx';
 export type BadgeTone = 'low' | 'medium' | 'high' | 'critical' | 'success' | 'pending' | 'error' | 'neutral';
 
 export const toneClasses: Record<BadgeTone, string> = {
-  low: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
-  medium: 'bg-amber-500/15 text-amber-300 border-amber-500/40',
-  high: 'bg-orange-500/15 text-orange-300 border-orange-500/40',
-  critical: 'bg-rose-500/15 text-rose-300 border-rose-500/40',
-  success: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
-  pending: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40',
-  error: 'bg-rose-500/15 text-rose-300 border-rose-500/40',
-  neutral: 'bg-slate-500/15 text-slate-300 border-slate-500/40',
+  low: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/40',
+  medium: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/40',
+  high: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/40',
+  critical: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/40',
+  success: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/40',
+  pending: 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/40',
+  error: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/40',
+  neutral: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-500/15 dark:text-slate-300 dark:border-slate-500/40',
 };
 
 const toneTopBorder: Record<BadgeTone, string> = {

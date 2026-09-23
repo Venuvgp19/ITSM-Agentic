@@ -944,14 +944,14 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
   };
 
   return (
-    <div className="pro-card rounded-2xl p-5 border border-slate-800 space-y-4">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+    <div className="pro-card rounded-2xl p-5 border border-slate-200 dark:border-slate-800 space-y-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
         <div>
-          <h3 className="text-sm font-black text-slate-100 flex items-center gap-2 uppercase tracking-wide">
-            <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
+          <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 uppercase tracking-wide">
+            <Radio className="w-4 h-4 text-cyan-600 dark:text-cyan-400 animate-pulse" />
             AI Fleet Topology — 3D Map
           </h3>
-          <p className="text-[11px] text-slate-400 mt-1">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
             Agents, models, tools, target hosts, and databases orbiting the shared Vector Knowledge Base. Drag to
             orbit, click a node to fly to it, hover a line for what the connection means.
           </p>
@@ -961,23 +961,23 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
             onClick={() => setAutoRotate(!autoRotate)}
             className={`px-3 py-1.5 rounded-lg border font-bold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               autoRotate
-                ? 'bg-cyan-600/20 border-cyan-500/30 text-cyan-300'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                ? 'bg-cyan-600/20 border-cyan-500/30 text-cyan-700 dark:text-cyan-300'
+                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 hover:dark:text-slate-200'
             }`}
           >
             Auto-Rotate: {autoRotate ? 'ON' : 'OFF'}
           </button>
-          <div className="flex items-center rounded-lg border border-slate-800 overflow-hidden bg-slate-900">
+          <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
             <button
               onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))}
-              className="px-2.5 py-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-bold cursor-pointer"
+              className="px-2.5 py-1.5 hover:bg-slate-100 hover:dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 hover:dark:text-slate-200 font-bold cursor-pointer"
             >
               -
             </button>
-            <span className="px-2.5 text-slate-300 font-mono text-[10px]">{Math.round(zoom * 100)}%</span>
+            <span className="px-2.5 text-slate-600 dark:text-slate-300 font-mono text-[10px]">{Math.round(zoom * 100)}%</span>
             <button
               onClick={() => setZoom((z) => Math.min(2, z + 0.1))}
-              className="px-2.5 py-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-bold cursor-pointer"
+              className="px-2.5 py-1.5 hover:bg-slate-100 hover:dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 hover:dark:text-slate-200 font-bold cursor-pointer"
             >
               +
             </button>
@@ -995,11 +995,11 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onClick={handleClick}
-          className="w-full rounded-xl bg-slate-950 border border-slate-800 cursor-grab active:cursor-grabbing"
+          className="w-full rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 cursor-grab active:cursor-grabbing"
         />
         {tooltip && (
           <div
-            className="absolute pointer-events-none px-2.5 py-1.5 rounded-lg bg-slate-900/95 border border-cyan-500/40 text-[10px] text-cyan-200 font-mono shadow-lg max-w-[220px] z-10"
+            className="absolute pointer-events-none px-2.5 py-1.5 rounded-lg bg-white/95 dark:bg-slate-900/95 border border-cyan-500/40 text-[10px] text-cyan-700 dark:text-cyan-200 font-mono shadow-lg max-w-[220px] z-10"
             style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}
           >
             {tooltip.text}
@@ -1009,16 +1009,16 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         {/* Live event ticker -- real sre_history rows as they land, instead
             of only an ambient heat glow with no textual record of what
             actually happened. */}
-        <div className="absolute bottom-3 left-3 w-72 max-h-36 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/85 backdrop-blur-sm p-2.5 text-[10px] font-mono space-y-1 pointer-events-none z-10">
+        <div className="absolute bottom-3 left-3 w-72 max-h-36 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white/85 dark:bg-slate-950/85 backdrop-blur-sm p-2.5 text-[10px] font-mono space-y-1 pointer-events-none z-10">
           <div className="text-slate-500 font-bold mb-1 flex items-center gap-1.5">
-            <Activity className="w-3 h-3 text-amber-400" />
+            <Activity className="w-3 h-3 text-amber-600 dark:text-amber-400" />
             Live Event Feed
           </div>
           {ticker.length === 0 ? (
-            <div className="text-slate-600">Listening for fleet activity…</div>
+            <div className="text-slate-400 dark:text-slate-600">Listening for fleet activity…</div>
           ) : (
             ticker.slice(0, 5).map((t) => (
-              <div key={t.id} className="text-slate-300 truncate">
+              <div key={t.id} className="text-slate-600 dark:text-slate-300 truncate">
                 {t.text}
               </div>
             ))
@@ -1029,15 +1029,15 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
             tool node surfaces its most recent real command + output from
             sre_history instead of just the static metadata drawer. */}
         {terminalNodeId && (
-          <div className="absolute top-3 right-3 w-80 max-h-72 overflow-y-auto rounded-xl border border-emerald-500/30 bg-black/90 backdrop-blur-sm p-3 font-mono text-[10px] text-emerald-300 shadow-2xl z-20">
-            <div className="flex items-center justify-between mb-2 text-emerald-400 font-bold sticky top-0 bg-black/90">
+          <div className="absolute top-3 right-3 w-80 max-h-72 overflow-y-auto rounded-xl border border-emerald-500/30 bg-slate-100/90 dark:bg-black/90 backdrop-blur-sm p-3 font-mono text-[10px] text-emerald-700 dark:text-emerald-300 shadow-2xl z-20">
+            <div className="flex items-center justify-between mb-2 text-emerald-600 dark:text-emerald-400 font-bold sticky top-0 bg-slate-100/90 dark:bg-black/90">
               <span className="flex items-center gap-1.5">
                 <Terminal className="w-3 h-3" />
                 {nodeById[terminalNodeId]?.name || 'Live Terminal'}
               </span>
               <button
                 onClick={() => setTerminalNodeId(null)}
-                className="cursor-pointer text-slate-400 hover:text-white"
+                className="cursor-pointer text-slate-500 dark:text-slate-400 hover:text-slate-900 hover:dark:text-white"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -1050,8 +1050,8 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
                   <div className="text-slate-500">
                     [{new Date(ev.executedAt).toLocaleTimeString()}] {ev.incidentId}
                   </div>
-                  <div className="text-cyan-300 break-words">$ {ev.commandExecuted}</div>
-                  <div className="text-emerald-300 whitespace-pre-wrap break-words">
+                  <div className="text-cyan-700 dark:text-cyan-300 break-words">$ {ev.commandExecuted}</div>
+                  <div className="text-emerald-700 dark:text-emerald-300 whitespace-pre-wrap break-words">
                     {(ev.executionOutput || '').slice(0, 300)}
                   </div>
                 </div>
@@ -1065,22 +1065,22 @@ export function AIFleetTopology3D({ assets, onSelectAsset }: AIFleetTopology3DPr
         {Object.entries(CATEGORY_COLOR).map(([cat, color]) => (
           <div key={cat} className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-            <span className="text-slate-400 capitalize">{cat.replace('_', ' ')}</span>
+            <span className="text-slate-500 dark:text-slate-400 capitalize">{cat.replace('_', ' ')}</span>
           </div>
         ))}
         {(['host', 'database', 'backend'] as const).map((kind) => (
           <div key={kind} className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: INFRA_NODES.find((n) => n.kind === kind)?.color }} />
-            <span className="text-slate-400">{KIND_LABEL[kind]}</span>
+            <span className="text-slate-500 dark:text-slate-400">{KIND_LABEL[kind]}</span>
           </div>
         ))}
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-          <span className="text-slate-400">Contained / Isolated</span>
+          <span className="text-slate-500 dark:text-slate-400">Contained / Isolated</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-          <span className="text-slate-400">Active in last 5 min (Execution Audit Log)</span>
+          <span className="text-slate-500 dark:text-slate-400">Active in last 5 min (Execution Audit Log)</span>
         </div>
       </div>
     </div>

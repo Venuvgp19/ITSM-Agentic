@@ -214,28 +214,28 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
     switch (status) {
       case 'APPROVED':
         return {
-          bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+          bg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
           dot: 'bg-emerald-400 shadow-emerald-500/50',
           icon: CheckCircle2,
           label: 'Human Approved (HITL)',
         };
       case 'AUTO_EXECUTED':
         return {
-          bg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+          bg: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30',
           dot: 'bg-cyan-400 shadow-cyan-500/50',
           icon: Zap,
           label: 'Auto-Executed (Policy)',
         };
       case 'REJECTED':
         return {
-          bg: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+          bg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30',
           dot: 'bg-rose-400 shadow-rose-500/50',
           icon: XCircle,
           label: 'Human Rejected',
         };
       default:
         return {
-          bg: 'bg-slate-800 text-slate-300 border-slate-700',
+          bg: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700',
           dot: 'bg-slate-400',
           icon: Clock,
           label: status,
@@ -246,14 +246,14 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
   const getRiskBadge = (risk: string) => {
     switch (risk) {
       case 'CRITICAL':
-        return 'bg-rose-500/15 text-rose-300 border-rose-500/40';
+        return 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40';
       case 'HIGH':
-        return 'bg-amber-500/15 text-amber-300 border-amber-500/40';
+        return 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40';
       case 'MEDIUM':
-        return 'bg-blue-500/15 text-blue-300 border-blue-500/40';
+        return 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/40';
       case 'LOW':
       default:
-        return 'bg-slate-800 text-slate-300 border-slate-700';
+        return 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700';
     }
   };
 
@@ -261,53 +261,53 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
     <div className="space-y-6">
       {/* Top Executive KPI Ribbon */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-4 shadow-lg flex items-center justify-between">
+        <div className="bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-lg flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Audit Traces</div>
-            <div className="text-2xl font-black text-slate-100 mt-0.5">{totalCount}</div>
+            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Audit Traces</div>
+            <div className="text-2xl font-black text-slate-900 dark:text-slate-100 mt-0.5">{totalCount}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-center text-cyan-400">
+          <div className="w-10 h-10 rounded-xl bg-slate-100/60 dark:bg-slate-800/60 border border-slate-300/60 dark:border-slate-700/60 flex items-center justify-center text-cyan-600 dark:text-cyan-400">
             <Activity className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-4 shadow-lg flex items-center justify-between">
+        <div className="bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-lg flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Auto-Executed</div>
-            <div className="text-2xl font-black text-cyan-400 mt-0.5">
-              {autoCount} <span className="text-xs font-semibold text-slate-400">({totalCount ? Math.round((autoCount / totalCount) * 100) : 0}%)</span>
+            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Auto-Executed</div>
+            <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400 mt-0.5">
+              {autoCount} <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">({totalCount ? Math.round((autoCount / totalCount) * 100) : 0}%)</span>
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-cyan-950/40 border border-cyan-800/50 flex items-center justify-center text-cyan-400">
+          <div className="w-10 h-10 rounded-xl bg-cyan-50 dark:bg-cyan-950/40 border border-cyan-800/50 flex items-center justify-center text-cyan-600 dark:text-cyan-400">
             <Zap className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-4 shadow-lg flex items-center justify-between">
+        <div className="bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-lg flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">HITL Approved</div>
-            <div className="text-2xl font-black text-emerald-400 mt-0.5">{approvedCount}</div>
+            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">HITL Approved</div>
+            <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5">{approvedCount}</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-950/40 border border-emerald-800/50 flex items-center justify-center text-emerald-400">
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-800/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
             <ShieldCheck className="w-5 h-5" />
           </div>
         </div>
 
-        <div className="bg-[#111827] border border-slate-800/80 rounded-2xl p-4 shadow-lg flex items-center justify-between">
+        <div className="bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 shadow-lg flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Avg Latency</div>
-            <div className="text-2xl font-black text-amber-400 mt-0.5">
+            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Avg Latency</div>
+            <div className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-0.5">
               {avgDuration < 1000 ? `${avgDuration}ms` : `${(avgDuration / 1000).toFixed(1)}s`}
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-950/40 border border-amber-800/50 flex items-center justify-center text-amber-400">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-800/50 flex items-center justify-center text-amber-600 dark:text-amber-400">
             <Timer className="w-5 h-5" />
           </div>
         </div>
       </div>
 
       {/* Search & Filter Header Bar */}
-      <div className="bg-[#111827] border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+      <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
         <div className="relative w-full md:w-96">
           <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-500" />
           <input
@@ -315,7 +315,7 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search incident number, host, agent, commands..."
-            className="focus-ring w-full bg-[#0b0f19] border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:border-cyan-500 font-sans"
+            className="focus-ring w-full bg-slate-50 dark:bg-[#0b0f19] border border-slate-200 dark:border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-700 dark:text-slate-200 placeholder-slate-500 focus:border-cyan-500 font-sans"
           />
         </div>
 
@@ -331,7 +331,7 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
                 statusFilter === st
                   ? 'bg-cyan-600 text-white shadow-md shadow-cyan-950/40'
-                  : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-slate-700 hover:dark:text-slate-200 hover:bg-slate-100 hover:dark:bg-slate-800'
               }`}
             >
               {st === 'ALL'
@@ -347,10 +347,10 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
           <button
             onClick={handleForceSync}
             disabled={isSyncing}
-            className="px-3.5 py-1.5 bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/80 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm disabled:opacity-50"
+            className="px-3.5 py-1.5 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-50 hover:dark:bg-rose-900 text-rose-700 dark:text-rose-300 border border-rose-800/80 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm disabled:opacity-50"
             title="Clear stuck locks & force sync historical data"
           >
-            <Zap className={`w-3.5 h-3.5 text-rose-400 ${isSyncing ? 'animate-spin' : 'animate-pulse'}`} />
+            <Zap className={`w-3.5 h-3.5 text-rose-600 dark:text-rose-400 ${isSyncing ? 'animate-spin' : 'animate-pulse'}`} />
             {isSyncing ? 'Syncing...' : 'Force Sync History'}
           </button>
         </div>
@@ -358,20 +358,20 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
 
       {/* Audit Log Stream */}
       {filteredHistory.length === 0 ? (
-        <div className="bg-[#111827] border border-slate-800 rounded-2xl p-12 text-center text-slate-400 text-sm space-y-4 shadow-xl">
-          <p className="font-semibold text-slate-300">No historical agent execution traces match your search or filter criteria.</p>
+        <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500 dark:text-slate-400 text-sm space-y-4 shadow-xl">
+          <p className="font-semibold text-slate-600 dark:text-slate-300">No historical agent execution traces match your search or filter criteria.</p>
           <div className="flex items-center justify-center gap-3">
             <button
               onClick={() => { setSearchTerm(''); setStatusFilter('ALL'); }}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold"
+              className="px-4 py-2 bg-white dark:bg-slate-900 hover:bg-slate-100 hover:dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold"
             >
               Reset Filters
             </button>
             <button
               onClick={handleForceSync}
-              className="px-4 py-2 bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800 rounded-xl text-xs font-bold flex items-center gap-2"
+              className="px-4 py-2 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-50 hover:dark:bg-rose-900 text-rose-700 dark:text-rose-300 border border-rose-800 rounded-xl text-xs font-bold flex items-center gap-2"
             >
-              <Zap className="w-4 h-4 text-rose-400" />
+              <Zap className="w-4 h-4 text-rose-600 dark:text-rose-400" />
               Force Refresh Audit Logs
             </button>
           </div>
@@ -390,14 +390,14 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                   <StatusIcon className="w-3.5 h-3.5" />
                 </div>
 
-                <div className="bg-[#111827] border border-slate-800/80 hover:border-slate-700 transition-all rounded-2xl overflow-hidden shadow-lg">
+                <div className="bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300 hover:dark:border-slate-700 transition-all rounded-2xl overflow-hidden shadow-lg">
                   {/* Card Header & Metadata Bar */}
-                  <div className="p-5 bg-slate-900/40 space-y-3">
+                  <div className="p-5 bg-white/40 dark:bg-slate-900/40 space-y-3">
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                       {/* Left: Incident ID + Status Badges + Title */}
                       <div className="space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-xs font-extrabold text-cyan-300 bg-cyan-950/80 border border-cyan-800/60 px-2.5 py-0.5 rounded-lg shadow-sm">
+                          <span className="font-mono text-xs font-extrabold text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/80 border border-cyan-800/60 px-2.5 py-0.5 rounded-lg shadow-sm">
                             {item.incidentId}
                           </span>
                           <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${badge.bg}`}>
@@ -407,25 +407,25 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                           <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${riskBadge}`}>
                             {item.riskLevel} RISK
                           </span>
-                          <span className="font-mono text-[11px] text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                          <span className="font-mono text-[11px] text-slate-500 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-800">
                             {item.id}
                           </span>
                         </div>
 
-                        <h4 className="text-base font-bold text-slate-100 leading-snug">
+                        <h4 className="text-base font-bold text-slate-900 dark:text-slate-100 leading-snug">
                           {item.incidentTitle}
                         </h4>
                       </div>
 
                       {/* Right: Timestamp, Latency & Controls */}
-                      <div className="flex items-center justify-between lg:justify-end gap-4 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800/80">
+                      <div className="flex items-center justify-between lg:justify-end gap-4 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-200/80 dark:border-slate-800/80">
                         <div className="text-left lg:text-right">
-                          <div className="text-[11px] text-slate-400 font-mono flex items-center lg:justify-end gap-1.5">
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono flex items-center lg:justify-end gap-1.5">
                             <Clock className="w-3 h-3 text-slate-500" />
                             {formatDateTime(item.executedAt)}
                           </div>
-                          <div className="text-xs font-bold text-slate-400 mt-0.5">
-                            Duration: <span className="text-emerald-400 font-mono">{item.durationMs}ms</span>
+                          <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">
+                            Duration: <span className="text-emerald-600 dark:text-emerald-400 font-mono">{item.durationMs}ms</span>
                           </div>
                         </div>
 
@@ -435,7 +435,7 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                             className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 border shadow-sm ${
                               isExpanded
                                 ? 'bg-cyan-600 text-white border-cyan-500'
-                                : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700'
+                                : 'bg-white dark:bg-slate-900 hover:bg-slate-100 hover:dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
                             }`}
                           >
                             {isExpanded ? 'Hide Trace' : 'View Trace'}
@@ -443,7 +443,7 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                           </button>
                           <button
                             onClick={() => handleDelete(item.id)}
-                            className="p-2 bg-slate-900 hover:bg-rose-950 text-slate-400 hover:text-rose-400 text-xs font-bold rounded-xl transition-all border border-slate-700 hover:border-rose-800 shadow-sm"
+                            className="p-2 bg-white dark:bg-slate-900 hover:bg-rose-50 hover:dark:bg-rose-950 text-slate-500 dark:text-slate-400 hover:text-rose-600 hover:dark:text-rose-400 text-xs font-bold rounded-xl transition-all border border-slate-300 dark:border-slate-700 hover:border-rose-800 shadow-sm"
                             title="Delete audit entry"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -453,26 +453,26 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                     </div>
 
                     {/* Metadata Chips Ribbon */}
-                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/60 text-xs">
-                      <div className="flex items-center gap-1.5 bg-[#0b0f19] border border-slate-800 px-2.5 py-1 rounded-lg text-slate-300">
-                        <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-                        <span className="font-semibold text-slate-200">{item.agentName}</span>
+                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60 text-xs">
+                      <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-[#0b0f19] border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">
+                        <Cpu className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">{item.agentName}</span>
                       </div>
 
-                      <div className="flex items-center gap-1.5 bg-[#0b0f19] border border-slate-800 px-2.5 py-1 rounded-lg text-slate-300">
-                        <Server className="w-3.5 h-3.5 text-indigo-400" />
-                        <span className="text-slate-300 font-mono">{item.targetCi}</span>
+                      <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-[#0b0f19] border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">
+                        <Server className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                        <span className="text-slate-600 dark:text-slate-300 font-mono">{item.targetCi}</span>
                       </div>
 
-                      <div className="flex items-center gap-1.5 bg-[#0b0f19] border border-slate-800 px-2.5 py-1 rounded-lg text-slate-300">
-                        <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="text-slate-300">{item.humanApprover}</span>
+                      <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-[#0b0f19] border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">
+                        <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-slate-600 dark:text-slate-300">{item.humanApprover}</span>
                       </div>
 
                       {item.kbGenerated && (
-                        <div className="flex items-center gap-1.5 bg-[#0b0f19] border border-slate-800 px-2.5 py-1 rounded-lg text-amber-400">
-                          <BrainCircuit className="w-3.5 h-3.5 text-amber-400" />
-                          <span className="font-mono font-bold text-amber-300">{item.kbGenerated}</span>
+                        <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-[#0b0f19] border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-lg text-amber-600 dark:text-amber-400">
+                          <BrainCircuit className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                          <span className="font-mono font-bold text-amber-700 dark:text-amber-300">{item.kbGenerated}</span>
                         </div>
                       )}
                     </div>
@@ -480,10 +480,10 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
 
                   {/* Expanded 3-Agent Trace Drawer */}
                   {isExpanded && (
-                    <div className="border-t border-slate-800 p-5 bg-[#080c14] space-y-5 font-sans">
-                      <div className="text-xs font-extrabold uppercase text-cyan-400 tracking-wider flex items-center justify-between">
+                    <div className="border-t border-slate-200 dark:border-slate-800 p-5 bg-slate-100 dark:bg-[#080c14] space-y-5 font-sans">
+                      <div className="text-xs font-extrabold uppercase text-cyan-600 dark:text-cyan-400 tracking-wider flex items-center justify-between">
                         <span className="flex items-center gap-2">
-                          <Workflow className="w-4 h-4 text-cyan-400" />
+                          <Workflow className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
                           Autonomous Multi-Agent Execution Breakdown
                         </span>
                         <span className="text-[11px] text-slate-500 font-mono font-normal">
@@ -535,60 +535,60 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                         return (
                           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                             {/* Router Agent Card */}
-                            <div className="bg-[#111827] border border-amber-500/20 rounded-2xl p-4 space-y-2.5 shadow-md">
-                              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                                <span className="font-bold text-xs text-amber-400 flex items-center gap-1.5">
-                                  <Radio className="w-3.5 h-3.5 text-amber-400" />
+                            <div className="bg-white dark:bg-[#111827] border border-amber-500/20 rounded-2xl p-4 space-y-2.5 shadow-md">
+                              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                                <span className="font-bold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                                  <Radio className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                   🚦 ROUTER AGENT
                                 </span>
-                                <span className="text-[10px] font-bold text-amber-400 bg-amber-950/60 border border-amber-800/40 px-2 py-0.5 rounded">
+                                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 border border-amber-800/40 px-2 py-0.5 rounded">
                                   {routerPriority}
                                 </span>
                               </div>
                               <div className="text-xs space-y-1.5">
-                                <div><span className="text-slate-500">Category:</span> <span className="text-slate-200 font-medium">{routerCategory}</span></div>
-                                <div><span className="text-slate-500">Assigned Lead:</span> <span className="text-cyan-300 font-medium">{routerRoute}</span></div>
-                                <div className="text-[11px] text-slate-300 italic bg-[#0b0f19] p-2.5 rounded-xl border border-slate-800 mt-1 leading-relaxed">
+                                <div><span className="text-slate-500">Category:</span> <span className="text-slate-700 dark:text-slate-200 font-medium">{routerCategory}</span></div>
+                                <div><span className="text-slate-500">Assigned Lead:</span> <span className="text-cyan-700 dark:text-cyan-300 font-medium">{routerRoute}</span></div>
+                                <div className="text-[11px] text-slate-600 dark:text-slate-300 italic bg-slate-50 dark:bg-[#0b0f19] p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 mt-1 leading-relaxed">
                                   "{routerAck}"
                                 </div>
                               </div>
                             </div>
 
                             {/* Resolver Agent Card */}
-                            <div className="bg-[#111827] border border-cyan-500/20 rounded-2xl p-4 space-y-2.5 shadow-md">
-                              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                                <span className="font-bold text-xs text-cyan-400 flex items-center gap-1.5">
-                                  <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+                            <div className="bg-white dark:bg-[#111827] border border-cyan-500/20 rounded-2xl p-4 space-y-2.5 shadow-md">
+                              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                                <span className="font-bold text-xs text-cyan-600 dark:text-cyan-400 flex items-center gap-1.5">
+                                  <Terminal className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                                   🛠️ RESOLVER AGENT
                                 </span>
-                                <span className="text-[10px] font-bold text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded">
+                                <span className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded">
                                   {item.resolverOutput?.resolutionStatus || 'RESOLVED'}
                                 </span>
                               </div>
                               <div className="text-xs space-y-1.5">
-                                <div><span className="text-slate-500">Diagnosis:</span> <span className="text-slate-200 leading-relaxed block">{resolverDiagnosis}</span></div>
-                                <div><span className="text-slate-500">Runbook:</span> <span className="text-cyan-300 font-mono text-[11px]">{resolverRunbook}</span></div>
-                                <div className="text-[11px] text-slate-300 bg-[#0b0f19] p-2.5 rounded-xl border border-slate-800 mt-1 leading-relaxed">
+                                <div><span className="text-slate-500">Diagnosis:</span> <span className="text-slate-700 dark:text-slate-200 leading-relaxed block">{resolverDiagnosis}</span></div>
+                                <div><span className="text-slate-500">Runbook:</span> <span className="text-cyan-700 dark:text-cyan-300 font-mono text-[11px]">{resolverRunbook}</span></div>
+                                <div className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-[#0b0f19] p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 mt-1 leading-relaxed">
                                   "{resolverNotice}"
                                 </div>
                               </div>
                             </div>
 
                             {/* Knowledge Synthesizer Card */}
-                            <div className="bg-[#111827] border border-emerald-500/20 rounded-2xl p-4 space-y-2.5 shadow-md">
-                              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                                <span className="font-bold text-xs text-emerald-400 flex items-center gap-1.5">
-                                  <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
+                            <div className="bg-white dark:bg-[#111827] border border-emerald-500/20 rounded-2xl p-4 space-y-2.5 shadow-md">
+                              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                                <span className="font-bold text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                  <BrainCircuit className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                                   🧠 KNOWLEDGE SYNTHESIZER
                                 </span>
-                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2 py-0.5 rounded font-mono">
+                                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-800/40 px-2 py-0.5 rounded font-mono">
                                   {synthKbId}
                                 </span>
                               </div>
                               <div className="text-xs space-y-1.5">
-                                <div><span className="text-slate-500">KB Title:</span> <span className="text-emerald-300 font-bold block line-clamp-1">{synthKbTitle}</span></div>
-                                <div><span className="text-slate-500">Summary:</span> <span className="text-slate-300 block line-clamp-2 leading-relaxed">{synthSolution}</span></div>
-                                <div className="text-[11px] text-emerald-400 bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-900/40 mt-1 leading-relaxed">
+                                <div><span className="text-slate-500">KB Title:</span> <span className="text-emerald-700 dark:text-emerald-300 font-bold block line-clamp-1">{synthKbTitle}</span></div>
+                                <div><span className="text-slate-500">Summary:</span> <span className="text-slate-600 dark:text-slate-300 block line-clamp-2 leading-relaxed">{synthSolution}</span></div>
+                                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-900/40 mt-1 leading-relaxed">
                                   💡 <span className="font-bold">Insight:</span> {synthTrend}
                                 </div>
                               </div>
@@ -601,19 +601,19 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                       {item.commandExecuted && (
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-extrabold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
-                              <Terminal className="w-4 h-4 text-cyan-400" />
+                            <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 flex items-center gap-2 uppercase tracking-wider">
+                              <Terminal className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
                               Executed CLI / SSH Payload:
                             </span>
                             <button
                               onClick={() => handleCopy(item.commandExecuted, `cmd-${item.id}`)}
-                              className="text-[11px] text-slate-400 hover:text-cyan-300 flex items-center gap-1 bg-[#111827] px-2 py-1 rounded border border-slate-800"
+                              className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-cyan-700 hover:dark:text-cyan-300 flex items-center gap-1 bg-white dark:bg-[#111827] px-2 py-1 rounded border border-slate-200 dark:border-slate-800"
                             >
-                              {copiedId === `cmd-${item.id}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                              {copiedId === `cmd-${item.id}` ? <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3 h-3" />}
                               {copiedId === `cmd-${item.id}` ? 'Copied' : 'Copy'}
                             </button>
                           </div>
-                          <div className="bg-[#030712] border border-slate-800 rounded-xl p-3.5 font-mono text-xs text-cyan-300 whitespace-pre-wrap leading-relaxed shadow-inner">
+                          <div className="bg-slate-100 dark:bg-[#030712] border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 font-mono text-xs text-cyan-700 dark:text-cyan-300 whitespace-pre-wrap leading-relaxed shadow-inner">
                             <span className="text-slate-500 select-none mr-2">$</span>
                             {item.commandExecuted}
                           </div>
@@ -623,32 +623,32 @@ export function HistoricalActivityView({ history }: HistoricalActivityViewProps)
                       {/* Execution Output Stream Box */}
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold text-slate-200 flex items-center gap-2 uppercase tracking-wider">
-                            <FileText className="w-4 h-4 text-emerald-400" />
+                          <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200 flex items-center gap-2 uppercase tracking-wider">
+                            <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                             Live SSH Terminal Output & Verification Proof:
                           </span>
                           {item.executionOutput && (
                             <button
                               onClick={() => handleCopy(item.executionOutput, `out-${item.id}`)}
-                              className="text-[11px] text-slate-400 hover:text-emerald-300 flex items-center gap-1 bg-[#111827] px-2 py-1 rounded border border-slate-800"
+                              className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-emerald-700 hover:dark:text-emerald-300 flex items-center gap-1 bg-white dark:bg-[#111827] px-2 py-1 rounded border border-slate-200 dark:border-slate-800"
                             >
-                              {copiedId === `out-${item.id}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                              {copiedId === `out-${item.id}` ? <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3 h-3" />}
                               {copiedId === `out-${item.id}` ? 'Copied' : 'Copy Output'}
                             </button>
                           )}
                         </div>
-                        <div className="bg-[#030712] border border-slate-800 rounded-xl overflow-hidden shadow-inner">
+                        <div className="bg-slate-100 dark:bg-[#030712] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-inner">
                           {/* Terminal Header Bar */}
-                          <div className="bg-[#0b0f19] px-4 py-2 border-b border-slate-800 flex items-center justify-between">
+                          <div className="bg-slate-50 dark:bg-[#0b0f19] px-4 py-2 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                             <div className="flex items-center gap-1.5">
                               <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
                               <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
                               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
-                              <span className="text-[11px] text-slate-400 font-mono ml-2">ssh root@{item.targetCi || 'remote-host'}</span>
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono ml-2">ssh root@{item.targetCi || 'remote-host'}</span>
                             </div>
                             <span className="text-[10px] text-slate-500 font-mono">STATUS: SUCCESS (200 OK)</span>
                           </div>
-                          <pre className="p-4 font-mono text-xs text-slate-300 whitespace-pre-wrap overflow-x-auto max-h-60 overflow-y-auto leading-relaxed">
+                          <pre className="p-4 font-mono text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap overflow-x-auto max-h-60 overflow-y-auto leading-relaxed">
                             {item.executionOutput || 'Remediation completed cleanly. Terminal reported exit status 0.'}
                           </pre>
                         </div>

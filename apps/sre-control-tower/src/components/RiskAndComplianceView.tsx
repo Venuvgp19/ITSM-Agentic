@@ -125,15 +125,15 @@ export function RiskAndComplianceView({ onKillSwitchChange }: RiskAndComplianceP
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-              <Scale className="w-5 h-5 text-purple-400" />
+            <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <Scale className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               <span>RISK, SECURITY & REGULATORY COMPLIANCE</span>
             </h1>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/30">
               Active Governance
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Automated compliance postures for EU AI Act, ISO/IEC 42001, and NIST AI RMF with emergency kill switch containment.
           </p>
         </div>
@@ -142,22 +142,22 @@ export function RiskAndComplianceView({ onKillSwitchChange }: RiskAndComplianceP
       {/* 2. Emergency Kill Switch Control Station */}
       <div className={`pro-card rounded-2xl p-6 border transition-all ${
         isMasterKillSwitchActive
-          ? 'border-rose-500 bg-rose-950/40 glow-rose'
-          : 'border-slate-800 bg-slate-900/80'
+          ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 glow-rose'
+          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80'
       }`}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black shadow-lg ${
               isMasterKillSwitchActive
                 ? 'bg-rose-600 text-white animate-pulse'
-                : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'bg-emerald-50 text-emerald-600 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30'
             }`}>
               <Power className="w-6 h-6" />
             </div>
 
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-white tracking-tight">
+                <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight">
                   {isMasterKillSwitchActive
                     ? 'FLEET EMERGENCY KILL SWITCH ACTIVE — ALL AGENTS CONTAINED'
                     : 'FLEET KILL SWITCH PROTOCOL (READY)'}
@@ -165,12 +165,12 @@ export function RiskAndComplianceView({ onKillSwitchChange }: RiskAndComplianceP
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                   isMasterKillSwitchActive
                     ? 'bg-rose-500 text-slate-950 font-black'
-                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40'
                 }`}>
                   {isMasterKillSwitchActive ? 'CONTAINED' : 'ARMED & MONITORING'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
                 {isMasterKillSwitchActive
                   ? 'All autonomous SSH executions, ticket routing, and runbook modifications are halted. Manual human operator takeover required.'
                   : 'Instantly halt all autonomous daemon executions across WorkerNode1HL, control plane, Worker1OL, and Worker2OL in case of drift or security anomaly.'}
@@ -202,34 +202,34 @@ export function RiskAndComplianceView({ onKillSwitchChange }: RiskAndComplianceP
       {/* 3. Regulatory Framework Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {frameworks.map((fw) => (
-          <div key={fw.name} className="pro-card rounded-2xl p-5 border border-slate-800 space-y-4 flex flex-col justify-between">
+          <div key={fw.name} className="pro-card rounded-2xl p-5 border border-slate-200 dark:border-slate-800 space-y-4 flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
-                <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-500/30">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-3">
+                <span className="text-[10px] font-mono font-bold text-cyan-700 bg-cyan-50 border-cyan-200 dark:text-cyan-400 dark:bg-cyan-950/40 px-2 py-0.5 rounded border dark:border-cyan-500/30">
                   {fw.status}
                 </span>
-                <span className="text-base font-black font-mono text-emerald-400">{fw.score}</span>
+                <span className="text-base font-black font-mono text-emerald-600 dark:text-emerald-400">{fw.score}</span>
               </div>
 
-              <h3 className="text-xs font-black text-white">{fw.name}</h3>
-              <p className="text-[11px] text-slate-400 mt-0.5 mb-3">{fw.classification}</p>
+              <h3 className="text-xs font-black text-slate-900 dark:text-white">{fw.name}</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 mb-3">{fw.classification}</p>
 
-              <div className="space-y-2 border-t border-slate-800/80 pt-3 text-[11px]">
+              <div className="space-y-2 border-t border-slate-200 dark:border-slate-800/80 pt-3 text-[11px]">
                 {fw.controls.map((ctrl) => (
-                  <div key={ctrl.name} className="p-2 rounded-lg bg-slate-950/70 border border-slate-800/80 space-y-0.5">
-                    <div className="flex items-center justify-between text-slate-200 font-bold">
+                  <div key={ctrl.name} className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 space-y-0.5">
+                    <div className="flex items-center justify-between text-slate-700 dark:text-slate-200 font-bold">
                       <span>{ctrl.name}</span>
-                      <span className="text-[9px] font-mono text-emerald-400 font-bold">{ctrl.status}</span>
+                      <span className="text-[9px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">{ctrl.status}</span>
                     </div>
-                    <p className="text-[10px] text-slate-400 leading-tight">{ctrl.desc}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">{ctrl.desc}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-800 text-[10px] font-mono text-slate-500 flex items-center justify-between">
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 text-[10px] font-mono text-slate-600 dark:text-slate-500 flex items-center justify-between">
               <span>Continuous Audit</span>
-              <span className="text-emerald-400 font-bold">● Active</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold">● Active</span>
             </div>
           </div>
         ))}
@@ -237,31 +237,31 @@ export function RiskAndComplianceView({ onKillSwitchChange }: RiskAndComplianceP
 
       {/* Kill Switch Modal */}
       {showKillModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="pro-card rounded-2xl p-6 border border-rose-500/60 max-w-md w-full space-y-4 bg-slate-900 shadow-2xl">
-            <div className="flex items-center gap-3 text-rose-400">
+        <div className="fixed inset-0 z-50 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="pro-card rounded-2xl p-6 border border-rose-500/60 max-w-md w-full space-y-4 bg-white dark:bg-slate-900 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
               <AlertTriangle className="w-6 h-6" />
-              <h3 className="text-base font-black text-white">Trigger Emergency AI Containment?</h3>
+              <h3 className="text-base font-black text-slate-900 dark:text-white">Trigger Emergency AI Containment?</h3>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               This will immediately terminate all active ReAct SSH loops, revoke background ticket routing tokens, and hold all incoming incidents in Human Queue.
             </p>
 
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">Containment Audit Reason *</label>
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Containment Audit Reason *</label>
               <input
                 type="text"
                 value={killReason}
                 onChange={(e) => setKillReason(e.target.value)}
                 placeholder="e.g. Host safety verification / suspected loop"
-                className="focus-ring w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:border-rose-500"
+                className="focus-ring w-full bg-white border border-slate-200 dark:bg-slate-950 dark:border-slate-800 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:border-rose-500"
               />
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setShowKillModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs cursor-pointer"
               >
                 Cancel
               </button>

@@ -78,24 +78,24 @@ export function CostDashboardView() {
 
   return (
     <div className="space-y-6 font-sans">
-      <Card className="border border-slate-800/80 shadow-2xl">
+      <Card className="border border-slate-200 dark:border-slate-800/80 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-emerald-600 to-cyan-500 flex items-center justify-center text-slate-950 shadow-lg shadow-emerald-500/20">
               <DollarSign className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base md:text-lg font-black text-white uppercase tracking-tight">
+              <h2 className="text-base md:text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">
                 AI Ops Cost Dashboard
               </h2>
-              <p className="text-xs text-slate-400 font-medium">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                 Real LLM spend across every daemon call, persisted to the database so it survives restarts — not an
                 in-memory session estimate.
               </p>
             </div>
           </div>
           <Button variant="secondary" onClick={fetchSummary} disabled={loading} className="rounded-xl">
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin motion-reduce:animate-none text-cyan-400' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin motion-reduce:animate-none text-cyan-600 dark:text-cyan-400' : ''}`} />
             Sync
           </Button>
         </div>
@@ -107,7 +107,7 @@ export function CostDashboardView() {
         emptyLabel="No LLM spend recorded yet — costs will appear here as the daemon processes incidents."
         skeleton={
           <div className="flex flex-col items-center justify-center py-20 text-slate-500 gap-3">
-            <RefreshCw className="w-7 h-7 animate-spin motion-reduce:animate-none text-cyan-400" />
+            <RefreshCw className="w-7 h-7 animate-spin motion-reduce:animate-none text-cyan-600 dark:text-cyan-400" />
             <span className="text-xs font-bold">Loading cost data...</span>
           </div>
         }
@@ -117,24 +117,24 @@ export function CostDashboardView() {
             {/* Stat cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card>
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Today</span>
-                <div className="text-2xl font-black text-emerald-400">{fmtUsd(summary.todayUsd)}</div>
-                <span className="text-[10px] text-slate-500 font-medium">Last 24 hours</span>
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Today</span>
+                <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{fmtUsd(summary.todayUsd)}</div>
+                <span className="text-[10px] text-slate-600 dark:text-slate-500 font-medium">Last 24 hours</span>
               </Card>
               <Card>
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">This Week</span>
-                <div className="text-2xl font-black text-cyan-400">{fmtUsd(summary.weekUsd)}</div>
-                <span className="text-[10px] text-slate-500 font-medium">Last 7 days</span>
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">This Week</span>
+                <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">{fmtUsd(summary.weekUsd)}</div>
+                <span className="text-[10px] text-slate-600 dark:text-slate-500 font-medium">Last 7 days</span>
               </Card>
               <Card>
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">All-Time</span>
-                <div className="text-2xl font-black text-purple-400">{fmtUsd(summary.allTimeUsd)}</div>
-                <span className="text-[10px] text-slate-500 font-medium">@ $8.00 / 1M tokens</span>
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">All-Time</span>
+                <div className="text-2xl font-black text-purple-600 dark:text-purple-400">{fmtUsd(summary.allTimeUsd)}</div>
+                <span className="text-[10px] text-slate-600 dark:text-slate-500 font-medium">@ $8.00 / 1M tokens</span>
               </Card>
               <Card>
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Total Calls</span>
-                <div className="text-2xl font-black text-amber-400">{summary.allTimeCalls.toLocaleString()}</div>
-                <span className="text-[10px] text-slate-500 font-medium">{summary.allTimeTokens.toLocaleString()} tokens</span>
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Total Calls</span>
+                <div className="text-2xl font-black text-amber-600 dark:text-amber-400">{summary.allTimeCalls.toLocaleString()}</div>
+                <span className="text-[10px] text-slate-600 dark:text-slate-500 font-medium">{summary.allTimeTokens.toLocaleString()} tokens</span>
               </Card>
             </div>
 
@@ -151,7 +151,7 @@ export function CostDashboardView() {
                   <div className="mt-4 flex items-end gap-1 h-40 overflow-x-auto pb-1">
                     {summary.byDay.map((d) => (
                       <div key={d.day} className="group relative flex-1 min-w-[10px] flex flex-col items-center justify-end h-full">
-                        <div className="absolute -top-7 opacity-0 group-hover:opacity-100 transition text-[10px] font-mono bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 whitespace-nowrap z-10 text-slate-200">
+                        <div className="absolute -top-7 opacity-0 group-hover:opacity-100 transition text-[10px] font-mono bg-white border border-slate-300 dark:bg-slate-900 dark:border-slate-700 rounded px-1.5 py-0.5 whitespace-nowrap z-10 text-slate-700 dark:text-slate-200">
                           {formatDate(d.day, { month: 'short', day: 'numeric' })}: {fmtUsd(d.costUsd)}
                         </div>
                         <div
@@ -171,11 +171,11 @@ export function CostDashboardView() {
                   {summary.byModel.length === 0 && <EmptyState title="No model spend yet." />}
                   {summary.byModel.map((m, i) => (
                     <div key={m.model}>
-                      <div className="flex justify-between text-[11px] text-slate-400 mb-1 gap-2">
+                      <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1 gap-2">
                         <span className="truncate font-mono" title={m.model}>{m.model}</span>
-                        <span className="font-bold text-slate-200 shrink-0">{fmtUsd(m.costUsd)}</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-200 shrink-0">{fmtUsd(m.costUsd)}</span>
                       </div>
-                      <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden">
+                      <div className="w-full bg-slate-100 dark:bg-slate-900 rounded-full h-2 overflow-hidden">
                         <div
                           className="h-2 rounded-full"
                           style={{
@@ -202,15 +202,15 @@ export function CostDashboardView() {
                 <div className="mt-4 space-y-2.5">
                   {summary.topIncidents.map((inc) => (
                     <div key={inc.incidentNumber} className="flex items-center gap-3">
-                      <span className="font-mono text-xs font-bold text-cyan-300 w-28 shrink-0">{inc.incidentNumber}</span>
-                      <div className="flex-1 bg-slate-900 rounded-full h-2 overflow-hidden">
+                      <span className="font-mono text-xs font-bold text-cyan-700 dark:text-cyan-300 w-28 shrink-0">{inc.incidentNumber}</span>
+                      <div className="flex-1 bg-slate-100 dark:bg-slate-900 rounded-full h-2 overflow-hidden">
                         <div
                           className="h-2 rounded-full bg-gradient-to-r from-amber-500 to-rose-400"
                           style={{ width: `${Math.max(3, (inc.costUsd / maxIncidentSpend) * 100)}%` }}
                         />
                       </div>
-                      <span className="text-xs font-bold text-slate-200 w-16 text-right shrink-0">{fmtUsd(inc.costUsd)}</span>
-                      <span className="text-[10px] text-slate-500 font-mono w-16 text-right shrink-0">{inc.calls} calls</span>
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200 w-16 text-right shrink-0">{fmtUsd(inc.costUsd)}</span>
+                      <span className="text-[10px] text-slate-600 dark:text-slate-500 font-mono w-16 text-right shrink-0">{inc.calls} calls</span>
                     </div>
                   ))}
                 </div>

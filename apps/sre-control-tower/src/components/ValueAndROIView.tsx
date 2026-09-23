@@ -69,15 +69,15 @@ export function ValueAndROIView() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-400" />
+            <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
               <span>VALUE REALIZATION & BUSINESS ROI</span>
             </h1>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
               Active Value Measurement
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Real-time business impact metrics, MTTR reduction trajectory, hours saved, and inference economics.
           </p>
         </div>
@@ -89,30 +89,30 @@ export function ValueAndROIView() {
           const Icon = m.icon;
 
           return (
-            <div key={m.title} className="pro-card rounded-2xl p-5 border border-slate-800 space-y-3 relative overflow-hidden">
+            <div key={m.title} className="pro-card rounded-2xl p-5 border border-slate-200 dark:border-slate-800 space-y-3 relative overflow-hidden">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-mono font-bold text-slate-400 uppercase">
+                <span className="text-[11px] font-mono font-bold text-slate-500 dark:text-slate-400 uppercase">
                   {m.title}
                 </span>
                 <div className={`p-2 rounded-xl ${
-                  m.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                  m.color === 'cyan' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' :
-                  m.color === 'purple' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
-                  'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                  m.color === 'emerald' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' :
+                  m.color === 'cyan' ? 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20' :
+                  m.color === 'purple' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20' :
+                  'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
                 }`}>
                   <Icon className="w-4 h-4" />
                 </div>
               </div>
 
               <div>
-                <div className="text-3xl font-black font-mono text-white">{m.value}</div>
-                <div className="text-xs text-emerald-400 font-bold mt-1 flex items-center gap-1">
+                <div className="text-3xl font-black font-mono text-slate-900 dark:text-white">{m.value}</div>
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold mt-1 flex items-center gap-1">
                   <ArrowUpRight className="w-3.5 h-3.5" />
                   <span>{m.change}</span>
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-500 font-mono">
+              <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800/80 text-[10px] text-slate-500 font-mono">
                 {m.baseline}
               </div>
             </div>
@@ -123,21 +123,21 @@ export function ValueAndROIView() {
       {/* 3. Domain Impact Matrix & Token Economics */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Domain Breakdown Table */}
-        <div className="lg:col-span-2 pro-card rounded-2xl p-5 border border-slate-800 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="lg:col-span-2 pro-card rounded-2xl p-5 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
             <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-cyan-400" />
-              <h3 className="text-xs font-black text-white uppercase tracking-wider">
+              <BarChart3 className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
                 Value Realization by Incident Domain
               </h3>
             </div>
-            <span className="text-[11px] font-mono text-slate-400">1,021 Auto-Resolved Total</span>
+            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">1,021 Auto-Resolved Total</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400 text-[11px] font-mono">
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-[11px] font-mono">
                   <th className="pb-2.5">Domain</th>
                   <th className="pb-2.5 text-right">Resolved Tickets</th>
                   <th className="pb-2.5 text-right">Hours Saved</th>
@@ -145,18 +145,18 @@ export function ValueAndROIView() {
                   <th className="pb-2.5 text-right">SLA Success</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono text-xs">
+              <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60 font-mono text-xs">
                 {domainBreakdown.map((d) => (
-                  <tr key={d.domain} className="hover:bg-slate-900/60 transition">
-                    <td className="py-3 font-sans font-bold text-white flex items-center gap-2">
+                  <tr key={d.domain} className="hover:bg-white/60 hover:dark:bg-slate-900/60 transition">
+                    <td className="py-3 font-sans font-bold text-slate-900 dark:text-white flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-cyan-400" />
                       <span>{d.domain}</span>
                     </td>
-                    <td className="py-3 text-right text-slate-300 font-bold">{d.resolved}</td>
-                    <td className="py-3 text-right text-emerald-400 font-bold">{d.hoursSaved} hrs</td>
-                    <td className="py-3 text-right text-cyan-300">{d.avgMttr}</td>
+                    <td className="py-3 text-right text-slate-600 dark:text-slate-300 font-bold">{d.resolved}</td>
+                    <td className="py-3 text-right text-emerald-600 dark:text-emerald-400 font-bold">{d.hoursSaved} hrs</td>
+                    <td className="py-3 text-right text-cyan-700 dark:text-cyan-300">{d.avgMttr}</td>
                     <td className="py-3 text-right">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40">
                         {d.compliance}
                       </span>
                     </td>
@@ -168,39 +168,39 @@ export function ValueAndROIView() {
         </div>
 
         {/* Right 1 Col: Inference Economics & SLA Score */}
-        <div className="pro-card rounded-2xl p-5 border border-slate-800 space-y-4 shadow-xl flex flex-col justify-between">
+        <div className="pro-card rounded-2xl p-5 border border-slate-200 dark:border-slate-800 space-y-4 shadow-xl flex flex-col justify-between">
           <div className="space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-xs font-black text-white uppercase tracking-wider">
+                <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
                   Token Economics
                 </h3>
               </div>
-              <span className="text-[10px] font-mono text-emerald-400 font-bold">NVIDIA NIM</span>
+              <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">NVIDIA NIM</span>
             </div>
 
             <div className="space-y-2.5 text-xs font-mono">
-              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-400">Total Tokens Incurred</span>
-                <strong className="text-white">48,320 tokens</strong>
+              <div className="p-3 rounded-xl bg-white/80 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Total Tokens Incurred</span>
+                <strong className="text-slate-900 dark:text-white">48,320 tokens</strong>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-400">Avg Tokens / Incident</span>
-                <strong className="text-cyan-300">1,170 tokens</strong>
+              <div className="p-3 rounded-xl bg-white/80 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Avg Tokens / Incident</span>
+                <strong className="text-cyan-700 dark:text-cyan-300">1,170 tokens</strong>
               </div>
-              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-400">Monthly LLM Cloud Cost</span>
-                <strong className="text-emerald-400">$4.12 USD</strong>
+              <div className="p-3 rounded-xl bg-white/80 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <span className="text-slate-500 dark:text-slate-400">Monthly LLM Cloud Cost</span>
+                <strong className="text-emerald-600 dark:text-emerald-400">$4.12 USD</strong>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-gradient-to-br from-emerald-950/30 to-cyan-950/30 border border-emerald-500/30 space-y-1 text-xs">
-              <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+            <div className="p-3.5 rounded-xl bg-gradient-to-br from-emerald-50 dark:from-emerald-950/30 to-cyan-50 dark:to-cyan-950/30 border border-emerald-500/30 space-y-1 text-xs">
+              <div className="font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Zero SLA Breaches Recorded</span>
               </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
                 Autonomous SRE resolves critical P1/P2 incidents in under 60 seconds, eliminating SLA breach risks.
               </p>
             </div>

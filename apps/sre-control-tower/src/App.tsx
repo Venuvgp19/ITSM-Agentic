@@ -37,7 +37,9 @@ import {
   ArrowRight,
   Scale,
   Power,
-  DollarSign
+  DollarSign,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { AIControlTowerOverview } from './components/AIControlTowerOverview';
 import { AIAssetInventoryView } from './components/AIAssetInventoryView';
@@ -102,6 +104,32 @@ export function App() {
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isKillSwitchTriggered, setIsKillSwitchTriggered] = useState<boolean>(false);
+
+  // Theme -- defaults to dark (the original, unchanged look) for anyone who
+  // hasn't chosen otherwise, so existing users see no difference on upgrade.
+  // Applied as a `dark` class on <html> (Tailwind's `darkMode: 'class'`);
+  // every component pairs its existing dark-mode classes with a `dark:`
+  // prefix and a new light-mode default, per index.css's token split.
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const stored = localStorage.getItem('control_tower_theme');
+      if (stored === 'light' || stored === 'dark') return stored;
+    } catch {
+      // Fallback
+    }
+    return 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    try {
+      localStorage.setItem('control_tower_theme', theme);
+    } catch {
+      // Fallback
+    }
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
   const API_BASE = 'http://localhost:5173/api/v1/agent';
 
@@ -351,89 +379,100 @@ export function App() {
   // ── 0. Control Tower Cyber Authentication Gate ──
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 font-sans text-slate-100 relative overflow-hidden select-text">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4 font-sans text-slate-900 dark:text-slate-100 relative overflow-hidden select-text transition-colors duration-200">
         {/* Ambient Lights */}
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-cyan-500/10 dark:bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-emerald-500/10 dark:bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <Button
+          variant="ghost"
+          iconOnly
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          className="absolute top-4 right-4 z-20 text-slate-500 dark:text-slate-400"
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </Button>
 
         <div className="w-full max-w-md space-y-6 z-10">
           {/* Logo & Header */}
           <div className="text-center space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-[11px] font-mono font-bold tracking-wide shadow-inner">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/30 text-cyan-700 dark:text-cyan-400 text-[11px] font-mono font-bold tracking-wide shadow-inner">
               <Radio className="w-3.5 h-3.5 animate-pulse" />
               <span>SERVICENOW AI CONTROL TOWER</span>
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-white flex items-center justify-center gap-2 font-sans">
+            <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-center justify-center gap-2 font-sans">
               <span>servicenow<span className="text-[#30bb7b] font-black text-3xl">.</span></span>
             </h1>
-            <p className="text-xs text-slate-400 font-medium">
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
               Enterprise Mission Control for Autonomous Agents, Models & Active Governance
             </p>
           </div>
 
           {/* Login Gate Card */}
-          <div className="pro-card rounded-2xl p-7 space-y-5 border border-slate-800 shadow-2xl bg-slate-900/90 backdrop-blur-xl">
-            <div className="border-b border-slate-800 pb-3">
-              <h2 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-                <Lock className="w-4 h-4 text-emerald-400" /> Security Authorization Gate
+          <div className="pro-card rounded-2xl p-7 space-y-5 border border-slate-200 dark:border-slate-800 shadow-2xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl">
+            <div className="border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Security Authorization Gate
               </h2>
-              <p className="text-xs text-slate-400 mt-1">Authenticate as authorized SRE fleet operator to manage agent actions.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Authenticate as authorized SRE fleet operator to manage agent actions.</p>
             </div>
 
             {authError && (
-              <div className="p-3 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-semibold">
+              <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-500/20 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-semibold">
                 {authError}
               </div>
             )}
 
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Operator User ID</label>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Operator User ID</label>
                 <div className="relative flex items-center">
-                  <User className="w-4 h-4 text-slate-500 absolute left-3 pointer-events-none" />
+                  <User className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 pointer-events-none" />
                   <input
                     type="text"
                     required
                     value={authUserId}
                     onChange={(e) => setAuthUserId(e.target.value)}
                     placeholder="e.g. Venu"
-                    className="focus-ring w-full bg-slate-950 border border-slate-800 focus:border-cyan-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white transition font-medium"
+                    className="focus-ring w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 focus:border-cyan-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-900 dark:text-white transition font-medium"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">Operator Password</label>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Operator Password</label>
                 <div className="relative flex items-center">
-                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 pointer-events-none" />
+                  <Lock className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 pointer-events-none" />
                   <input
                     type="password"
                     required
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="focus-ring w-full bg-slate-950 border border-slate-800 focus:border-cyan-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white transition font-mono"
+                    className="focus-ring w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 focus:border-cyan-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-900 dark:text-white transition font-mono"
                   />
                 </div>
               </div>
 
               {/* Quick credential hint */}
-              <div className="bg-slate-950 border border-slate-800/80 p-3 rounded-xl text-[11px] text-slate-400 flex items-center justify-between font-mono">
+              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-3 rounded-xl text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between font-mono">
                 <div>
-                  <span className="text-slate-300 font-bold">User ID:</span> <span className="text-cyan-400 font-bold">Venu</span>
+                  <span className="text-slate-700 dark:text-slate-300 font-bold">User ID:</span> <span className="text-cyan-700 dark:text-cyan-400 font-bold">Venu</span>
                 </div>
                 <div>
-                  <span className="text-slate-300 font-bold">Password:</span> <span className="text-emerald-400 font-bold">admin007</span>
+                  <span className="text-slate-700 dark:text-slate-300 font-bold">Password:</span> <span className="text-emerald-700 dark:text-emerald-400 font-bold">admin007</span>
                 </div>
               </div>
 
               <button
                 type="submit"
                 disabled={authLoading}
-                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold text-xs tracking-wider transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-600 via-indigo-600 to-emerald-600 dark:from-cyan-500 dark:via-indigo-500 dark:to-emerald-500 hover:brightness-110 text-white dark:text-slate-950 font-bold text-xs tracking-wider transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 cursor-pointer"
               >
                 {authLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                  <RefreshCw className="w-4 h-4 animate-spin text-white dark:text-slate-950" />
                 ) : (
                   <>
                     <span>Unlock AI Control Tower</span>
@@ -443,12 +482,12 @@ export function App() {
               </button>
             </form>
 
-            <div className="pt-2 border-t border-slate-800 text-center">
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 text-center">
               <a
                 href="http://localhost:3000/incidents"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-cyan-300 font-medium transition"
+                className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-300 font-medium transition"
               >
                 <ExternalLink className="w-3 h-3" />
                 <span>Return to ServiceNow ITSM Portal (Port 3000)</span>
@@ -462,27 +501,27 @@ export function App() {
 
   // ── Authenticated ServiceNow AI Control Tower Dashboard ──
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans antialiased overflow-hidden select-text">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased overflow-hidden select-text transition-colors duration-200">
       {/* 1. Collapsible Pro Sidebar */}
       <aside
         className={`${
           isSidebarCollapsed ? 'w-16' : 'w-64'
-        } shrink-0 border-r border-slate-800/80 bg-slate-950/95 backdrop-blur-2xl flex flex-col justify-between transition-all duration-300 z-30`}
+        } shrink-0 border-r border-slate-200 dark:border-slate-800/80 bg-white/95 dark:bg-slate-950/95 backdrop-blur-2xl flex flex-col justify-between transition-all duration-300 z-30`}
       >
         <div className="flex flex-col h-full overflow-hidden">
           {/* Brand Header */}
-          <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80">
+          <div className="h-16 px-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800/80">
             {!isSidebarCollapsed ? (
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-400 flex items-center justify-center text-slate-950 shadow-md shadow-cyan-500/20 font-black">
                   <Radio className="w-4 h-4 animate-pulse" />
                 </div>
                 <div className="truncate">
-                  <div className="text-xs font-black tracking-wider text-white uppercase flex items-center gap-1">
+                  <div className="text-xs font-black tracking-wider text-slate-900 dark:text-white uppercase flex items-center gap-1">
                     <span>servicenow</span>
                     <span className="text-[#30bb7b] font-black text-sm">.</span>
                   </div>
-                  <div className="text-[10px] font-mono text-cyan-400 font-bold">AI CONTROL TOWER</div>
+                  <div className="text-[10px] font-mono text-cyan-700 dark:text-cyan-400 font-bold">AI CONTROL TOWER</div>
                 </div>
               </div>
             ) : (
@@ -507,7 +546,7 @@ export function App() {
             {navGroups.map((group) => (
               <div key={group.groupTitle} className="space-y-1">
                 {!isSidebarCollapsed && (
-                  <div className="px-3 text-[10px] font-bold text-slate-500 tracking-wider font-mono">
+                  <div className="px-3 text-[10px] font-bold text-slate-400 dark:text-slate-500 tracking-wider font-mono">
                     {group.groupTitle}
                   </div>
                 )}
@@ -524,15 +563,15 @@ export function App() {
                         isSidebarCollapsed ? 'justify-center px-2' : 'justify-between px-3'
                       } py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
                         isActive
-                          ? 'bg-gradient-to-r from-cyan-500/15 to-emerald-500/10 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                          ? 'bg-gradient-to-r from-cyan-500/15 to-emerald-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 shadow-sm'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900/60'
                       }`}
                       title={isSidebarCollapsed ? item.label : undefined}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Icon
                           className={`w-4 h-4 shrink-0 ${
-                            isActive ? 'text-cyan-400' : 'text-slate-400'
+                            isActive ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-400'
                           }`}
                         />
                         {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
@@ -542,10 +581,10 @@ export function App() {
                         <span
                           className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full font-mono ${
                             item.badgeType === 'alert'
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40 animate-pulse'
                               : item.badgeType === 'success'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                              : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40'
+                              : 'bg-cyan-100 text-cyan-800 border border-cyan-300 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/40'
                           }`}
                         >
                           {item.badge}
@@ -559,26 +598,35 @@ export function App() {
           </nav>
         </div>
 
-        {/* Bottom Operator & Health Widget */}
+        {/* Bottom Theme Toggle, Operator & Health Widget */}
         {!isSidebarCollapsed ? (
-          <div className="p-3 border-t border-slate-800/80 bg-slate-950/90 space-y-2">
-            <div className="pro-card rounded-xl p-3 space-y-2 border-slate-800">
+          <div className="p-3 border-t border-slate-200 dark:border-slate-800/80 bg-white/90 dark:bg-slate-950/90 space-y-2">
+            <Button
+              variant="secondary"
+              onClick={toggleTheme}
+              className="w-full !h-7 text-[10px]"
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            >
+              {theme === 'dark' ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
+              <span>{theme === 'dark' ? 'Light Theme' : 'Dark Theme'}</span>
+            </Button>
+            <div className="pro-card rounded-xl p-3 space-y-2 border-slate-200 dark:border-slate-800">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">OPERATOR</span>
-                <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-slate-400 uppercase">OPERATOR</span>
+                <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
                   AUTHENTICATED
                 </span>
               </div>
-              <div className="text-[11px] font-bold text-white truncate flex items-center justify-between">
+              <div className="text-[11px] font-bold text-slate-900 dark:text-white truncate flex items-center justify-between">
                 <span>Venu</span>
-                <span className="text-[9px] font-mono text-cyan-400">Global SRE Lead</span>
+                <span className="text-[9px] font-mono text-cyan-700 dark:text-cyan-400">Global SRE Lead</span>
               </div>
               <Button
                 variant="secondary"
                 onClick={handleLogout}
                 aria-label="Lock Console"
-                className="w-full mt-1 !h-7 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-700/50 text-[10px]"
+                className="w-full mt-1 !h-7 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 dark:hover:bg-rose-950/60 dark:hover:text-rose-300 dark:hover:border-rose-700/50 text-[10px]"
               >
                 <LogOut className="w-3 h-3" />
                 <span>Lock Console</span>
@@ -586,9 +634,19 @@ export function App() {
             </div>
           </div>
         ) : (
-          <div className="p-3 border-t border-slate-800/80 flex flex-col items-center gap-2">
+          <div className="p-3 border-t border-slate-200 dark:border-slate-800/80 flex flex-col items-center gap-2">
+            <Button
+              variant="ghost"
+              iconOnly
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              className="text-slate-500 dark:text-slate-400"
+            >
+              {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+            </Button>
             <span
-              className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse motion-reduce:animate-none"
+              className="w-3 h-3 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse motion-reduce:animate-none"
               role="img"
               aria-label="Operator Authenticated: Venu"
               title="Operator Authenticated: Venu"
@@ -599,7 +657,7 @@ export function App() {
               onClick={handleLogout}
               title="Lock Console"
               aria-label="Lock Console"
-              className="text-slate-400 hover:text-rose-300"
+              className="text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-300"
             >
               <LogOut className="w-3.5 h-3.5" />
             </Button>
@@ -610,12 +668,12 @@ export function App() {
       {/* 2. Main Content Canvas */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         {/* Top Global Command Bar */}
-        <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-2xl px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+        <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800/80 bg-white/80 dark:bg-slate-950/80 backdrop-blur-2xl px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm dark:shadow-xl">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
-              <span className="text-slate-500">ServiceNow AI Control Tower</span>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-              <span className="text-white font-bold">{currentNav?.label || 'Mission Control'}</span>
+            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-medium">
+              <span className="text-slate-400 dark:text-slate-500">ServiceNow AI Control Tower</span>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600" />
+              <span className="text-slate-900 dark:text-white font-bold">{currentNav?.label || 'Mission Control'}</span>
             </div>
           </div>
 
@@ -627,7 +685,7 @@ export function App() {
               onClick={() => setActiveTab('risk')}
               className={`font-mono ${isKillSwitchTriggered ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-500 animate-pulse motion-reduce:animate-none' : ''}`}
             >
-              <Power className={`w-3.5 h-3.5 ${isKillSwitchTriggered ? 'text-white' : 'text-emerald-400'}`} />
+              <Power className={`w-3.5 h-3.5 ${isKillSwitchTriggered ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`} />
               <span>
                 Kill Switch: <Badge tone={isKillSwitchTriggered ? 'critical' : 'success'} className="ml-1 align-middle">
                   {isKillSwitchTriggered ? 'TRIGGERED' : 'ARMED'}
@@ -636,10 +694,10 @@ export function App() {
             </Button>
 
             {/* Operator Pill */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
-              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-slate-400">Operator:</span>
-              <strong className="text-white">Venu</strong>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-600 dark:text-slate-300">
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+              <span className="text-slate-400 dark:text-slate-400">Operator:</span>
+              <strong className="text-slate-900 dark:text-white">Venu</strong>
             </div>
 
             {/* Mutex Locks Release */}
@@ -647,17 +705,38 @@ export function App() {
               variant="secondary"
               onClick={handleResetLocks}
               title="Click to release all host mutex locks"
-              className="hover:text-amber-300"
+              className="hover:text-amber-700 dark:hover:text-amber-300"
             >
-              <Lock className="w-3.5 h-3.5 text-amber-400" />
-              <span>Locks: <strong className="text-amber-300 font-mono">{stats?.activeLocksCount || 0}</strong></span>
+              <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Locks: <strong className="text-amber-700 dark:text-amber-300 font-mono">{stats?.activeLocksCount || 0}</strong></span>
             </Button>
 
             {/* Sync Refresh */}
             <Button variant="secondary" onClick={fetchData} disabled={loading} aria-label="Sync telemetry">
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin motion-reduce:animate-none text-cyan-400' : 'text-slate-400'}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin motion-reduce:animate-none text-cyan-600 dark:text-cyan-400' : 'text-slate-400'}`} />
               <span className="hidden sm:inline">Sync</span>
             </Button>
+
+            {/* Theme Toggle Switch */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors text-xs font-mono font-medium shadow-xs cursor-pointer"
+              title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+              aria-label={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+            >
+              {theme === 'dark' ? (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="text-[11px] font-sans font-medium text-slate-300">Dark</span>
+                </>
+              ) : (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-[11px] font-sans font-medium text-slate-700">Light</span>
+                </>
+              )}
+            </button>
           </div>
         </header>
 

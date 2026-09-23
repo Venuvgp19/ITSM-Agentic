@@ -2,7 +2,7 @@ import React from 'react';
 import { cx } from './cx';
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cx('animate-pulse motion-reduce:animate-none rounded-md bg-slate-800/70', className)} />;
+  return <div className={cx('animate-pulse motion-reduce:animate-none rounded-md bg-slate-200 dark:bg-slate-800/70', className)} />;
 }
 
 export function SkeletonCard() {
