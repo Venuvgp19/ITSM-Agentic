@@ -221,9 +221,19 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
     # chain -- removed. The remaining anchors are specific enough on their own.
     elif exec_log_has_user_cmd or any(k in full_text for k in ["useradd", "linux user", "user account", "provision user", "create user", "userdel", "delete user", "offboard", "pamsudo", "sudoers"]):
         ignore_terms = {
-            "bin", "bash", "sh", "etc", "sudoers", "root", "command", "systemctl", "restart", 
+            "bin", "bash", "sh", "etc", "sudoers", "root", "command", "systemctl", "restart",
             "nexacore", "pamsudox", "puser", "user", "username", "sudo_command", "99-", "90-",
-            "null", "dev", "done", "echo", "true", "false", "item", "var", "u", "i"
+            "null", "dev", "done", "echo", "true", "false", "item", "var", "u", "i",
+            # "user ID"/"user IDs" is a common phrase meaning "username", not a
+            # literal account named "ID" -- check 0 below matches whatever word
+            # comes right after "user " in the ticket text, so a phrasing like
+            # "Create user ID for Mayank Agarwal on workernode1HL" captured the
+            # word "ID" itself as a bogus second candidate. Observed live on
+            # INC0002508: the real account ('mayank') was created and verified
+            # fine, but the guard also checked for a literal user named "ID",
+            # found none (correctly -- it was never supposed to exist), and
+            # failed the whole ticket on that false positive.
+            "id", "ids"
         }
 
         candidates = set()
@@ -284,8 +294,31 @@ def verify_post_remediation_status(session, short_desc, desc, sop_commands, exec
         # and the capture group greedily absorbed "account" into the
         # username itself -- observed live: "account Shreya" reported as a
         # failed useradd for a user that had actually been created correctly.
+        # Generalized from a fixed "account (named|called)?" skip into a repeating
+        # noise-prefix group, because every one of these filler words can appear in
+        # any combination between "user" and the actual name ("user ID Jacob",
+        # "user ID for Jacob", "user account named X", "user account for X").
+        # Absorbing them in the pattern is what's required -- listing them in
+        # ignore_terms only rejects a candidate that is EXACTLY the filler word
+        # (e.g. the bare "ID" from "Create user ID for Mayank Agarwal") and is
+        # powerless once the filler and the real name are captured together as one
+        # multi-word candidate. Observed live on INC0002524 ("Create Linux user ID
+        # Jacob on workernode1HL"): the lazy capture stopped at "ID", found the
+        # next token " Jacob" wasn't a stop-word, expanded to "ID Jacob", and the
+        # guard then failed a remediation that had correctly created
+        # uid=1024(Jacob) -- because no account named "ID Jacob" exists, nor was
+        # one ever meant to. The group is greedy so the longest run of filler is
+        # consumed before the name is captured.
+        # The noise group carries its own scoped (?i:) flag: the pattern as a whole
+        # must stay case-SENSITIVE so the captured name keeps its real casing for
+        # `id`/`useradd`, but the filler words themselves are written by humans in
+        # any case ("user ID", "user Id", "user id"). An all-lowercase alternation
+        # here silently matches nothing on the most common spelling of all, "ID".
+        # The optional quote handling covers "user account named 'jacob'", where
+        # the capture previously failed outright because it must start with a
+        # letter and the next character was an apostrophe.
         ticket_name_match = re.search(
-            r'\buser\s+(?:account\s+(?:named\s+|called\s+)?)?([A-Za-z][A-Za-z0-9_\-]*(?:\s[A-Za-z0-9_\-]+)*?)(?=\s+(?:on|with|in|for|to|from)\b|[.,]|$)',
+            r"\buser\s+(?i:(?:ids?|accounts?|named|called|for)\s+)*['\"]?([A-Za-z][A-Za-z0-9_\-]*(?:\s[A-Za-z0-9_\-]+)*?)(?=\s+(?:on|with|in|for|to|from)\b|['\"]|[.,]|$)",
             f"{short_desc} {desc}"
         )
         if ticket_name_match:
