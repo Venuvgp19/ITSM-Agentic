@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Service Desk</title>
+<title>IT Service Desk - Conversational Intake Portal</title>
 <style>
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
@@ -14,6 +14,7 @@
     color: #1f2937;
     display: flex;
     justify-content: center;
+    align-items: center;
     min-height: 100vh;
   }
   .app {
@@ -24,23 +25,73 @@
     min-height: 100vh;
     background: #fff;
     box-shadow: 0 0 24px rgba(0,0,0,0.06);
+    position: relative;
   }
+
+  /* Header */
   header {
-    padding: 18px 20px;
+    padding: 16px 20px;
     border-bottom: 1px solid #e5e7eb;
     display: flex;
     align-items: center;
-    gap: 10px;
+    justify-content: space-between;
+    background: #ffffff;
+    z-index: 10;
+  }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
   header .badge {
-    width: 34px; height: 34px; border-radius: 9px;
-    background: #2563eb; color: #fff;
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #fff;
     display: flex; align-items: center; justify-content: center;
     font-weight: 800; font-size: 15px;
+    box-shadow: 0 2px 6px rgba(37,99,235,0.25);
   }
-  header h1 { font-size: 15px; margin: 0; font-weight: 700; }
-  header p { margin: 1px 0 0; font-size: 12px; color: #6b7280; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 700; color: #111827; }
+  header p { margin: 2px 0 0; font-size: 12px; color: #6b7280; }
 
+  /* User Auth Badge in Header */
+  .user-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    padding: 5px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .user-badge .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #10b981;
+  }
+  .user-badge strong { color: #1f2937; }
+  .btn-signout {
+    background: none;
+    border: none;
+    color: #ef4444;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.15s;
+  }
+  .btn-signout:hover {
+    background: #fee2e2;
+  }
+
+  /* Chat Messages View */
+  .chat-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
   .messages {
     flex: 1;
     overflow-y: auto;
@@ -48,69 +99,378 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    background: #ffffff;
   }
-  .msg { max-width: 78%; padding: 10px 13px; border-radius: 12px; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; }
-  .msg.user { align-self: flex-end; background: #2563eb; color: #fff; border-bottom-right-radius: 3px; }
-  .msg.bot { align-self: flex-start; background: #f1f3f5; color: #1f2937; border-bottom-left-radius: 3px; }
-  .msg.ticket { align-self: flex-start; background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; font-weight: 600; }
-  .msg.typing { align-self: flex-start; background: #f1f3f5; color: #9ca3af; font-style: italic; }
+  .msg {
+    max-width: 80%;
+    padding: 11px 15px;
+    border-radius: 14px;
+    font-size: 13.5px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: #2563eb;
+    color: #fff;
+    border-bottom-right-radius: 3px;
+    box-shadow: 0 1px 2px rgba(37,99,235,0.2);
+  }
+  .msg.bot {
+    align-self: flex-start;
+    background: #f3f4f6;
+    color: #1f2937;
+    border-bottom-left-radius: 3px;
+  }
+  .msg.ticket {
+    align-self: flex-start;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+    font-weight: 600;
+    border-radius: 12px;
+  }
+  .msg.typing {
+    align-self: flex-start;
+    background: #f3f4f6;
+    color: #9ca3af;
+    font-style: italic;
+  }
 
-  form {
+  /* Chat Composer Form */
+  form#composer {
     display: flex;
     gap: 8px;
     padding: 14px 16px;
     border-top: 1px solid #e5e7eb;
+    background: #fafafa;
   }
   textarea {
     flex: 1;
     resize: none;
     border: 1px solid #d1d5db;
     border-radius: 10px;
-    padding: 10px 12px;
+    padding: 10px 14px;
     font-size: 13.5px;
     font-family: inherit;
     max-height: 120px;
+    outline: none;
+    background: #fff;
   }
-  textarea:focus { outline: none; border-color: #2563eb; }
-  button {
+  textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+  button#send {
     border: none;
     background: #2563eb;
     color: #fff;
-    padding: 0 18px;
+    padding: 0 20px;
     border-radius: 10px;
     font-weight: 700;
     font-size: 13px;
     cursor: pointer;
+    transition: background 0.15s;
   }
-  button:disabled { opacity: .5; cursor: not-allowed; }
+  button#send:hover { background: #1d4ed8; }
+  button#send:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* Login Gate Screen */
+  .auth-view {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 30px 24px;
+    flex: 1;
+    background: #fafafa;
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 420px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    padding: 28px 24px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.06);
+    text-align: center;
+  }
+  .auth-icon {
+    width: 52px; height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #ffffff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 800;
+    margin: 0 auto 16px;
+    box-shadow: 0 4px 12px rgba(37,99,235,0.25);
+  }
+  .auth-card h2 {
+    margin: 0 0 6px;
+    font-size: 18px;
+    font-weight: 800;
+    color: #111827;
+  }
+  .auth-card p.subtitle {
+    margin: 0 0 22px;
+    font-size: 13px;
+    color: #6b7280;
+    line-height: 1.4;
+  }
+  .auth-field {
+    text-align: left;
+    margin-bottom: 14px;
+  }
+  .auth-field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    color: #374151;
+    margin-bottom: 6px;
+  }
+  .auth-field input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    font-size: 13.5px;
+    outline: none;
+    transition: border 0.15s;
+    background: #fff;
+  }
+  .auth-field input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+  }
+  .auth-error {
+    display: none;
+    margin-bottom: 14px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #b91c1c;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .auth-hint {
+    background: #f3f4f6;
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11.5px;
+    color: #4b5563;
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: space-around;
+    font-family: monospace;
+  }
+  .auth-hint strong {
+    color: #1f2937;
+  }
+  .btn-login {
+    width: 100%;
+    padding: 11px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-login:hover {
+    background: #1d4ed8;
+  }
+  .btn-login:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 </style>
 </head>
 <body>
 <div class="app">
+  <!-- Top Navigation Header -->
   <header>
-    <div class="badge">SD</div>
-    <div>
-      <h1>Service Desk</h1>
-      <p>Tell us what's wrong -- we'll open a ticket for you.</p>
+    <div class="header-left">
+      <div class="badge">SD</div>
+      <div>
+        <h1>Service Desk Portal</h1>
+        <p>Conversational IT Support & Ticket Intake</p>
+      </div>
+    </div>
+    <div id="userHeaderBadge" class="user-badge" style="display: none;">
+      <span class="dot"></span>
+      <span id="userNameDisplay"><strong>User</strong></span>
+      <button class="btn-signout" id="signOutBtn" title="Sign out of Service Desk">Sign Out</button>
     </div>
   </header>
 
-  <div class="messages" id="messages"></div>
+  <!-- 1. Authentication View Gate -->
+  <div class="auth-view" id="authView">
+    <div class="auth-card">
+      <div class="auth-icon">🔐</div>
+      <h2>Employee Authentication</h2>
+      <p class="subtitle">Sign in with your enterprise credentials to report issues and request services.</p>
 
-  <form id="composer">
-    <textarea id="input" rows="1" placeholder="Describe the problem you're having..." autofocus></textarea>
-    <button type="submit" id="send">Send</button>
-  </form>
+      <div class="auth-error" id="authError"></div>
+
+      <form id="loginForm">
+        <div class="auth-field">
+          <label for="loginUserId">User ID / Email</label>
+          <input type="text" id="loginUserId" value="Venu" required placeholder="e.g. Venu" autocomplete="username" />
+        </div>
+
+        <div class="auth-field">
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" value="admin007" required placeholder="••••••••" autocomplete="current-password" />
+        </div>
+
+        <div class="auth-hint">
+          <span>User: <strong>Venu</strong></span>
+          <span>Password: <strong>admin007</strong></span>
+        </div>
+
+        <button type="submit" class="btn-login" id="loginBtn">Sign In to Service Desk</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. Authenticated Chat View -->
+  <div class="chat-view" id="chatView" style="display: none;">
+    <div class="messages" id="messages"></div>
+
+    <form id="composer">
+      <textarea id="input" rows="1" placeholder="Describe the problem or request you need..." autofocus></textarea>
+      <button type="submit" id="send">Send</button>
+    </form>
+  </div>
 </div>
 
 <script>
+  // Elements
+  const authView = document.getElementById('authView');
+  const chatView = document.getElementById('chatView');
+  const userHeaderBadge = document.getElementById('userHeaderBadge');
+  const userNameDisplay = document.getElementById('userNameDisplay');
+  const signOutBtn = document.getElementById('signOutBtn');
+
+  const loginForm = document.getElementById('loginForm');
+  const loginUserId = document.getElementById('loginUserId');
+  const loginPassword = document.getElementById('loginPassword');
+  const loginBtn = document.getElementById('loginBtn');
+  const authError = document.getElementById('authError');
+
   const messagesEl = document.getElementById('messages');
-  const form = document.getElementById('composer');
+  const composerForm = document.getElementById('composer');
   const input = document.getElementById('input');
   const sendBtn = document.getElementById('send');
 
   let history = [];
+  let currentUser = null;
+  let sessionToken = null;
+  // Guards against a second send while one is still in flight. Disabling the
+  // send button is NOT sufficient on its own: the Enter-key handler below calls
+  // form.requestSubmit(), which submits regardless of whether the submit button
+  // is disabled. Without this flag, a user who pressed Enter again during a slow
+  // reply (e.g. typing "Are you there?") fired a concurrent request AND pushed a
+  // second consecutive user turn into `history` with no assistant turn between
+  // them, corrupting the conversation the model then sees.
+  let inFlight = false;
 
+  function showAuthGate(errorMessage = '') {
+    authView.style.display = 'flex';
+    chatView.style.display = 'none';
+    userHeaderBadge.style.display = 'none';
+    if (errorMessage) {
+      authError.textContent = errorMessage;
+      authError.style.display = 'block';
+    } else {
+      authError.style.display = 'none';
+    }
+  }
+
+  function showChatView(user, token) {
+    currentUser = user;
+    sessionToken = token;
+    authView.style.display = 'none';
+    chatView.style.display = 'flex';
+    userHeaderBadge.style.display = 'flex';
+    userNameDisplay.innerHTML = `<strong>${user.name || 'User'}</strong>`;
+
+    if (history.length === 0) {
+      addBubble('bot', `Hi ${user.name || 'there'}, I'm your Service Desk assistant. What can I help you with today?`);
+    }
+    input.focus();
+  }
+
+  // Check persisted session on load
+  try {
+    const saved = localStorage.getItem('service_desk_auth');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.token && parsed.user) {
+        showChatView(parsed.user, parsed.token);
+      } else {
+        showAuthGate();
+      }
+    } else {
+      showAuthGate();
+    }
+  } catch (e) {
+    showAuthGate();
+  }
+
+  // Handle Login Submission
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const userId = loginUserId.value.trim();
+    const password = loginPassword.value.trim();
+
+    if (!userId || !password) return;
+
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Verifying...';
+    authError.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, password }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        localStorage.setItem('service_desk_auth', JSON.stringify({
+          token: data.token,
+          user: data.user,
+        }));
+        showChatView(data.user, data.token);
+      } else {
+        authError.textContent = data.error || 'Authentication failed. Please verify credentials.';
+        authError.style.display = 'block';
+      }
+    } catch (err) {
+      authError.textContent = 'Unable to connect to authentication service. Please retry.';
+      authError.style.display = 'block';
+    } finally {
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Sign In to Service Desk';
+    }
+  });
+
+  // Handle Sign Out
+  signOutBtn.addEventListener('click', () => {
+    localStorage.removeItem('service_desk_auth');
+    currentUser = null;
+    sessionToken = null;
+    history = [];
+    messagesEl.innerHTML = '';
+    showAuthGate();
+  });
+
+  // Chat message helper
   function addBubble(role, text) {
     const div = document.createElement('div');
     div.className = 'msg ' + role;
@@ -120,39 +480,86 @@
     return div;
   }
 
-  addBubble('bot', "Hi, I'm the Service Desk assistant. What can I help you with today?");
-
-  form.addEventListener('submit', async (e) => {
+  // Handle Chat Submission
+  composerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = input.value.trim();
-    if (!text) return;
+    if (!text || !sessionToken || inFlight) return;
 
     addBubble('user', text);
     history.push({ role: 'user', content: text });
     input.value = '';
+    inFlight = true;
     sendBtn.disabled = true;
+    input.disabled = true;
     const typing = addBubble('typing', 'Thinking...');
+
+    // The upstream model's response time for one message legitimately ranges
+    // from ~6s to ~60s, so a bare "Thinking..." with no movement reads as a dead
+    // page long before the request has actually failed. Say so instead.
+    const started = Date.now();
+    const progress = setInterval(() => {
+      const s = Math.round((Date.now() - started) / 1000);
+      if (s >= 25) typing.textContent = `Still working on it... (${s}s)`;
+      else if (s >= 10) typing.textContent = 'Still thinking, this one is taking a moment...';
+    }, 1000);
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({
+          messages: history,
+          callerName: currentUser ? currentUser.name : 'Employee'
+        }),
+        // Without a client-side deadline this request can never settle on its
+        // own, and a stalled connection leaves "Thinking..." on screen forever.
+        // Set above the server's own cap so that in the normal case the server's
+        // specific error message wins and this is only a last-resort backstop.
+        signal: AbortSignal.timeout(90000),
       });
-      const data = await res.json();
+
+      if (res.status === 401) {
+        typing.remove();
+        localStorage.removeItem('service_desk_auth');
+        showAuthGate('Session expired. Please sign in again.');
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}));
       typing.remove();
 
-      addBubble('bot', data.reply || 'Sorry, something went wrong.');
-      history.push({ role: 'assistant', content: data.reply || '' });
+      addBubble('bot', data.reply || "Sorry, I couldn't get a reply just now -- please try again.");
+
+      // Only a real answer belongs in the model-visible transcript. Recording an
+      // apology ("something went wrong on my end") as an assistant turn teaches
+      // the model it already responded, so on the user's next message it answers
+      // around a turn that never happened. The user's own message is kept either
+      // way, so resending or following up still carries the original context.
+      if (res.ok && data.reply) {
+        history.push({ role: 'assistant', content: data.reply });
+      }
 
       if (data.ticket) {
         addBubble('ticket', `Ticket ${data.ticket.number} created.`);
       }
     } catch (err) {
       typing.remove();
-      addBubble('bot', "Sorry, I couldn't reach the service desk right now. Please try again.");
+      const timedOut = err.name === 'TimeoutError' || err.name === 'AbortError';
+      addBubble(
+        'bot',
+        timedOut
+          ? "That took too long and I stopped waiting -- nothing has been filed. Please try again in a moment."
+          : "Sorry, I couldn't reach the service desk right now. Please try again."
+      );
     } finally {
+      clearInterval(progress);
+      inFlight = false;
       sendBtn.disabled = false;
+      input.disabled = false;
       input.focus();
     }
   });
@@ -160,7 +567,10 @@
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      form.requestSubmit();
+      // requestSubmit() ignores the disabled state of the submit button, so the
+      // in-flight check has to happen here too, not just in the submit handler.
+      if (inFlight) return;
+      composerForm.requestSubmit();
     }
   });
 </script>
