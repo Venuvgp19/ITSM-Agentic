@@ -477,22 +477,26 @@ def _solve_in_progress_incident_internal(
                 destructive_findings.append((sc, cat_reason))
         is_destructive_sop = len(destructive_findings) > 0
 
-        # P1/P2 incidents always require sign-off before autonomous execution,
+        # P1 incidents always require sign-off before autonomous execution,
         # even on a confident RAG hit against a non-destructive SOP -- a high
         # hybrid similarity score reflects corpus-relative ranking, not proof
-        # the match is safe to fire blind on a critical/high-impact ticket.
+        # the match is safe to fire blind on a critical-impact ticket.
+        # P2 was gated here too until it was decided P2 shouldn't carry a
+        # mandatory human gate on its own -- a P2 ticket still goes through
+        # the same is_new_use_case / is_destructive_sop checks below, it just
+        # no longer gets held purely for being P2.
         # Distinct from is_destructive_sop/is_new_use_case below so the
         # approval card can say *why* it's here instead of miscasting a real
         # SOP match as either "new use case" or "destructive".
         incident_priority = str(incident.get("priority", "")).upper()
         is_priority_gated = (
-            incident_priority in ("P1", "P2")
+            incident_priority == "P1"
             and not is_new_use_case
             and not is_destructive_sop
         )
 
         # If it's a new use case OR contains destructive commands OR is a
-        # P1/P2 ticket -> Mandatory Human-in-the-Loop Gate
+        # P1 ticket -> Mandatory Human-in-the-Loop Gate
         if is_new_use_case or is_destructive_sop or is_priority_gated:
             my_approval = None
             pending_appr = None
