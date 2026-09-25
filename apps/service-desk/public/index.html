@@ -323,12 +323,15 @@
 
         <div class="auth-field">
           <label for="loginPassword">Password</label>
-          <input type="password" id="loginPassword" value="admin007" required placeholder="••••••••" autocomplete="current-password" />
+          <input type="password" id="loginPassword" required placeholder="••••••••" autocomplete="current-password" />
         </div>
 
+        <!-- User ID hint only -- the password is intentionally never rendered
+             on screen or prefilled: this page gets recorded for demo videos,
+             and a hint/prefill here is functionally identical to printing
+             the real password. -->
         <div class="auth-hint">
           <span>User: <strong>Venu</strong></span>
-          <span>Password: <strong>admin007</strong></span>
         </div>
 
         <button type="submit" class="btn-login" id="loginBtn">Sign In to Service Desk</button>

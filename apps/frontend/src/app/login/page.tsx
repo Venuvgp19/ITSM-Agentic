@@ -10,7 +10,7 @@ export default function LoginPage() {
   const login = useAuthStore((state) => state.login);
 
   const [userId, setUserId] = useState('Venu');
-  const [password, setPassword] = useState('admin007');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -37,7 +37,7 @@ export default function LoginPage() {
         return;
       } else {
         const errJson = await res.json().catch(() => ({}));
-        setError(errJson.message || 'Invalid User ID or Password. (Expected User ID: Venu / Password: admin007)');
+        setError(errJson.message || 'Invalid User ID or Password. Please contact your administrator for access.');
         setLoading(false);
         return;
       }
@@ -60,7 +60,7 @@ export default function LoginPage() {
         router.push('/incidents');
         return;
       } else {
-        setError('Invalid credentials. Please enter User ID: Venu and Password: admin007');
+        setError('Invalid credentials. Please contact your administrator for access.');
       }
     }
     setLoading(false);
@@ -125,13 +125,13 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Quick credentials hint */}
-            <div className="bg-[#f8fafc] border border-[#e2e8f0] p-3 rounded text-[11px] text-slate-600 flex items-center justify-between">
+            {/* Quick credentials hint -- User ID only. The password is
+                intentionally never rendered on screen: this page gets
+                recorded for demo videos, and a hint here is functionally
+                identical to printing the real password. */}
+            <div className="bg-[#f8fafc] border border-[#e2e8f0] p-3 rounded text-[11px] text-slate-600 flex items-center">
               <div>
                 <span className="font-bold text-slate-800">Authorized Operator:</span> User ID: <code className="font-bold text-[#288554]">Venu</code>
-              </div>
-              <div>
-                Password: <code className="font-bold text-[#0284c7]">admin007</code>
               </div>
             </div>
 

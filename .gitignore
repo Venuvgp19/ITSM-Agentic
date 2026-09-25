@@ -28,3 +28,8 @@ services/slack-bridge/posted_approvals.json
 # shipping this as a binary blob let it drift out of sync with the DB content.
 services/sre-agent-daemon/chroma_db/
 *.n8ndatabase.sqlite
+
+# Throwaway Chrome profiles created by CDP-driven screenshot/recording
+# scripts (see apps/*/scratchpad tooling) -- these cache full page HTML,
+# which can include whatever was on screen at capture time.
+cprofile*/

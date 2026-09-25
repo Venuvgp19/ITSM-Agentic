@@ -92,7 +92,7 @@ export function App() {
   // Authentication State for Control Tower
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authUserId, setAuthUserId] = useState<string>('Venu');
-  const [authPassword, setAuthPassword] = useState<string>('admin007');
+  const [authPassword, setAuthPassword] = useState<string>('');
   const [authError, setAuthError] = useState<string>('');
   const [authLoading, setAuthLoading] = useState<boolean>(false);
 
@@ -168,7 +168,7 @@ export function App() {
           JSON.stringify({ userId: authUserId.trim(), role: 'Global SRE Lead', timestamp: new Date().toISOString() })
         );
       } else {
-        setAuthError('Invalid credentials. Use User ID: Venu & Password: admin007');
+        setAuthError('Invalid credentials. Please contact your administrator for access.');
       }
       setAuthLoading(false);
     }, 400);
@@ -456,13 +456,13 @@ export function App() {
                 </div>
               </div>
 
-              {/* Quick credential hint */}
-              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-3 rounded-xl text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between font-mono">
+              {/* Quick credential hint -- User ID only. The password is never
+                  rendered on screen (see the commit that removed it): this
+                  page is recorded for demo videos, and a hint here is
+                  functionally identical to printing the real password. */}
+              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-3 rounded-xl text-[11px] text-slate-500 dark:text-slate-400 flex items-center font-mono">
                 <div>
                   <span className="text-slate-700 dark:text-slate-300 font-bold">User ID:</span> <span className="text-cyan-700 dark:text-cyan-400 font-bold">Venu</span>
-                </div>
-                <div>
-                  <span className="text-slate-700 dark:text-slate-300 font-bold">Password:</span> <span className="text-emerald-700 dark:text-emerald-400 font-bold">admin007</span>
                 </div>
               </div>
 

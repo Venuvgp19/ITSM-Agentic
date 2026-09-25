@@ -170,7 +170,7 @@ export class AuthService {
       };
     }
 
-    throw new UnauthorizedException('Invalid User ID or Password. Please enter User ID: Venu and Password: admin007');
+    throw new UnauthorizedException('Invalid User ID or Password. Please contact your administrator for access.');
   }
 
   async getProfile(userId: string) {
