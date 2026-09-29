@@ -169,7 +169,8 @@ def run_dynamic_react_loop(
                                         f"\n=== UNAUTHORIZED_BINARY_NEEDS_APPROVAL ===\n"
                                         f"Command: {cmd}\nBinaries: {sorted(unauth_bins)}\n"
                                     )
-                                    return False, full_exec_log, last_used_model
+                                    session.close()
+                                    return False, full_exec_log, last_used_model, None
                                 error_msg = (
                                     f"SECURITY ERROR: Command '{cmd}' is prohibited by enterprise safety guard ({unauth_bins}). "
                                     f"Destructive/unauthorized operations are strictly forbidden."
@@ -192,7 +193,8 @@ def run_dynamic_react_loop(
                                 logger.warning(f"🚧 Terminal capacity/quota error detected for {number} ('{capacity_error}') -- stopping ReAct loop instead of retrying variations.")
                                 full_exec_log += f"\n=== TERMINAL_CAPACITY_ERROR ===\nDetected: '{capacity_error}'\nCommand: {cmd}\n"
                                 post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Blocked by account-level capacity/quota limit: {cmd}")
-                                return False, full_exec_log, last_used_model
+                                session.close()
+                                return False, full_exec_log, last_used_model, None
 
                             messages.append({
                                 "role": "tool",
@@ -205,14 +207,16 @@ def run_dynamic_react_loop(
                                     logger.warning(f"🚨 Server {ip} unreachable during ReAct loop turn {turn}. Breaking out of ReAct loop immediately!")
                                     full_exec_log += f"\n=== SERVER UNREACHABLE ALERT ===\nServer {ip} failed SSH reachability check. Exited ReAct loop.\n"
                                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Server {ip} unreachable via SSH.")
-                                    return False, full_exec_log, last_used_model
+                                    session.close()
+                                    return False, full_exec_log, last_used_model, None
                                 elif "EXECUTION BLOCKED" in out_log and "Kill Switch" in out_log:
                                     # Any other ok=False mid-run was previously absorbed silently, letting the
                                     # loop continue and potentially still end in is_success=True later even
                                     # though the kill switch stopped a command from actually running.
                                     logger.warning(f"🛑 Kill switch blocked mid-execution for {number}. Aborting ReAct loop.")
                                     post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Kill switch blocked execution: {cmd}")
-                                    return False, full_exec_log, last_used_model
+                                    session.close()
+                                    return False, full_exec_log, last_used_model, None
                 else:
                     if finish_reason == "length":
                         # The model's response was cut off by max_tokens, not a
@@ -272,7 +276,8 @@ def run_dynamic_react_loop(
                                     if "SERVER_UNREACHABLE" in out_log:
                                         logger.warning(f"🚨 Server {ip} unreachable during fallback execution for {number}.")
                                         post_timeline_update(inc_id, number, short_desc, ci_name, "FAILED", "Dynamic SSH Execution", "FAILED", f"Server {ip} unreachable via SSH.")
-                                        return False, full_exec_log, last_used_model
+                                        session.close()
+                                    return False, full_exec_log, last_used_model, None
 
                             clean_summary = f"Directly executed approved SOP commands:\n" + "\n".join([f"- `{c}`" for c in guide_commands])
                             full_exec_log += f"\n=== FINAL AGENT SUMMARY ===\n{clean_summary}\n"
@@ -321,7 +326,25 @@ def run_dynamic_react_loop(
                 full_exec_log += f"\n=== ERROR ===\n{str(e)}\n"
                 is_success = False
                 break
-    finally:
+    except Exception:
         session.close()
-            
-    return is_success, full_exec_log, last_used_model
+        raise
+
+    # On success, hand the still-open session back to the caller instead of
+    # closing it here -- the post-remediation guard immediately afterward
+    # needs a session to the same host, and closing this one only to have the
+    # caller open a brand-new connection ~instantly afterward was hitting a
+    # remote-side connection reset (TCP RST on the SSH banner exchange,
+    # WinError 10054) that grew to 10+ seconds of retries before falling back
+    # to Resilient Demo Simulation Mode -- whose canned output can never
+    # satisfy the guard's exact-match checks, so a genuinely successful fix
+    # (confirmed live on this same session moments earlier) got escalated as
+    # failed. Seen live on INC0001737 and again on INC0001765, both timed
+    # right after this exact close+immediate-reopen. Reusing the proven-open
+    # session removes the reconnect -- and therefore the reset window --
+    # entirely for the common case. On failure there's nothing for the guard
+    # to verify anyway, so close it here as before.
+    if is_success:
+        return is_success, full_exec_log, last_used_model, session
+    session.close()
+    return is_success, full_exec_log, last_used_model, None

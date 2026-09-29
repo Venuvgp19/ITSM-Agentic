@@ -1,5 +1,5 @@
 {
-  "name": "ITSM-Agentic: Periodic Nexacore Incident Generator (Worker1OL)",
+  "name": "ITSM-Agentic: Periodic Nexacore 404 Incident Generator (Worker1OL)",
   "nodes": [
     {
       "parameters": {
@@ -23,10 +23,10 @@
     },
     {
       "parameters": {
-        "jsCode": "// Worker1OL only (192.168.56.10). Split out from the combined CPU/Memory/Nexacore\n// generator into its own dedicated workflow so CPU/Memory scenarios and Nexacore\n// scenarios can be scheduled/toggled independently of each other.\n// Nexacore scenarios (404 / application down) match the two dedicated Master SOPs\n// in the KB for this app (KB0000034 -- static-file-serving 404 fix, KB0000039 --\n// port 9000 service recovery), and are phrased to match how these incidents\n// actually read historically in the DB (see INC0001460/INC0001143 for the\n// down-scenario wording) so RAG retrieval matches the same way it does for a\n// real human-filed ticket.\nconst incidentList = [\n  {\n    text: \"Nexacore Application is throwing 404 error. Getting below error. HTTP 404 Not Found - The requested resource (index.html) could not be found on this server. URL: http://worker1ol:9000/\",\n    targetCi: \"Worker1OL\",\n    priority: \"P2\",\n    impact: \"DEPARTMENT\",\n    urgency: \"HIGH\"\n  },\n  {\n    text: \"Nexacore application is down . connection refused on port 9000\",\n    targetCi: \"Worker1OL\",\n    priority: \"P2\",\n    impact: \"DEPARTMENT\",\n    urgency: \"HIGH\"\n  }\n];\n\n// Rotate sequentially every execution based on timestamp interval\nconst index = Math.floor(Date.now() / (5 * 60 * 1000)) % incidentList.length;\nconst selected = incidentList[index];\n\nreturn [{\n  json: {\n    shortDescription: selected.text,\n    description: selected.text,\n    configurationItem: selected.targetCi,\n    priority: selected.priority,\n    impact: selected.impact,\n    urgency: selected.urgency,\n    callerName: \"n8n Telemetry Engine\",\n    generatedAt: new Date().toISOString()\n  }\n}];"
+        "jsCode": "// Worker1OL only (192.168.56.10). The \"application down / connection refused\"\n// scenario has been split out into its own dedicated workflow\n// (itsm_nexacore_down_incident_generator_workflow.json) so it can be\n// scheduled/toggled independently of this 404 scenario -- this workflow now\n// generates ONLY the 404 case. Matches KB0000034 (static-file-serving 404\n// fix) and is phrased to match how this incident actually reads historically\n// in the DB so RAG retrieval matches the same way it does for a real\n// human-filed ticket.\nconst incidentList = [\n  {\n    text: \"Nexacore Application is throwing 404 error. Getting below error. HTTP 404 Not Found - The requested resource (index.html) could not be found on this server. URL: http://worker1ol:9000/\",\n    targetCi: \"Worker1OL\",\n    priority: \"P2\",\n    impact: \"DEPARTMENT\",\n    urgency: \"HIGH\"\n  }\n];\n\nconst index = Math.floor(Date.now() / (5 * 60 * 1000)) % incidentList.length;\nconst selected = incidentList[index];\n\nreturn [{\n  json: {\n    shortDescription: selected.text,\n    description: selected.text,\n    configurationItem: selected.targetCi,\n    priority: selected.priority,\n    impact: selected.impact,\n    urgency: selected.urgency,\n    callerName: \"n8n Telemetry Engine\",\n    generatedAt: new Date().toISOString()\n  }\n}];"
       },
       "id": "f3b29c5a-7d31-419b-a62e-9d2a4f6ea002",
-      "name": "Build Incident Payload (Nexacore Scenarios)",
+      "name": "Build Incident Payload (Nexacore 404 Scenario)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -108,14 +108,14 @@
       "main": [
         [
           {
-            "node": "Build Incident Payload (Nexacore Scenarios)",
+            "node": "Build Incident Payload (Nexacore 404 Scenario)",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Build Incident Payload (Nexacore Scenarios)": {
+    "Build Incident Payload (Nexacore 404 Scenario)": {
       "main": [
         [
           {

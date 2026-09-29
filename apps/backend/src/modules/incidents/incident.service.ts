@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateIncidentDto, UpdateIncidentDto, AddActivityDto } from './dto/incident.dto';
-import { Impact, Urgency, Priority } from '@itsm/db';
+import { Impact, Urgency, Priority, Prisma } from '@itsm/db';
 
 const resolutionCodes = [
   'Pending Triage',
@@ -94,54 +94,79 @@ export class IncidentService {
   }
 
   async create(tenantId: string, callerId: string, dto: CreateIncidentDto) {
-    // Find the max existing incident number to avoid duplicates
-    const lastIncident = await this.prisma.$queryRaw<{number: string}[]>`
-      SELECT number FROM "Incident" 
-      WHERE number ~ '^INC[0-9]+$' AND "tenantId" = ${tenantId}
-      ORDER BY CAST(SUBSTRING(number FROM 4) AS INTEGER) DESC
-      LIMIT 1
-    `;
-    
-    let nextNum = 1;
-    if (lastIncident && lastIncident.length > 0) {
-      const match = lastIncident[0].number.match(/INC(\d+)/);
-      if (match) {
-        nextNum = parseInt(match[1], 10) + 1;
+    // Number generation is a read-then-write (SELECT MAX, then INSERT) with no
+    // transaction/locking between them, so under concurrent creates (multiple
+    // n8n workflows + the daemon + chat, all filing tickets around the same
+    // moment) two requests can read the same "last number", both compute the
+    // same candidate, and only one INSERT can actually win it -- the loser
+    // used to throw an unhandled unique-constraint error straight to the
+    // caller. Retrying with a freshly-recomputed number absorbs exactly that
+    // collision instead of failing the request or (worse, seen live) leaving
+    // the caller believing a ticket number was assigned that a *different*,
+    // unrelated ticket actually holds.
+    const MAX_NUMBER_RETRIES = 5;
+    for (let attempt = 0; attempt < MAX_NUMBER_RETRIES; attempt++) {
+      const lastIncident = await this.prisma.$queryRaw<{number: string}[]>`
+        SELECT number FROM "Incident"
+        WHERE number ~ '^INC[0-9]+$' AND "tenantId" = ${tenantId}
+        ORDER BY CAST(SUBSTRING(number FROM 4) AS INTEGER) DESC
+        LIMIT 1
+      `;
+
+      let nextNum = 1;
+      if (lastIncident && lastIncident.length > 0) {
+        const match = lastIncident[0].number.match(/INC(\d+)/);
+        if (match) {
+          nextNum = parseInt(match[1], 10) + 1;
+        }
+      }
+      const nextNumber = `INC${String(nextNum).padStart(7, '0')}`;
+      const priorityVal = dto.priority || (this.calculatePriority(dto.impact as Impact || Impact.DEPARTMENT, dto.urgency as Urgency || Urgency.HIGH));
+      const now = new Date();
+      const openedDate = (dto as any).openedAt ? new Date((dto as any).openedAt) : now;
+      const slaDue = (dto as any).slaDueAt ? new Date((dto as any).slaDueAt) : this.calculateSlaDueDate(priorityVal, openedDate);
+
+      try {
+        const record = await this.prisma.incident.create({
+          data: {
+            tenantId,
+            number: nextNumber,
+            shortDescription: dto.shortDescription,
+            description: dto.description || dto.shortDescription,
+            state: dto.state || 'NEW',
+            impact: dto.impact || 'DEPARTMENT',
+            urgency: dto.urgency || 'HIGH',
+            priority: priorityVal,
+            callerName: dto.caller || 'System Admin',
+            assignedToName: dto.assignedTo || 'UNASSIGNED (Unassigned)',
+            department: dto.department || 'UNASSIGNED (No Team)',
+            resolutionCode: dto.resolutionCode || 'Pending Triage',
+            resolutionNotes: dto.resolutionNotes || 'Unassigned ticket pending triage.',
+            configurationItemName: dto.configurationItem || 'Unspecified CI',
+            openedAt: openedDate,
+            slaDueAt: slaDue,
+            resolvedAt: (dto as any).resolvedAt ? new Date((dto as any).resolvedAt) : (dto.state === 'RESOLVED' ? now : null),
+            closedAt: (dto as any).closedAt ? new Date((dto as any).closedAt) : (dto.state === 'CLOSED' ? now : null),
+            activitiesJson: [
+              { id: `act_${nextNumber}_1`, author: dto.caller || 'System Admin', isWorkNote: true, comment: `Logged new incident ticket ${nextNumber}.`, timestamp: openedDate.toISOString() }
+            ]
+          },
+        });
+
+        return this.mapIncidentToDTO(record);
+      } catch (e) {
+        const isNumberCollision =
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002' &&
+          (e.meta?.target as string[] | undefined)?.includes('number');
+        if (isNumberCollision && attempt < MAX_NUMBER_RETRIES - 1) {
+          continue;
+        }
+        throw e;
       }
     }
-    const nextNumber = `INC${String(nextNum).padStart(7, '0')}`;
-    const priorityVal = dto.priority || (this.calculatePriority(dto.impact as Impact || Impact.DEPARTMENT, dto.urgency as Urgency || Urgency.HIGH));
-    const now = new Date();
-    const openedDate = (dto as any).openedAt ? new Date((dto as any).openedAt) : now;
-    const slaDue = (dto as any).slaDueAt ? new Date((dto as any).slaDueAt) : this.calculateSlaDueDate(priorityVal, openedDate);
-
-    const record = await this.prisma.incident.create({
-      data: {
-        tenantId,
-        number: nextNumber,
-        shortDescription: dto.shortDescription,
-        description: dto.description || dto.shortDescription,
-        state: dto.state || 'NEW',
-        impact: dto.impact || 'DEPARTMENT',
-        urgency: dto.urgency || 'HIGH',
-        priority: priorityVal,
-        callerName: dto.caller || 'System Admin',
-        assignedToName: dto.assignedTo || 'UNASSIGNED (Unassigned)',
-        department: dto.department || 'UNASSIGNED (No Team)',
-        resolutionCode: dto.resolutionCode || 'Pending Triage',
-        resolutionNotes: dto.resolutionNotes || 'Unassigned ticket pending triage.',
-        configurationItemName: dto.configurationItem || 'Unspecified CI',
-        openedAt: openedDate,
-        slaDueAt: slaDue,
-        resolvedAt: (dto as any).resolvedAt ? new Date((dto as any).resolvedAt) : (dto.state === 'RESOLVED' ? now : null),
-        closedAt: (dto as any).closedAt ? new Date((dto as any).closedAt) : (dto.state === 'CLOSED' ? now : null),
-        activitiesJson: [
-          { id: `act_${nextNumber}_1`, author: dto.caller || 'System Admin', isWorkNote: true, comment: `Logged new incident ticket ${nextNumber}.`, timestamp: openedDate.toISOString() }
-        ]
-      },
-    });
-
-    return this.mapIncidentToDTO(record);
+    // Unreachable (the loop always returns or throws), but keeps TS's control-flow analysis happy.
+    throw new Error('Failed to allocate a unique incident number after retries.');
   }
 
   async findAll(tenantId: string) {

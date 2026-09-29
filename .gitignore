@@ -28,3 +28,4 @@ services/slack-bridge/posted_approvals.json
 # shipping this as a binary blob let it drift out of sync with the DB content.
 services/sre-agent-daemon/chroma_db/
 *.n8ndatabase.sqlite
+services/sre-agent-daemon/tests/*_report.json

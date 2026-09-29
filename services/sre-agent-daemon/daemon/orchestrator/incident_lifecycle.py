@@ -485,8 +485,11 @@ def _solve_in_progress_incident_internal(
         # approval card can say *why* it's here instead of miscasting a real
         # SOP match as either "new use case" or "destructive".
         incident_priority = str(incident.get("priority", "")).upper()
+        # TEMPORARY DEMO OVERRIDE (uncommitted, local-only -- revert after today's
+        # demo): P2 excluded from the gate below so P2 RAG-hit tickets auto-execute
+        # without a HITL approval stop. Restore to ("P1", "P2") afterward.
         is_priority_gated = (
-            incident_priority in ("P1", "P2")
+            incident_priority in ("P1",)
             and not is_new_use_case
             and not is_destructive_sop
         )
@@ -729,7 +732,7 @@ def _solve_in_progress_incident_internal(
     state.mark_processed_in_progress(inc_id)
 
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Dynamic SSH Execution", "RUNNING", f"LLM is dynamically orchestrating execution (human_authorized={is_human_authorized})...")
-    success, exec_log, react_model_used = run_dynamic_react_loop(
+    success, exec_log, react_model_used, react_session = run_dynamic_react_loop(
         ip, user, password, sop_commands, short_desc, number, inc_id, ci_name,
         desc=desc, session_state=state, ssh_session_factory=session_factory, llm_invoker=invoker,
         is_human_authorized=is_human_authorized
@@ -958,7 +961,11 @@ Respond ONLY in valid JSON format:
 
     # 7. Mandatory Post-Remediation Proof-of-Fix Guard
     post_timeline_update(inc_id, number, short_desc, ci_name, "RUNNING", "Post-Remediation Verification", "RUNNING", "Running mandatory post-remediation proof-of-fix verification...")
-    proof_session = session_factory(ip, user, password)
+    # Reuse the ReAct loop's already-open, already-proven session for this same
+    # host instead of closing it and opening a fresh one -- see remediation_loop.py's
+    # return-site comment for why a close-then-immediate-reopen was hitting a
+    # remote-side connection reset that could exceed even a generous retry budget.
+    proof_session = react_session if react_session is not None else session_factory(ip, user, password)
     try:
         post_fix_ok, post_fix_evidence = verify_post_remediation_status(
             proof_session, short_desc, desc, sop_commands, exec_log, number

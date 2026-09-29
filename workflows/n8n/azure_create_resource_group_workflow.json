@@ -1,0 +1,107 @@
+{
+  "id": "b2c3d4e5f6a7b8c9",
+  "name": "ITSM-Agentic: Azure Create Resource Group (az cli) - Worker1OL",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b2c3d4e5-0001-4a1a-9b1a-000000000001",
+      "name": "Manual Trigger (Run Use Case)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst pad = (n) => String(n).padStart(2, '0');\nconst stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;\nconst rand = Math.random().toString(36).slice(2, 6);\nconst rgName = `n8n-rg-${stamp}-${rand}`;\nconst location = 'eastus';\n\nreturn [{\n  json: {\n    rgName,\n    location,\n    generatedAt: now.toISOString()\n  }\n}];"
+      },
+      "id": "b2c3d4e5-0002-4a1a-9b1a-000000000002",
+      "name": "Generate Unique Resource Group Name",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        300
+      ],
+      "notes": "New name every run (timestamp + random suffix) so repeat executions never collide with a resource group left over from a previous run."
+    },
+    {
+      "parameters": {
+        "authentication": "password",
+        "resource": "command",
+        "operation": "execute",
+        "command": "=az group create --name \"{{ $json.rgName }}\" --location \"{{ $json.location }}\" --output table",
+        "cwd": "/"
+      },
+      "id": "b2c3d4e5-0003-4a1a-9b1a-000000000003",
+      "name": "Create Azure Resource Group (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        640,
+        300
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "ZXVQbVtXqvcIRU8B",
+          "name": "SSH Password account"
+        }
+      },
+      "notes": "Runs `az group create` on Worker1OL. Assumes the SSH user is already logged in via `az login` (or uses a managed identity / service principal already configured in its az cli context) -- this workflow does not handle Azure auth."
+    },
+    {
+      "parameters": {
+        "jsCode": "const sshOut = $input.first().json;\nconst gen = $('Generate Unique Resource Group Name').first().json;\n\nreturn [{\n  json: {\n    status: 'SUCCESS',\n    resourceGroup: gen.rgName,\n    location: gen.location,\n    generatedAt: gen.generatedAt,\n    output: (sshOut.stdout || '').trim(),\n    message: `[n8n] Created Azure resource group '${gen.rgName}' in '${gen.location}' via az cli on Worker1OL`\n  }\n}];"
+      },
+      "id": "b2c3d4e5-0004-4a1a-9b1a-000000000004",
+      "name": "Format Result Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger (Run Use Case)": {
+      "main": [
+        [
+          {
+            "node": "Generate Unique Resource Group Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Unique Resource Group Name": {
+      "main": [
+        [
+          {
+            "node": "Create Azure Resource Group (SSH)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Azure Resource Group (SSH)": {
+      "main": [
+        [
+          {
+            "node": "Format Result Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
