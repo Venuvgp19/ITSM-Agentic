@@ -39871,6 +39871,57 @@
         ]
       },
       {
+        "id": "824c281b-23ea-4218-bfad-0f3e5ea6e819",
+        "tenantId": "tenant_acme_01",
+        "number": "INC0002561",
+        "shortDescription": "Nexacore Application is down on WorkerNode1HL on port 9000: connection refused",
+        "description": "Automated synthetic probe detected outage for Nexacore web/API service listening on port 9000 on WorkerNode1HL. Connection refused.",
+        "state": "ON_HOLD",
+        "impact": "DEPARTMENT",
+        "urgency": "HIGH",
+        "priority": "P2",
+        "callerName": "n8n Telemetry Engine",
+        "assignedToName": "Alex Mercer (App Support Lead)",
+        "configurationItemName": "WorkerNode1HL",
+        "department": "App Support",
+        "resolutionNotes": "Unassigned ticket pending triage.",
+        "resolutionCode": "Pending Triage",
+        "resolvedAt": null,
+        "closedAt": null,
+        "createdAt": "2026-09-25T02:59:50.481000",
+        "updatedAt": "2026-09-25T03:02:51.717000",
+        "activitiesJson": [
+          {
+            "id": "act_1790305371692",
+            "author": "\ud83e\udd16 Unix Auto-Resolver Agent",
+            "comment": "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\uded1 POST-REMEDIATION VERIFICATION FAILED \u2014 TICKET NOT RESOLVED\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83c\udfab Ticket: [INC0002561] Nexacore Application is down on WorkerNode1HL on port 9000: connection refused\n\ud83d\udda5\ufe0f Host: WorkerNode1HL (192.168.100.102)\n\ud83d\udcda Applied SOP: [KB0000039] Master SOP: Linux Application Service Recovery - Nexacore Down on Port 9000\n\n\u274c POST-FIX VERIFICATION RESULT:\n\u274c No restart command was executed, and a live probe on port 9000 got '000' -- refusing to assume success without live confirmation.\n\nThe autonomous agent executed the SOP commands successfully but the post-remediation verification \nconfirmed the issue is NOT resolved. Human intervention required.\nAssigned to: Alex Mercer (App Support Lead)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501",
+            "timestamp": "2026-09-25T03:02:51.692Z",
+            "isWorkNote": true
+          },
+          {
+            "id": "act_1790305224726",
+            "author": "\ud83c\udfaf ITSM Priority Policy Gate",
+            "comment": "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83c\udfaf P2 INCIDENT \u2014 MANDATORY HUMAN APPROVAL REQUIRED\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\ud83d\udd0d SOP Match: [KB0000039] 'Master SOP: Linux Application Service Recovery - Nexacore Down on Port 9000' (RAG hit -- an existing SOP, not newly synthesized)\n\ud83d\udca1 Reasoning: The retrieved SOP KB0000039 contains 7 steps for Linux Application Service Recovery targeting the IP 192.168.100.102. All commands have been parameterized by replacing the hardcoded IP with the placeholder {ip} as required by the Direct Command Execution Rule. The commands check for the Nexacore service status, locate its unit file, reload the systemd daemon, attempt a restart, wait for the service to stabilize, and verify the port 9000 is listening. No Python virtual environment creation or user provisioning/deletion steps are present in this SOP, so those rules do not apply. The incident describes a service outage on a single host, so no bulk user expansion is required.\n\ud83d\udccb Proposed Commands: systemctl list-unit-files --type=service | grep -i nexacore, systemctl status nexacore 2>/dev/null || systemctl status nexacore-app 2>/dev/null || systemctl status nexacore-server 2>/dev/null || echo 'Service unit not found; check /etc/systemd/system/ and /usr/lib/systemd/system/', find /etc/systemd/system /usr/lib/systemd/system -name '*nexacore*' -type f 2>/dev/null, systemctl daemon-reload, systemctl restart nexacore, sleep 10, ss -tulpn | grep 9000\n\ud83d\udcdd Action: Routed to Agent Control Tower (http://localhost:5173) for mandatory human operator review, per policy that all P2 incidents require sign-off before autonomous execution regardless of match confidence.\nState: Incident placed ON_HOLD. Autonomous execution blocked until an operator reviews & approves.\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501",
+            "timestamp": "2026-09-25T03:00:24.726Z",
+            "isWorkNote": true
+          },
+          {
+            "id": "act_1790305197612",
+            "author": "\ud83e\udd16 Agentic AI Router (15s Loop)",
+            "comment": "\ud83e\udd16 **Autonomous Agentic AI Router (Historical Precedent Grounding)**\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u2022 **Assignment Group:** App Support\n\u2022 **Assigned Technician:** Alex Mercer (App Support Lead)\n\u2022 **Ticket State:** IN_PROGRESS (Dispatched for Operational Remediation)\n\u2022 **Predicted Priority:** P2\n\u2022 **Confidence Score:** 99%\n\u2022 **Historical Precedents Referenced:** 4 resolved cases\n\n**Reasoning:**\nDeterministic Policy Rule: Nexacore application downtime, service failures, and portal alerts are strictly routed to App Support.\n\n**Diagnostic Trace:**\nEnforced deterministic platform routing policy: 'nexacore' application alert routed to App Support (P2) with 99% confidence.",
+            "timestamp": "2026-09-25T02:59:57.612Z",
+            "isWorkNote": true
+          },
+          {
+            "id": "act_INC0002561_1",
+            "author": "n8n Telemetry Engine",
+            "comment": "Logged new incident ticket INC0002561.",
+            "timestamp": "2026-09-25T02:59:50.477Z",
+            "isWorkNote": true
+          }
+        ]
+      },
+      {
         "id": "8262a92d-d4c2-49cb-a8e2-4374d2324ca3",
         "tenantId": "tenant_acme_01",
         "number": "INC0002082",
@@ -133851,6 +133902,54 @@
         }
       },
       {
+        "id": "APPR-2442",
+        "incident_id": "824c281b-23ea-4218-bfad-0f3e5ea6e819",
+        "incident_title": "[P2 MANDATORY REVIEW] Nexacore Application is down on WorkerNode1HL on port 9000: connection refused",
+        "agent_id": "agent-unix-resolver-01",
+        "agent_name": "\ud83e\udd16 Unix Auto-Resolver Agent",
+        "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+        "target_ci": "WorkerNode1HL (192.168.100.102)",
+        "department": "App Support",
+        "risk_level": "HIGH",
+        "confidence_score": "85.00",
+        "status": "EXECUTED",
+        "requested_at": "2026-09-24T21:00:24.637027-06:00",
+        "summary": "P2 incident matched SOP [KB0000039] 'Master SOP: Linux Application Service Recovery - Nexacore Down on Port 9000' -- mandatory human approval required regardless of match confidence.",
+        "proposed_commands": [
+          "systemctl list-unit-files --type=service | grep -i nexacore",
+          "systemctl status nexacore 2>/dev/null || systemctl status nexacore-app 2>/dev/null || systemctl status nexacore-server 2>/dev/null || echo 'Service unit not found; check /etc/systemd/system/ and /usr/lib/systemd/system/'",
+          "find /etc/systemd/system /usr/lib/systemd/system -name '*nexacore*' -type f 2>/dev/null",
+          "systemctl daemon-reload",
+          "systemctl restart nexacore",
+          "sleep 10",
+          "ss -tulpn | grep 9000"
+        ],
+        "kb_article_reference": "KB0000039",
+        "kb_title": "Master SOP: Linux Application Service Recovery - Nexacore Down on Port 9000",
+        "safety_checks": [],
+        "ai_reasoning": "Priority Policy Gate: this is a P2 incident, which always requires human sign-off before autonomous execution regardless of RAG match confidence -- a high hybrid similarity score reflects corpus-relative ranking, not proof the match is safe to fire blind on a critical/high-impact ticket. Matched SOP [KB0000039] 'Master SOP: Linux Application Service Recovery - Nexacore Down on Port 9000'. The retrieved SOP KB0000039 contains 7 steps for Linux Application Service Recovery targeting the IP 192.168.100.102. All commands have been parameterized by replacing the hardcoded IP with the placeholder {ip} as required by the Direct Command Execution Rule. The commands check for the Nexacore service status, locate its unit file, reload the systemd daemon, attempt a restart, wait for the service to stabilize, and verify the port 9000 is listening. No Python virtual environment creation or user provisioning/deletion steps are present in this SOP, so those rules do not apply. The incident describes a service outage on a single host, so no bulk user expansion is required.",
+        "rejection_reason": null,
+        "approved_by": "Venu (Human in the Loop)",
+        "approved_at": "2026-09-24T21:00:31.922146-06:00",
+        "details": {
+          "synthesizerOutput": {
+            "kbTitle": "Master SOP: Linux Application Service Recovery - Nexacore Down on Port 9000",
+            "draftKbId": "KB0000039",
+            "trendInsight": "P2 incident matched SOP [KB0000039] 'Master SOP: Linux Application Service Recovery - Nexacore Down on Port 9000'; held for mandatory review per priority policy.",
+            "resolutionSteps": [
+              "systemctl list-unit-files --type=service | grep -i nexacore",
+              "systemctl status nexacore 2>/dev/null || systemctl status nexacore-app 2>/dev/null || systemctl status nexacore-server 2>/dev/null || echo 'Service unit not found; check /etc/systemd/system/ and /usr/lib/systemd/system/'",
+              "find /etc/systemd/system /usr/lib/systemd/system -name '*nexacore*' -type f 2>/dev/null",
+              "systemctl daemon-reload",
+              "systemctl restart nexacore",
+              "sleep 10",
+              "ss -tulpn | grep 9000"
+            ],
+            "synthesizedSolution": "systemctl list-unit-files --type=service | grep -i nexacore\nsystemctl status nexacore 2>/dev/null || systemctl status nexacore-app 2>/dev/null || systemctl status nexacore-server 2>/dev/null || echo 'Service unit not found; check /etc/systemd/system/ and /usr/lib/systemd/system/'\nfind /etc/systemd/system /usr/lib/systemd/system -name '*nexacore*' -type f 2>/dev/null\nsystemctl daemon-reload\nsystemctl restart nexacore\nsleep 10\nss -tulpn | grep 9000"
+          }
+        }
+      },
+      {
         "id": "APPR-2477",
         "incident_id": "7b02b668-8790-4a32-8a14-dc6046a8c3ff",
         "incident_title": "[BINARY AUTHORIZATION REQUIRED] Create a Linux user Dham with power to only execute command \"Systemctl restart sshd\" on workernode1HL",
@@ -202900,6 +202999,66 @@
             "status": "SUCCESS",
             "details": "CPU=0.00%, Memory=15.08% within threshold (<= 90%). Host confirmed within normal range and incident closed in PostgreSQL.",
             "timestamp": "10:47:35 PM"
+          }
+        ]
+      },
+      {
+        "id": "824c281b-23ea-4218-bfad-0f3e5ea6e819",
+        "incident_number": "INC0002561",
+        "incident_title": "Nexacore Application is down on WorkerNode1HL on port 9000: connection refused",
+        "target_ci": "WorkerNode1HL",
+        "status": "ESCALATED",
+        "start_time": "2026-09-24T21:00:03.271559-06:00",
+        "end_time": "2026-09-24T21:02:51.672000-06:00",
+        "steps": [
+          {
+            "id": "step-1790305241953-31",
+            "name": "Target CI Validation",
+            "status": "SUCCESS",
+            "details": "Detected OS: Linux/Unix (RHEL/Ubuntu/CentOS). Validation complete.",
+            "timestamp": "09:00:41 PM"
+          },
+          {
+            "id": "step-1790305241965-279",
+            "name": "\ud83c\udf10 Autonomous Application Health Check",
+            "status": "SUCCESS",
+            "details": "Probing live HTTP response from WorkerNode1HL:9000 before executing any restart/start action...",
+            "timestamp": "09:00:41 PM"
+          },
+          {
+            "id": "step-1790305217475-229",
+            "name": "\ud83c\udfaf RAG Candidate Evaluation",
+            "status": "SUCCESS",
+            "details": "Query: 'Nexacore Application is down on on port 9000: connection refused  | Signal: Connection refused' | Department: 'App Support' | 12 candidate(s) retrieved\n[KB0000039] Master SOP: Linux Application Service Recovery - Nexacore Down on Port 9000 \u2014 score=1.0000 margin=0.3031 \u2014 \u2705 APPROVED by LLM Judge: The SOP targets a 'Nexacore Down on Port 9000' symptom (connection refused) with a standard service diagnosis-and-restart procedure, which is the correct first-response approach for a connection refused symptom.",
+            "timestamp": "09:00:17 PM"
+          },
+          {
+            "id": "step-1790305242641-658",
+            "name": "\ud83d\udd10 Human-in-the-Loop Gate",
+            "status": "SUCCESS",
+            "details": "SOP approved by operator (Venu (Human in the Loop)). Proceeding to execute.",
+            "timestamp": "09:00:42 PM"
+          },
+          {
+            "id": "step-1790305367063-362",
+            "name": "Dynamic SSH Execution",
+            "status": "SUCCESS",
+            "details": "Dynamic SOP commands executed successfully.",
+            "timestamp": "09:02:47 PM"
+          },
+          {
+            "id": "step-1790305371017-919",
+            "name": "Verification Tests",
+            "status": "SUCCESS",
+            "details": "Verification passed: The Nexacore service (nexacore.service) is currently in an inactive/dead state, having been stopped by systemd approximately 1 minute and 40 seconds ago. The service was last active and processing requests (HTTP 200/304 responses) from 127.0.0.1 until 21:59:33 CDT. The service unit file exists at /etc/systemd/system/nexacore.service and is enabled. The root cause of the outage is that the service has been stopped; restarting the service via 'systemctl start nexacore' would resolve the 'connection refused' issue on port 9000.",
+            "timestamp": "09:02:51 PM"
+          },
+          {
+            "id": "step-1790305371672-686",
+            "name": "Post-Remediation Verification",
+            "status": "FAILED",
+            "details": "Post-remediation proof-of-fix FAILED: \u274c No restart command was executed, and a live probe on port 9000 got '000' -- refusing to assume success without live confirmation.. Escalating to Alex Mercer (App Support Lead).",
+            "timestamp": "09:02:51 PM"
           }
         ]
       },
