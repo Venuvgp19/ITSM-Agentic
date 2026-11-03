@@ -29,3 +29,9 @@ services/slack-bridge/posted_approvals.json
 services/sre-agent-daemon/chroma_db/
 *.n8ndatabase.sqlite
 services/sre-agent-daemon/tests/*_report.json
+
+# Throwaway Chrome profiles created by CDP-driven screenshot/recording
+# scripts (see apps/*/scratchpad tooling) -- these cache full page HTML,
+# which can include whatever was on screen at capture time.
+cprofile*/
+

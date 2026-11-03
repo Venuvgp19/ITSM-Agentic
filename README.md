@@ -51,10 +51,12 @@ The platform automates enterprise helpdesk and Site Reliability Engineering oper
 
 ## 🔑 Default Operator Credentials
 
-| Portal | URL | Username / User ID | Password | Role |
-| :--- | :--- | :--- | :--- | :--- |
-| **SRE Control Tower** | `http://localhost:5173` | **`Venu`** | **`admin007`** | Global SRE Lead |
-| **Core Helpdesk Console** | `http://localhost:3000` | **`venu`** *(or `venu@example.com`)* | **`admin007`** | Platform Administrator |
+| Portal | URL | Username / User ID | Role |
+| :--- | :--- | :--- | :--- |
+| **SRE Control Tower** | `http://localhost:5173` | **`Venu`** | Global SRE Lead |
+| **Core Helpdesk Console** | `http://localhost:3000` | **`venu`** *(or `venu@example.com`)* | Platform Administrator |
+
+Password is not documented here (this file is public-facing / gets screen-recorded). Ask whoever set up your instance.
 
 ---
 

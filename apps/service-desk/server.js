@@ -239,7 +239,7 @@ app.post('/api/login', async (req, res) => {
     }
 
     if (!authUser) {
-      return res.status(401).json({ error: 'Invalid User ID or Password. (Expected: Venu / admin007)' });
+      return res.status(401).json({ error: 'Invalid User ID or Password. Please contact your administrator for access.' });
     }
 
     const token = `sd_session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
